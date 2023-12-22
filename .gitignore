@@ -1,0 +1,7 @@
+# .gitignore
+
+# Ignorar o arquivo de configuração do ambiente
+.env
+
+# Ignorar arquivos de log
+*.log

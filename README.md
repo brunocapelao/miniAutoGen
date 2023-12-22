@@ -27,7 +27,7 @@ Este projeto implementa um chatbot interativo usando a API da OpenAI. O sistema 
 ## Exemplo de Uso
 
 Este exemplo demonstra como configurar e iniciar um chat interativo com dois agentes e um mestre humano. O objetivo é planejar uma viagem de 15 dias para a Argentina. O primeiro agente, "Mestre das Rotas", é um assistente virtual especializado em viagens, enquanto o segundo agente, "Dany", representa um viajante empolgado com sua primeira viagem internacional. O mestre do chat, neste caso, é um humano que guia a conversa e toma decisões sobre o andamento do chat.
-
+git s
 ```python
 # Criação dos agentes e do mestre
 agente1 = Agent("Mestre das rotas", "<detalhes do agente Mestre das Rotas>")
