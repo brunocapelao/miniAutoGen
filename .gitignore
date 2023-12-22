@@ -1,7 +1,24 @@
-# .gitignore
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
 
-# Ignorar o arquivo de configuração do ambiente
+# Caches and Logs
+*.log
+*.csv
+*.json
+cache/
+*.pyc
+
+# Virtual environment
+venv/
 .env
 
-# Ignorar arquivos de log
-*.log
+# OS files
+.DS_Store
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Local configuration file
+config.py
