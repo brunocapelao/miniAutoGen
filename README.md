@@ -1,5 +1,7 @@
 # MiniAutoGen
 
+![](miniautogen.png)
+
 ## Descrição
 Este projeto implementa um chatbot interativo usando a API da OpenAI. O sistema permite a interação entre agentes automatizados e um mestre, que pode ser tanto um agente automatizado quanto um humano, para discutir um tema específico, neste caso, "Discutir um destino de viagem".
 
