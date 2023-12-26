@@ -54,7 +54,7 @@ Propósito: Gerencia uma sessão de chat em grupo envolvendo vários agentes.
 Objetivos:
 1. Gerenciamento de Estado e Contexto
 
-### ChatAdmin
+### GroupChatAdmin
 Propósito: Atua como um agente de conversação que coordena a execução do chat em grupo.
 
 Objetivos:
