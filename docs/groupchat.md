@@ -1,6 +1,4 @@
-Incluir a responsabilidade de garantir o registro persistente dos dados da conversa no módulo "GroupChat" é uma adição crucial. Isso não apenas melhora a funcionalidade do módulo, mas também assegura a integridade e a acessibilidade das informações ao longo do tempo. Vamos atualizar os objetivos do "GroupChat" com essa consideração:
-
-### Módulo GroupChat: Objetivos Atualizados
+### Módulo GroupChat
 
 #### Propósito
 Gerenciar sessões de chat em grupo, envolvendo múltiplos agentes, com ênfase na manutenção do estado e contexto da conversa e na garantia do registro persistente dos dados.
@@ -88,3 +86,93 @@ A classe `GroupChat` é fundamental para a coordenação de conversas em ambient
 
 ### Conclusão
 Essas melhorias visam otimizar a coordenação e a eficácia das conversas em grupo, tornando o `GroupChat` mais adaptável, inteligente e capaz de gerenciar interações complexas em ambientes de chat em grupo multi-agentes. Ao implementar essas funcionalidades, o `GroupChat` pode facilitar conversas mais engajadas, coerentes e produtivas, maximizando a colaboração e a eficiência entre os agentes.
+
+
+---
+
+Claro, posso fornecer uma documentação detalhada para a classe `GroupChat`. Esta documentação vai explicar o propósito e o uso de cada método, facilitando o entendimento e a utilização da classe por outros desenvolvedores. Vou incluir descrições para os parâmetros e os valores de retorno onde aplicável.
+
+### Documentação da Classe GroupChat
+
+#### Classe GroupChat
+
+Esta classe é responsável por gerenciar sessões de chat em grupo, envolvendo múltiplos agentes. Ela permite a adição e remoção de mensagens e agentes, gerencia o contexto da conversa e persiste os dados em um banco de dados SQLite e arquivos JSON.
+
+#### Métodos
+
+- **`__init__(self, storage_path='groupchat_data')`**
+  - **Descrição**: Inicializa uma nova instância do GroupChat.
+  - **Parâmetros**:
+    - `storage_path` (str): Caminho para o diretório onde os dados do chat serão armazenados. Default é 'groupchat_data'.
+  - **Retorno**: Não se aplica.
+
+- **`_create_tables(self)`**
+  - **Descrição**: Método privado para criar as tabelas necessárias no banco de dados SQLite.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Não se aplica.
+
+- **`_load_state(self)`**
+  - **Descrição**: Método privado para carregar o estado salvo dos agentes e do contexto de arquivos JSON.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Não se aplica.
+
+- **`persist(self)`**
+  - **Descrição**: Salva o estado atual dos agentes e do contexto em arquivos JSON.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Não se aplica.
+
+- **`add_message(self, message, sender_id)`**
+  - **Descrição**: Adiciona uma nova mensagem ao chat.
+  - **Parâmetros**:
+    - `message` (str): A mensagem a ser adicionada.
+    - `sender_id` (str): O identificador do agente que envia a mensagem.
+  - **Retorno**: Não se aplica.
+
+- **`remove_message(self, message_id)`**
+  - **Descrição**: Remove uma mensagem específica do chat.
+  - **Parâmetros**:
+    - `message_id` (int): O identificador da mensagem a ser removida.
+  - **Retorno**: Não se aplica.
+
+- **`get_messages(self)`**
+  - **Descrição**: Recupera todas as mensagens do chat.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Um DataFrame do Pandas contendo todas as mensagens.
+
+- **`get_current_context(self)`**
+  - **Descrição**: Retorna o contexto atual da conversa.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Um dicionário contendo o contexto atual da conversa.
+
+- **`update_context(self, new_context)`**
+  - **Descrição**: Atualiza o contexto da conversa com novas informações.
+  - **Parâmetros**:
+    - `new_context` (dict): Um dicionário contendo as informações atualizadas do contexto.
+  - **Retorno**: Não se aplica.
+
+- **`add_agent(self, agent_id, agent_info)`**
+  - **Descrição**: Adiciona um novo agente à conversa.
+  - **Parâmetros**:
+    - `agent_id` (str): Identificador único do agente.
+    - `agent_info` (dict): Dicionário contendo informações sobre o agente.
+  - **Retorno**: Não se aplica.
+
+- **`remove_agent(self, agent_id)`**
+  - **Descrição**: Remove um agente da conversa com base em seu identificador.
+  - **Parâmetros**:
+    - `agent_id` (str): Identificador do agente a ser removido.
+  - **Retorno**: Não se aplica.
+
+- **`__del__(self)`**
+  - **Descrição**: Destrutor da classe que garante a persistência do estado ao destruir o objeto.
+  - **Parâmetros**: Não se aplica.
+  - **Retorno**: Não se aplica.
+
+### Notas Adicionais
+
+- A documentação acima assume que os desenvolvedores que utilizam a classe têm um entendimento básico de Python e estruturas de dados.
+- Sempre bom lembrar que a prática de testes unitários é essencial para garantir o funcionamento correto dos métodos em diversos cenários.
+
+Esta
+
+ documentação deve servir como um guia claro para qualquer desenvolvedor que deseje integrar e usar a classe `GroupChat` em seus projetos.
