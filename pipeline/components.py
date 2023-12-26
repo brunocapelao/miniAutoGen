@@ -20,7 +20,6 @@ class UserResponseComponent(PipelineComponent):
     def process(self, **kwargs):
         data = kwargs.get('groupchat')
         data = data.get_messages()
-        print(data.tail())
         resposta = input("Digite a resposta: ")
         return resposta
 
