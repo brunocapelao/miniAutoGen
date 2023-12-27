@@ -2,8 +2,13 @@ from openai import OpenAI
 from dotenv import load_dotenv
 from pipeline.pipeline import PipelineComponent
 import os
+import logging
 
 load_dotenv()
+
+
+class UserExitException(Exception):
+    pass
 
 
 class UserResponseComponent(PipelineComponent):
@@ -25,44 +30,54 @@ class UserResponseComponent(PipelineComponent):
 
 
 class UserInputNextAgent(PipelineComponent):
-    """
-    Componente de Pipeline para seleção do próximo agente pelo usuário.
-
-    Este componente exibe a lista de agentes disponíveis no groupchat e permite ao usuário
-    selecionar o próximo agente com o qual deseja interagir.
-
-    Métodos:
-        process(**kwargs): Usa o estado atual do groupchat para apresentar a lista de agentes
-        e capturar a escolha do usuário.
-    """
-
     def process(self, **kwargs):
         groupchat = kwargs.get('groupchat')
-        groupchatadmin = kwargs.get('groupchatadmin')
-        print(groupchatadmin)
-        if not groupchat:
-            raise ValueError("groupchat is required for UserInputNextAgent")
-        if not groupchatadmin:
-            raise ValueError("groupchat is required for UserInputNextAgent")
+        if not groupchat or not groupchat.agentList:
+            raise ValueError("GroupChat inválido ou sem agentes.")
 
-        agents = groupchat.agentList
-        for i, agent in enumerate(agents):
+        for i, agent in enumerate(groupchat.agentList):
             print(f"{i + 1}: {agent.name}")
 
-        escolha = None
-        while escolha is None:
-            try:
-                escolha_input = input(
-                    "Digite o número correspondente ao agente: ")
-                escolha = int(escolha_input)
-                if escolha < 1 or escolha > len(agents):
-                    print("Escolha inválida. Tente novamente.")
-                    escolha = None
-            except ValueError:
-                print("Entrada inválida. Por favor, digite um número.")
+        escolha = input(
+            "Digite o número correspondente ao agente (ou 'sair' para cancelar): ")
 
-        next_agent = agents[escolha - 1]
-        kwargs['agent'] = next_agent
+        if escolha.lower() == 'exit':
+            raise UserExitException("Usuário optou por sair")
+
+        try:
+            escolha = int(escolha) - 1
+            if 0 <= escolha < len(groupchat.agentList):
+                kwargs['agent'] = groupchat.agentList[escolha]
+            else:
+                print("Escolha inválida.")
+        except ValueError:
+            print("Entrada inválida. Por favor, digite um número.")
+
+        return kwargs
+
+
+class NextAgentSelectorComponent(PipelineComponent):
+    def process(self, **kwargs):
+        groupchat = kwargs.get('groupchat')
+        last_message = groupchat.get_messages(
+            type='json')[-1] if groupchat.get_messages(type='json') else None
+
+        if not groupchat or not groupchat.agentList:
+            raise ValueError("GroupChat inválido ou sem agentes.")
+
+        if last_message:
+            last_sender_id = last_message['sender_id']
+            # Encontrar o índice do último agente que enviou uma mensagem
+            last_agent_index = next((i for i, agent in enumerate(
+                groupchat.agentList) if agent.agent_id == last_sender_id), -1)
+            # Selecionar o próximo agente na lista
+            next_agent_index = (last_agent_index +
+                                1) % len(groupchat.agentList)
+        else:
+            # Se não houver mensagens, comece com o primeiro agente
+            next_agent_index = 0
+
+        kwargs['agent'] = groupchat.agentList[next_agent_index]
         return kwargs
 
 
@@ -91,75 +106,91 @@ class AgentReplyComponent(PipelineComponent):
 
 class OpenAIResponseComponent(PipelineComponent):
     """
-    Componente de Pipeline que utiliza um LLM (Modelo de Linguagem de Aprendizado Profundo)
-    para gerar uma resposta baseada nas mensagens anteriores do chat.
-
-    Este componente interage com a API de um LLM para obter respostas inteligentes e contextuais,
-    que são então retornadas para o chat em grupo.
-
-    Atributos:
-        api_key (str): Chave de API necessária para autenticar as solicitações ao LLM.
-        model_name (str): Nome do modelo LLM que será utilizado para gerar as respostas.
-
-    Métodos:
-        process(**kwargs): Recebe o estado atual do chat em grupo e utiliza o LLM para gerar uma resposta.
+    Componente de Pipeline para gerar respostas utilizando o modelo de linguagem da OpenAI.
     """
 
     def __init__(self):
         self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-
+        self.logger = logging.getLogger(__name__)
 
     def process(self, **kwargs):
-        group_chat = kwargs.get('groupchat')
-        agent = kwargs.get('agent')
-        # Supondo que estas variáveis sejam fornecidas ou definidas anteriormente
-        participantes_str = group_chat.agentList
-        goal = kwargs.get('goal', 'Indefinido')
-        contexto = kwargs.get('contexto', 'Indefinido')
-        conversa_ativa = '\n'.join([f"{row['sender_id']}: {row['message']}" for index, row in group_chat.get_messages().iterrows()])
+        try:
+            group_chat = kwargs.get('groupchat')
+            agent = kwargs.get('agent')
 
-        system = f"""
-            ### Objetivo Principal e Contexto:
-            Você é {agent.name}, um Agente GPT Customizado projetado para colaborar na resolução de problemas em um ambiente de conversação com outros agentes especializados. Sua função principal é analisar, compreender e contribuir para a discussão, utilizando seu conhecimento específico para auxiliar na solução de questões complexas. Você deve interagir de forma eficaz com os outros agentes, respeitando seus perfis e áreas de especialização.
+            if not group_chat or not agent:
+                raise ValueError(
+                    "groupchat e agent são obrigatórios para OpenAIResponseComponent.")
+            messages = group_chat.get_messages('json')
+            prompt = self._construct_prompt(group_chat, agent)
+            response = self._call_openai_api(prompt)
+            return response.choices[0].message.content
+        except Exception as e:
+            self.logger.error(f"Erro em OpenAIResponseComponent: {e}")
+            raise
 
-            ### Perfil e Especialização:
-            Nome: {agent.name}
-            Área de Especialização: {agent.role}
+    def _construct_prompt(self, group_chat, agent):
+        messages = group_chat.get_messages('json')
+        formatted_messages = [{'role': 'system', 'content': agent.role}]
+        for item in messages:
+            role = 'assistant' if item['sender_id'] == agent.agent_id else 'user'
+            content = item['message']
+            formatted = {'role': role, 'content': content}
+            formatted_messages.append(formatted)
+        return formatted_messages  # Mova esta linha de volta para fora do loop 'for'
 
-            ### Instruções de Engajamento:
-            - **Colaboração Ativa**: Engaje-se ativamente com os outros agentes, oferecendo suas perspectivas e conhecimentos especializados para enriquecer a discussão.
-            - **Respostas Contextualizadas**: Responda de forma contextualizada, considerando as contribuições anteriores dos agentes e o fluxo atual da conversa.
-            - **Construção Conjunta de Soluções**: Colabore na construção de soluções, aproveitando os pontos fortes de cada agente para abordar o problema de maneira integrada.
+    def _call_openai_api(self, prompt):
+        """ Realiza a chamada à API da OpenAI. """
+        try:
+            return self.client.chat.completions.create(
+                model="gpt-4-1106-preview",
+                messages=prompt,
+                temperature=1
+            )
+        except Exception as e:
+            self.logger.error(f"Erro ao chamar a API da OpenAI: {e}")
+            raise
 
-            ### Formato de Respostas:
-            - **Clareza e Concisão**: Suas respostas devem ser claras, concisas e focadas na tarefa em questão. Evite informações desnecessárias que não contribuam para a resolução do problema.
-            - **Adaptação de Estilo de Comunicação**: Adapte seu estilo de comunicação conforme necessário, variando entre explicações técnicas e simplificadas, com base na natureza da conversa e nos agentes envolvidos.
-            - **Coerência com a Especialização**: Mantenha a coerência com sua área de especialização, garantindo que suas contribuições sejam relevantes e fundamentadas.
 
-            ### Considerações Finais:
-            Lembre-se de que o objetivo é trabalhar em conjunto com os outros agentes para alcançar uma solução eficaz e bem fundamentada para o problema apresentado.
-                
-            SUA RESPOSTA DEVE SER APENAS UMA MENSAGEM QUE FAÇA SENTIDO NO CONTEXTO DA CONVERSA ATUAL. NÃO É NECESSÁRIO RESPONDER A TODAS AS MENSAGENS ANTERIORES. VOCÊ PODE IGNORAR AS MENSAGENS QUE NÃO SÃO RELEVANTES PARA A SUA RESPOSTA. NÃO ENVIE MENSAGEM COMO SE FOSSE UM OUTRO AGENTE.    
-            """
+# class OpenAIResponseComponent(PipelineComponent):
+#     """
+#     Componente de Pipeline para gerar respostas utilizando o modelo de linguagem da OpenAI.
+#     """
 
-        content = (
-            f"Seu Nome: {agent.name}\n"
-            f"Outros Participantes: {participantes_str}\n"
-            f"Objetivo conversa: {goal}\n"
-            f"Contexto Atual: {contexto}\n"
-            f"Histórico da Conversa: {conversa_ativa}\n"
-        )
+#     def __init__(self):
+#         self.client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+#         self.logger = logging.getLogger(__name__)
 
-        # Inicializa a lista prompt com o elemento de sistema
-        prompt_list = [{"role": "system", "content": system + content}]
+#     def process(self, **kwargs):
+#         try:
+#             group_chat = kwargs.get('groupchat')
+#             agent = kwargs.get('agent')
 
-        # Configura a chamada para o LLM
-        response = self.client.chat.completions.create(
-            model="gpt-3.5-turbo-16k",
-            messages=prompt_list,
-            temperature=1
-        )
+#             if not group_chat or not agent:
+#                 raise ValueError("groupchat e agent são obrigatórios para OpenAIResponseComponent.")
 
-        # Extrai e retorna a resposta gerada pelo LLM
-        reply = response.choices[0].message.content
-        return reply
+#             prompt = self._construct_prompt(group_chat, agent)
+#             response = self._call_openai_api(prompt)
+#             return response.choices[0].message.content
+#         except Exception as e:
+#             self.logger.error(f"Erro em OpenAIResponseComponent: {e}")
+#             raise
+
+#     def _construct_prompt(self, group_chat, agent):
+#         """ Constrói o prompt para a API da OpenAI. """
+#         # Construa o prompt com base em group_chat e agent
+#         # Por exemplo:
+#         prompt = "Seu prompt aqui..."
+#         return prompt
+
+#     def _call_openai_api(self, prompt):
+#         """ Realiza a chamada à API da OpenAI. """
+#         try:
+#             return self.client.chat.completions.create(
+#                 model="gpt-3.5-turbo-16k",
+#                 messages=prompt,
+#                 temperature=1
+#             )
+#         except Exception as e:
+#             self.logger.error(f"Erro ao chamar a API da OpenAI: {e}")
+#             raise

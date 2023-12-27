@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
-class GroupChatAdmin(Agent):
+class ChatAdmin(Agent):
     def __init__(self, agent_id, name, role, pipeline, group_chat, goal, max_rounds):
         super().__init__(agent_id, name, role, pipeline)
         self.group_chat = group_chat
