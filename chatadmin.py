@@ -8,7 +8,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(level
 logger = logging.getLogger(__name__)
 
 
-class GroupChatAdmin(Agent):
+class ChatAdmin(Agent):
     def __init__(self, agent_id, name, role, pipeline, group_chat, goal, max_rounds):
         super().__init__(agent_id, name, role, pipeline)
         self.group_chat = group_chat
@@ -35,7 +35,7 @@ class GroupChatAdmin(Agent):
     def execute_round(self):
         if self.round < self.max_rounds and self.running:
             # Passando o group_chat como parte dos kwargs
-            self.generate_reply(groupchat=self.group_chat, groupchatadmin=self)
+            self.generate_reply(groupchat=self.group_chat, chatadmin=self)
             self.group_chat.persist()
             self.round += 1
         else:

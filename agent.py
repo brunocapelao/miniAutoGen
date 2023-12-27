@@ -39,3 +39,26 @@ class Agent:
 
     def get_status(self):
         return self.status
+
+    def from_json(json_data, pipeline):
+        """
+        Cria uma instância de Agent a partir de um dicionário JSON.
+
+        Args:
+            json_data (dict): Dicionário contendo dados do agente.
+            pipeline (Pipeline): Objeto Pipeline a ser usado pelo agente.
+
+        Returns:
+            Agent: Uma nova instância de Agent.
+        """
+        required_keys = ['agent_id', 'name', 'role']
+        if not all(key in json_data for key in required_keys):
+            raise ValueError("JSON deve conter as chaves 'agent_id', 'name', e 'role'.")
+
+        agent_id = json_data['agent_id']
+        name = json_data['name']
+        role = json_data['role']
+
+        # Validação adicional dos tipos de dados pode ser adicionada aqui
+
+        return Agent(agent_id, name, role, pipeline)
