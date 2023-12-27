@@ -1,70 +1,78 @@
-### Agent
+# Módulo `agent.py`
 
-#### Propósito
-O Agent é um componente central do GroupChat, funcionando como uma entidade autônoma dentro do chat grupal. Ele é projetado para interpretar, processar e responder mensagens de maneira inteligente, utilizando um conjunto de habilidades e algoritmos específicos.
+## Classe `Agent`
 
-#### Objetivos
-1. **Interação Dinâmica**: Capacidade de participar de conversas grupais de forma coerente e contextual.
-2. **Autonomia Operacional**: Funcionar independentemente, realizando tarefas sem supervisão contínua.
-3. **Adaptabilidade**: Ajustar seu comportamento e respostas com base no contexto e na dinâmica do grupo.
-4. **Processamento Eficiente**: Analisar e responder a mensagens utilizando um pipeline de tarefas para garantir respostas rápidas e precisas.
+A classe `Agent` é um componente central do framework MiniAutoGen, representando um agente autônomo com habilidades e comportamentos específicos. Ela é projetada para atuar dentro de um ambiente de chat multi-agente, fornecendo respostas inteligentes e comportamento adaptativo.
 
 ### Atributos
 
-1. **agentId**:
-   - **Descrição**: Identificador único do agente, essencial para identificação e interações no sistema.
-   - **Tipo**: `String`
-
-2. **name**:
-   - **Descrição**: Nome representativo do agente.
-   - **Tipo**: `String`
-
-3. **role**:
-   - **Descrição**: Define a função ou especialização do agente, determinando suas responsabilidades e capacidades.
-   - **Tipo**: `String`
-
-4. **status**:
-   - **Descrição**: Estado atual do agente, indicando se está ativo, inativo ou processando.
-   - **Tipo**: `String`
-
-5. **pipeline**:
-   - **Descrição**: Estrutura que define o conjunto de passos e operações para processar mensagens.
-   - **Tipo**: `Pipeline`
-
-6. **context**:
-   - **Descrição**: Informações contextuais armazenadas que influenciam as decisões e respostas do agente.
-   - **Tipo**: `Dict`
+- `agent_id` (str): Identificador único do agente, utilizado para rastrear e gerenciar suas ações dentro do sistema.
+- `name` (str): Nome representativo do agente, utilizado para identificação amigável durante a interação.
+- `role` (str): Função ou especialização do agente, definindo sua área de atuação e habilidades dentro do ambiente.
+- `pipeline` (Pipeline): Objeto Pipeline associado ao agente, responsável por processar entradas e gerar respostas.
+- `status` (str): Estado atual do agente, que pode variar entre 'ativo', 'inativo' ou 'processando', refletindo sua disponibilidade e atividade.
 
 ### Métodos
 
-1. **sendMessage(message)**:
-   - **Descrição**: Envia uma mensagem ou resposta para o grupo.
-   - **Parâmetros**: `message`: Mensagem a ser enviada.
-   - **Retorno**: Nenhum.
+#### `__init__(self, agent_id, name, role, pipeline=None)`
 
-2. **receiveMessage(message)**:
-   - **Descrição**: Processa mensagens recebidas do grupo.
-   - **Parâmetros**: `message`: Mensagem recebida.
-   - **Retorno**: Nenhum.
+Construtor da classe `Agent`. Inicializa um novo agente com identificação, nome, papel e, opcionalmente, um pipeline de processamento.
 
-3. **generate_reply(message)**:
-   - **Descrição**: Gera uma resposta com base na mensagem recebida e no contexto.
-   - **Parâmetros**: `message`: Mensagem recebida.
-   - **Retorno**: Mensagem de resposta.
+- **Args**:
+  - `agent_id` (str): Identificador único do agente.
+  - `name` (str): Nome do agente.
+  - `role` (str): Função ou especialização do agente.
+  - `pipeline` (Pipeline, opcional): Pipeline de processamento do agente.
 
-4. **runPipeline(data)**:
-   - **Descrição**: Executa o pipeline de tarefas com os dados fornecidos.
-   - **Parâmetros**: `data`: Dados a serem processados.
-   - **Retorno**: Resultado do processamento.
+#### `generate_reply(self, state)`
 
-5. **updateContext(new_context)**:
-   - **Descrição**: Atualiza o contexto do agente com novas informações.
-   - **Parâmetros**: `new_context`: Novas informações de contexto.
-   - **Retorno**: Nenhum.
+Gera uma resposta com base no estado atual do pipeline. Este método é central para a funcionalidade do agente, permitindo que ele responda de forma contextualizada e inteligente.
 
-6. **getStatus()**:
-   - **Descrição**: Retorna o status atual do agente.
-   - **Retorno**: Status atual.
+- **Args**:
+  - `state` (PipelineState): O estado atual do pipeline.
+- **Returns**:
+  - `str`: A resposta gerada pelo agente.
 
-#### Conclusão
-Esta especificação aprimorada do Agent para GroupChat destaca a importância da autonomia, adaptabilidade e eficiência no processamento de mensagens dentro de um ambiente de chat grupal. Os atributos e métodos definidos permitem que o agente opere de forma inteligente e responsiva, contribuindo para a dinâmica interativa do grupo.
+#### `get_status(self)`
+
+Retorna o status atual do agente, fornecendo informações sobre sua disponibilidade ou atividade atual.
+
+- **Returns**:
+  - `str`: O status atual do agente.
+
+#### `from_json(json_data)`
+
+Método estático para criar uma instância de `Agent` a partir de um dicionário JSON. Esse método facilita a inicialização de agentes a partir de dados estruturados.
+
+- **Args**:
+  - `json_data` (dict): Dicionário contendo os dados do agente.
+- **Returns**:
+  - `Agent`: Uma nova instância de `Agent`.
+
+### Exemplo de Uso
+
+Para criar um novo agente:
+
+```python
+agent = Agent("123", "ChatBot", "Responder", pipeline=meuPipeline)
+```
+
+Para gerar uma resposta com base no estado do pipeline:
+
+```python
+resposta = agent.generate_reply(meuPipelineState)
+```
+
+Para obter o status atual do agente:
+
+```python
+status_atual = agent.get_status()
+```
+
+### Exceções
+
+- `ValueError`: Levantada pelo método `from_json` caso o JSON fornecido não contenha as chaves necessárias.
+
+## Conclusão
+
+A classe `Agent` é um bloco de construção essencial para sistemas de chat multi-agentes no framework MiniAutoGen. Sua flexibilidade e capacidade de resposta a tornam ideal para uma variedade de aplicações em ambientes de conversação inteligentes.
