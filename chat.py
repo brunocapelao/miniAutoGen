@@ -3,6 +3,7 @@ import os
 from storage.chatstorage import ChatStorage
 import pandas as pd
 
+
 class Chat:
     def __init__(self, storage_path='groupchat_data', custom_df=None):
         self.storage_path = storage_path
@@ -15,7 +16,8 @@ class Chat:
         self.custom_df = custom_df
 
         if self.custom_df is not None:
-            self.storage.create_custom_table_from_df(self.custom_df, "custom_messages")
+            self.storage.create_custom_table_from_df(
+                self.custom_df, "custom_messages")
 
     def _ensure_storage_directory_exists(self):
         if not os.path.exists(self.storage_path):
@@ -38,6 +40,24 @@ class Chat:
     def add_message(self, sender_id, message, additional_info=None):
         self.storage.add_message(sender_id, message, additional_info)
 
+    def add_messages(self, messages):
+        """
+        Adiciona múltiplas mensagens ao chat, aceitando tanto um DataFrame quanto uma lista de dicionários (JSON).
+        Args:
+            messages (pd.DataFrame ou list): Mensagens a serem adicionadas.
+        """
+        if isinstance(messages, pd.DataFrame):
+            for _, row in messages.iterrows():
+                self.add_message(
+                    row['sender_id'], row['message'], row.get('additional_info'))
+        elif isinstance(messages, list) and all(isinstance(m, dict) for m in messages):
+            for message in messages:
+                self.add_message(
+                    message['sender_id'], message['message'], message.get('additional_info'))
+        else:
+            raise ValueError(
+                "As mensagens devem ser um DataFrame do pandas ou uma lista de dicionários.")
+
     def remove_message(self, message_id):
         self.storage.remove_message(message_id)
 
@@ -57,7 +77,8 @@ class Chat:
             elif type == 'json':
                 return self._messages_to_json(messages)
             else:
-                raise ValueError("Tipo desconhecido. Use 'dataframe' ou 'json'.")
+                raise ValueError(
+                    "Tipo desconhecido. Use 'dataframe' ou 'json'.")
         except Exception as e:
             # Tratamento de erro (Considere logging)
             raise
@@ -103,4 +124,5 @@ class Chat:
 
     def remove_agent(self, agent_id):
         """ Remove um agente da conversa com base em seu identificador. """
-        self.agentList = [agent for agent in self.agentList if agent.agent_id != agent_id]
+        self.agentList = [
+            agent for agent in self.agentList if agent.agent_id != agent_id]

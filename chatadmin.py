@@ -35,7 +35,7 @@ class ChatAdmin(Agent):
     def execute_round(self):
         if self.round < self.max_rounds and self.running:
             # Passando o group_chat como parte dos kwargs
-            self.generate_reply(groupchat=self.group_chat, groupchatadmin=self)
+            self.generate_reply(groupchat=self.group_chat, chatadmin=self)
             self.group_chat.persist()
             self.round += 1
         else:

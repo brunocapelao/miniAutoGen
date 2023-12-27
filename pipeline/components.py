@@ -95,16 +95,41 @@ class AgentReplyComponent(PipelineComponent):
 
     def process(self, **kwargs):
         agent = kwargs.get('agent')
-        group_chat = kwargs.get('groupchat')
+        chat = kwargs.get('groupchat')
         if not agent:
             raise ValueError("Agent is required for AgentReplyComponent")
         print
         reply = agent.generate_reply(**kwargs)
         print(reply)
-        group_chat.add_message(sender_id=agent.agent_id, message=reply)
+        chat.add_message(sender_id=agent.agent_id, message=reply)
+        return kwargs
 
 
-class OpenAIResponseComponent(PipelineComponent):
+class TerminateChatComponent(PipelineComponent):
+    """
+    Componente de Pipeline que verifica se a palavra 'TERMINATE' está presente
+    na última mensagem e, em caso afirmativo, encerra o chat.
+    """
+
+    def process(self, **kwargs):
+        chat = kwargs.get('groupchat')
+        chatadmin =kwargs.get('chatadmin')
+        if not chat:
+            raise ValueError(
+                "GroupChat é necessário para TerminateChatComponent.")
+        messages = chat.get_messages()
+        last_message = messages.iloc[-1].message if not messages.empty else None
+
+        if last_message and "TERMINATE" in last_message.upper():
+            print("Encerrando chat...")
+            chatadmin.stop()  # Certifique-se de que o método stop() está implementado em GroupChat
+            return "TERMINATE"
+
+        # Continue o fluxo do pipeline normalmente se TERMINATE não estiver presente.
+        return kwargs
+
+
+class OpenAIChatComponent(PipelineComponent):
     """
     Componente de Pipeline para gerar respostas utilizando o modelo de linguagem da OpenAI.
     """
@@ -115,29 +140,29 @@ class OpenAIResponseComponent(PipelineComponent):
 
     def process(self, **kwargs):
         try:
-            group_chat = kwargs.get('groupchat')
+            chat = kwargs.get('groupchat')
             agent = kwargs.get('agent')
 
-            if not group_chat or not agent:
+            if not chat or not agent:
                 raise ValueError(
                     "groupchat e agent são obrigatórios para OpenAIResponseComponent.")
-            messages = group_chat.get_messages('json')
-            prompt = self._construct_prompt(group_chat, agent)
+            messages = chat.get_messages('json')
+            prompt = self._construct_prompt(chat, agent)
             response = self._call_openai_api(prompt)
             return response.choices[0].message.content
         except Exception as e:
             self.logger.error(f"Erro em OpenAIResponseComponent: {e}")
             raise
 
-    def _construct_prompt(self, group_chat, agent):
-        messages = group_chat.get_messages('json')
+    def _construct_prompt(self, chat, agent):
+        messages = chat.get_messages('json')
         formatted_messages = [{'role': 'system', 'content': agent.role}]
         for item in messages:
             role = 'assistant' if item['sender_id'] == agent.agent_id else 'user'
             content = item['message']
             formatted = {'role': role, 'content': content}
             formatted_messages.append(formatted)
-        return formatted_messages  # Mova esta linha de volta para fora do loop 'for'
+        return formatted_messages
 
     def _call_openai_api(self, prompt):
         """ Realiza a chamada à API da OpenAI. """
@@ -163,22 +188,22 @@ class OpenAIResponseComponent(PipelineComponent):
 
 #     def process(self, **kwargs):
 #         try:
-#             group_chat = kwargs.get('groupchat')
+#             chat = kwargs.get('groupchat')
 #             agent = kwargs.get('agent')
 
-#             if not group_chat or not agent:
+#             if not chat or not agent:
 #                 raise ValueError("groupchat e agent são obrigatórios para OpenAIResponseComponent.")
 
-#             prompt = self._construct_prompt(group_chat, agent)
+#             prompt = self._construct_prompt(chat, agent)
 #             response = self._call_openai_api(prompt)
 #             return response.choices[0].message.content
 #         except Exception as e:
 #             self.logger.error(f"Erro em OpenAIResponseComponent: {e}")
 #             raise
 
-#     def _construct_prompt(self, group_chat, agent):
+#     def _construct_prompt(self, chat, agent):
 #         """ Constrói o prompt para a API da OpenAI. """
-#         # Construa o prompt com base em group_chat e agent
+#         # Construa o prompt com base em chat e agent
 #         # Por exemplo:
 #         prompt = "Seu prompt aqui..."
 #         return prompt
