@@ -1,5 +1,4 @@
-# MiniAutoGen: Uma Biblioteca Open Source para Conversas Multi-Agentes
-
+# MiniAutoGen: Biblioteca **leve e flexível** para criar agentes e conversas multi-agentes.
 ![MiniAutoGen Logo](miniautogen.png)
 
 ## Sobre o MiniAutoGen
