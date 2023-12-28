@@ -1,8 +1,10 @@
 from openai import OpenAI
+import openai
 import os
 import logging
 from dotenv import load_dotenv
 from .pipeline import PipelineComponent
+import time
 
 load_dotenv()
 
@@ -211,3 +213,102 @@ class OpenAIChatComponent(PipelineComponent):
         except Exception as e:
             self.logger.error(f"Erro ao chamar a API da OpenAI: {e}")
             raise
+
+class OpenAIThreadComponent(PipelineComponent):
+    def __init__(self):
+        self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.assistant_id = None  # Inicializa sem um assistant_id
+        self.thread = None
+        self.logger = logging.getLogger(__name__)
+
+    def set_assistant_id(self, assistant_id):
+        """
+        Configura o ID do assistente para o componente.
+
+        Args:
+            assistant_id (str): ID do assistente da OpenAI.
+        """
+        self.assistant_id = assistant_id
+    
+    def set_thread(self, thread):
+        """
+        Configura o ID do assistente para o componente.
+
+        Args:
+            assistant_id (str): ID do assistente da OpenAI.
+        """
+        self.assistant_id = thread
+
+    def process(self, state):
+        """
+        Processa o estado atual para interagir com a thread do assistente da OpenAI.
+
+        Args:
+            state (PipelineState): Estado atual do pipeline.
+
+        Returns:
+            PipelineState: Estado atualizado do pipeline.
+        """
+        if not self.assistant_id:
+            raise ValueError("Assistant ID não definido para OpenAIThreadComponent.")
+        
+        if not self.thread:
+            self.thread = self._create_thread()
+
+        try:
+            # Obter informações necessárias do estado
+            chat = state.get_state().get('group_chat')
+            agent = state.get_state().get('selected_agent')
+
+            if not chat or not agent:
+                raise ValueError("group_chat e selected_agent são necessários para OpenAIThreadComponent.")
+
+            # Construção do prompt
+            prompt = self._construct_prompt(chat)
+            # Submissão da mensagem
+            run = self._submit_message(self.assistant_id, self.thread, prompt)
+            # Espera pela resposta
+            run = self._wait_on_run(run, self.thread)
+            # Obtenção da resposta
+            response = self._get_response(self.thread, self.assistant_id)
+
+
+        except Exception as e:
+            self.logger.error(f"Erro em OpenAIThreadComponent: {e}")
+            raise
+
+        return response
+
+    def _create_thread(self):
+        thread = self.client.beta.threads.create()
+        return thread
+    
+    def _construct_prompt(self, chat):
+        message = chat.get_messages('json')[-1]['message']
+        return message
+    
+    def _submit_message(self, assistant_id, thread, message):
+        self.client.beta.threads.messages.create(
+            thread_id=thread.id, role="user", content=message
+        )
+        return self.client.beta.threads.runs.create(
+            thread_id=thread.id,
+            assistant_id=assistant_id,
+        )
+
+    def _get_response(self, thread, assistant_id):
+        messages = self.client.beta.threads.messages.list(thread_id=thread.id, order="asc")
+        for message in messages:
+            if message.assistant_id == assistant_id:
+                return message.content[0].text.value
+        return None
+    
+
+    def _wait_on_run(self, run, thread):
+        while run.status == "queued" or run.status == "in_progress":
+            run = self.client.beta.threads.runs.retrieve(
+                thread_id=thread.id,
+                run_id=run.id,
+            )
+            time.sleep(0.5)
+        return run
