@@ -1,8 +1,7 @@
 import json
 import os
-from storage.chatstorage import ChatStorage
 import pandas as pd
-
+from ..storage.chatstorage import ChatStorage
 
 class Chat:
     def __init__(self, storage_path='groupchat_data', custom_df=None):

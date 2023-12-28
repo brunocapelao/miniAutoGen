@@ -1,5 +1,5 @@
-from agent import Agent
-from pipeline.pipeline import Pipeline, ChatPipelineState
+from ..agent.agent import Agent
+from ..pipeline.pipeline import ChatPipelineState
 import logging
 
 # Configuração básica do logger
