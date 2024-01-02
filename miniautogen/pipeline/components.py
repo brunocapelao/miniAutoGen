@@ -385,10 +385,11 @@ class Jinja2TemplatesComponent(PipelineComponent):
 
         return state
 
+
 class NextAgentMessageComponent(PipelineComponent):
     def __init__(self):
         self.alternative_next = NextAgentSelectorComponent()
-    
+
     def set_alternative_next(self, alternative_next):
         """
         Configura o próximo componente a ser executado caso não seja encontrado um agente
@@ -432,7 +433,7 @@ class NextAgentMessageComponent(PipelineComponent):
             self.alternative_next.process(state)
 
         return state
-    
+
 
 class UpdateNextAgentComponent(PipelineComponent):
     def __init__(self):
@@ -443,7 +444,7 @@ class UpdateNextAgentComponent(PipelineComponent):
             agents (list): Lista de agentes disponíveis no sistema.
         """
         self.next_agent_id = None
-    
+
     def set_next_agent_id(self, next_agent_id):
         """
         Configura o ID do próximo agente a ser definido no estado.
@@ -471,11 +472,94 @@ class UpdateNextAgentComponent(PipelineComponent):
             if agent.agent_id in self.next_agent_id:
                 next_agent = agent
                 break
-        
+
         if next_agent:
             state.update_state(selected_agent=next_agent)
             print(f"Próximo agente atualizado para: {self.next_agent_id}")
         else:
-            raise ValueError(f"Agent ID '{self.next_agent_id}' não encontrado entre os agentes disponíveis.")
+            raise ValueError(
+                f"Agent ID '{self.next_agent_id}' não encontrado entre os agentes disponíveis.")
 
         return state
+
+
+class Jinja2SingleTemplateComponent(PipelineComponent):
+    def __init__(self):
+        """
+        Inicializa o componente sem um template ou variáveis.
+        """
+        self.template_str = None
+        self.variables = None
+        self.env = Environment(autoescape=select_autoescape())
+
+    def set_template_str(self, template_str):
+        """
+        Configura a string do template para o componente.
+
+        Args:
+            template_str (str): String contendo o template Jinja2.
+        """
+        self.template_str = template_str
+
+    def set_variables(self, variables):
+        """
+        Configura as variáveis para o componente.
+
+        Args:
+            variables (dict): Dicionário de variáveis para o template.
+        """
+        self.variables = variables
+
+    def process(self, state):
+        """
+        Processa o estado atual do pipeline, substituindo as variáveis no template.
+
+        Args:
+            state (PipelineState): Estado atual do pipeline contendo as variáveis.
+
+        Returns:
+            PipelineState: Estado atualizado do pipeline.
+        """
+        template = self.env.from_string(self.template_str)
+        chat = state.get_state().get('group_chat')
+        agent = state.get_state().get('selected_agent')
+        messages = json.loads(chat.get_messages()[
+                              ['sender_id', 'message']].to_json(orient='records'))
+
+        # Verifica se as variáveis foram definidas
+        if self.variables is None:
+            self.variables = state.get_state().get('variables', {})
+
+        self.variables['chat'] = chat
+        self.variables['agent'] = agent
+        self.variables['messages'] = messages
+        # Renderiza o template com as variáveis fornecidas
+        prompt = template.render(self.variables)
+        prompt = json.loads(prompt)
+        print(prompt)
+
+        # Atualiza o estado do pipeline com a saída renderizada
+        state.update_state(prompt=prompt)
+
+        return state
+
+
+class LLMResponseComponent(PipelineComponent):
+    def __init__(self, llm_client, model_name="gpt-4"):
+        self.llm_client = llm_client
+        self.model_name = model_name
+        self.logger = logging.getLogger(__name__)
+
+    def process(self, state):
+        prompt = state.get_state().get('prompt')
+        if not prompt:
+            self.logger.error("Prompt ausente no estado do pipeline.")
+            return state
+
+        response = self.llm_client.get_model_response(prompt, self.model_name)
+        if response:
+            return response
+        else:
+            self.logger.error("Falha ao obter resposta do LLM.")
+            state.update_state({'error': "Falha ao obter resposta do LLM."})
+            return state
