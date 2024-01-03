@@ -22,3 +22,20 @@ venv/
 
 # Local configuration file
 config.py
+
+# Compiled Python files
+*.pyo
+
+# Editor/IDE specific files
+.vscode/
+.idea/
+
+# Dependency-related files
+*.egg-info/
+dist/
+*.egg
+
+# Temporary files
+*.bak
+*.swp
+*~

@@ -19,14 +19,14 @@ class Message(Base):
     sender_id = Column(String)
     message = Column(String)
     timestamp = Column(DateTime)
-    additional_info = Column(Text)  # Nova coluna para armazenar um dicionário como JSON
+    additional_info = Column(Text)
 
     def set_additional_info(self, info_dict):
-        """ Armazena o dicionário como uma string JSON na coluna additional_info. """
+
         self.additional_info = json.dumps(info_dict)
 
     def get_additional_info(self):
-        """ Retorna o conteúdo da coluna additional_info como um dicionário. """
+
         return json.loads(self.additional_info) if self.additional_info else None
 
 class ChatStorage:
