@@ -1,54 +1,54 @@
-# MiniAutoGen: Biblioteca **leve e flexível** para criar agentes e conversas multi-agentes.
+# MiniAutoGen: A **lightweight and flexible** library for creating agents and multi-agent conversations.
 ![MiniAutoGen Logo](miniautogen.png)
 
-## Sobre o MiniAutoGen
+## About MiniAutoGen
 
-O MiniAutoGen é uma biblioteca open source inovadora, projetada para capacitar aplicações de próxima geração em Modelos de Linguagem de Grande Escala (LLMs) através de conversas multi-agentes. Este framework se destaca por sua estrutura leve e flexível, ideal para desenvolvedores e pesquisadores que buscam explorar e expandir as fronteiras da IA conversacional.
+MiniAutoGen is an innovative open-source library designed to empower next-generation applications in Large Language Models (LLMs) through [multi-agent conversations](docs/eng/multi_agent_chats.md). This framework stands out for its lightweight and flexible structure, making it ideal for developers and researchers looking to explore and push the boundaries of conversational AI.
 
-Inspirado no [AutoGen](https://github.com/microsoft/autogen), o MiniAutoGen oferece uma interface de conversação unificada (`chat`), um mecanismo de coordenação (`chatadmin`), personalização de agentes (`agent`) e um pipeline de ações (`pipeline`), todos projetados para facilitar a criação, experimentação e implementação de sistemas multi-agentes.
+Inspired by [AutoGen](https://github.com/microsoft/autogen), MiniAutoGen provides a unified conversation interface (`chat`), a [coordination mechanism](docs/eng/coordination.md) (`chatadmin`), agent customization (`agent`), and an action pipeline (`pipeline`), all designed to facilitate the creation, experimentation, and implementation of multi-agent systems.
 
-## Por que MiniAutoGen?
+## Why MiniAutoGen?
 
-### Conversas Multi-Agentes
-Capacite conversas envolvendo múltiplos agentes inteligentes, cada um com habilidades distintas, elevando a complexidade e sofisticação das interações.
+### Multi-Agent Conversations
+Empower conversations involving multiple intelligent agents, each with distinct abilities, raising the complexity and sophistication of interactions.
 
-### Customização de Agentes
-Ajuste os agentes para atender a requisitos específicos, adaptando comportamento, reações e padrões de resposta conforme o necessário.
+### Agent Customization
+Tailor agents to meet specific requirements by adapting behavior, reactions, and response patterns as needed.
 
-### Flexibilidade e Modularidade
-Com o MiniAutoGen, você tem a liberdade de moldar conversações dinâmicas, permitindo iniciativas de diálogo dos agentes, reações automáticas e intervenções humanas quando necessário.
+### Flexibility and Modularity
+With MiniAutoGen, you have the freedom to shape dynamic conversations, enabling agent dialogue initiatives, automatic reactions, and human interventions when necessary.
 
-### Coordenação Eficaz entre Agentes
-Utilize nosso framework para que os agentes colaborem eficientemente, visando atingir objetivos comuns em um ambiente partilhado.
+### Effective Agent Coordination
+Utilize our framework for agents to collaborate efficiently, working towards common goals in a shared environment.
 
-## Principais Componentes
+## Key Components
 
 ### Agent
-O núcleo de cada conversa, representando um agente individual com habilidades e comportamentos específicos, essencial para interações dinâmicas e autônomas.
+The core of each conversation, representing an individual agent with specific abilities and behaviors, essential for dynamic and autonomous interactions.
 
 ### Chat
-Gerencia sessões de chat em grupo, assegurando a manutenção eficaz do estado e contexto da conversa, essencial para a continuidade e coesão das interações.
+Manages group chat sessions, ensuring effective maintenance of conversation state and context, essential for continuity and coherence of interactions.
 
 ### ChatAdmin
-Um elemento-chave para a coordenação do chat em grupo, sincronizando ações e gerenciando a dinâmica da conversa para garantir uma colaboração eficiente.
+A key element for coordinating group chat, synchronizing actions, and managing conversation dynamics to ensure efficient collaboration.
 
 ### Pipeline
-Automatiza e organiza as operações dos agentes, promovendo a escalabilidade e a manutenção facilitada do sistema.
+Automates and organizes agent operations, promoting scalability and easy system maintenance.
 
-## Contribua com o MiniAutoGen
+## Contribute to MiniAutoGen
 
-Como um projeto open source, o MiniAutoGen convida entusiastas de IA, desenvolvedores e pesquisadores para contribuir e ajudar a moldar o futuro das conversas multi-agentes. Seu conhecimento e experiência podem ajudar a expandir as capacidades do MiniAutoGen, criando soluções mais robustas e versáteis para a comunidade de desenvolvedores.
+As an open-source project, MiniAutoGen invites AI enthusiasts, developers, and researchers to contribute and help shape the future of multi-agent conversations. Your knowledge and experience can help expand MiniAutoGen's capabilities, creating more robust and versatile solutions for the developer community.
 
-### Como Você Pode Contribuir:
-- **Desenvolvimento de Novos Recursos:** Ajude a adicionar novas funcionalidades e aprimorar as existentes.
-- **Documentação e Tutoriais:** Contribua com documentação clara e tutoriais para facilitar o uso do framework por novos usuários.
-- **Testes e Feedback:** Participe testando o framework e fornecendo feedback valioso para melhorias contínuas.
-- **Compartilhamento de Ideias e Experiências:** Partilhe suas experiências e ideias para enriquecer a comunidade e impulsionar inovações.
+### How You Can Contribute:
+- **Development of New Features:** Assist in adding new functionalities and enhancing existing ones.
+- **Documentation and Tutorials:** Contribute clear documentation and tutorials to ease the framework's usage for new users.
+- **Testing and Feedback:** Participate in testing the framework and provide valuable feedback for continuous improvements.
+- **Sharing Ideas and Experiences:** Share your experiences and ideas to enrich the community and drive innovations.
 
-## Comece a Contribuir Hoje
+## Start Contributing Today
 
-Visite nosso repositório no GitHub para saber mais sobre como você pode se envolver e começar a contribuir. Junte-se a nós nessa jornada emocionante para impulsionar o avanço das conversas multi-agentes no mundo da inteligência artificial!
+Visit our GitHub repository to learn more about how you can get involved and start contributing. Join us on this exciting journey to advance multi-agent conversations in the world of artificial intelligence!
 
 ---
 
-MiniAutoGen: Desenvolvendo hoje o futuro das conversas inteligentes.
+MiniAutoGen: Developing today the future of intelligent conversations.
