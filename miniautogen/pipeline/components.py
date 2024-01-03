@@ -10,11 +10,8 @@ import json
 
 load_dotenv()
 
-# Configuração do Logger
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Exceção personalizada para saída do usuário
 
 
 class UserExitException(Exception):
@@ -23,20 +20,11 @@ class UserExitException(Exception):
 
 class UserResponseComponent(PipelineComponent):
     def process(self, state):
-        """
-        Processa a entrada do usuário, atualizando o estado com a resposta do usuário.
-
-        Args:
-            state (PipelineState): Estado atual do pipeline.
-
-        Returns:
-            PipelineState: Estado atualizado do pipeline.
-        """
         try:
-            reply = input("Digite a resposta: ")
+            reply = input("Enter the response: ")
             state.update_state(reply=reply)
         except Exception as e:
-            print(f"Erro ao capturar resposta do usuário: {e}")
+            print(f"Error capturing user response: {e}")
 
         return reply
 
@@ -45,16 +33,16 @@ class UserInputNextAgent(PipelineComponent):
     def process(self, state):
         group_chat = state.get_state().get('group_chat')
         if not group_chat or not group_chat.agentList:
-            raise ValueError("GroupChat inválido ou sem agentes.")
+            raise ValueError("Invalid GroupChat or no agents available.")
 
         for i, agent in enumerate(group_chat.agentList):
             print(f"{i + 1}: {agent.name}")
 
         next_agent = input(
-            "Digite o número correspondente ao agente (ou 'sair' para cancelar): ")
+            "Enter the number corresponding to the agent (or 'exit' to cancel): ")
 
         if next_agent.lower() == 'exit':
-            raise UserExitException("Usuário optou por sair")
+            raise UserExitException("User chose to exit")
 
         try:
             next_agent_index = int(next_agent) - 1
@@ -62,64 +50,55 @@ class UserInputNextAgent(PipelineComponent):
                 next_agent = group_chat.agentList[next_agent_index]
                 state.update_state(selected_agent=next_agent)
             else:
-                print("Escolha inválida.")
+                print("Invalid choice.")
         except ValueError:
-            print("Entrada inválida. Por favor, digite um número.")
+            print("Invalid input. Please enter a number.")
 
         return state
 
 
 class NextAgentSelectorComponent(PipelineComponent):
     def process(self, state):
-        """
-        Processa o estado atual para selecionar o próximo agente.
 
-        Args:
-            state (PipelineState): Estado atual do pipeline.
-
-        Returns:
-            PipelineState: Estado atualizado do pipeline.
-        """
-        # Acessa o estado atual para obter informações necessárias
         group_chat = state.get_state().get('group_chat')
         if not group_chat or not hasattr(group_chat, 'agentList'):
-            raise ValueError("GroupChat inválido ou sem agentes.")
+            raise ValueError("Invalid GroupChat or agents not found.")
 
-        # Implementação do processo de seleção do próximo agente
+        # Implementation of the next agent selection process
         try:
-            # Exemplo: Selecionar o próximo agente com base na lógica específica
-            # Aqui você pode adicionar sua lógica de seleção de agentes
+            # Example: Select the next agent based on specific logic
+            # Here you can add your agent selection logic
             next_agent = self.select_next_agent(group_chat)
             state.update_state(selected_agent=next_agent)
         except Exception as e:
-            print(f"Erro ao selecionar o próximo agente: {e}")
+            print(f"Error selecting the next agent: {e}")
 
         return state
 
     def select_next_agent(self, group_chat):
         """
-        Implementa a lógica específica para selecionar o próximo agente.
+        Implements the specific logic to select the next agent.
 
         Args:
-            group_chat (GroupChat): Objeto GroupChat contendo a lista de agentes.
+            group_chat (GroupChat): GroupChat object containing the list of agents.
 
         Returns:
-            Agent: O agente selecionado.
+            Agent: The selected agent.
         """
-        # Exemplo de lógica de seleção
-        # Esta função deve ser personalizada conforme as suas necessidades
+        # Example of selection logic
+        # This function should be customized according to your needs
         last_message = group_chat.get_messages(
             type='json')[-1] if group_chat.get_messages(type='json') else None
         if last_message:
             last_sender_id = last_message['sender_id']
-            # Encontra o índice do último agente que enviou uma mensagem
+            # Find the index of the last agent who sent a message
             last_agent_index = next((i for i, agent in enumerate(
                 group_chat.agentList) if agent.agent_id == last_sender_id), -1)
-            # Seleciona o próximo agente na lista
+            # Select the next agent in the list
             next_agent_index = (last_agent_index +
                                 1) % len(group_chat.agentList)
         else:
-            # Se não houver mensagens, começa com o primeiro agente
+            # If there are no messages, start with the first agent
             next_agent_index = 0
 
         return group_chat.agentList[next_agent_index]
@@ -128,35 +107,35 @@ class NextAgentSelectorComponent(PipelineComponent):
 class AgentReplyComponent(PipelineComponent):
     def process(self, state):
         """
-        Processa a resposta do agente atual e adiciona essa resposta ao chat em grupo.
+        Processes the response from the current agent and adds that response to the group chat.
 
         Args:
-            state (PipelineState): Estado atual do pipeline.
+            state (PipelineState): Current state of the pipeline.
 
         Returns:
-            PipelineState: Estado atualizado do pipeline.
+            PipelineState: Updated state of the pipeline.
         """
-        # Acessa o estado atual para obter informações necessárias
+        # Access the current state to get necessary information
         agent = state.get_state().get('selected_agent')
         group_chat = state.get_state().get('group_chat')
         if not agent or not group_chat:
             raise ValueError(
-                "Agent e GroupChat são necessários para AgentReplyComponent.")
-        # Implementação da geração da resposta do agente
+                "Agent and GroupChat are required for AgentReplyComponent.")
+        # Implementation of agent reply generation
         try:
             reply = agent.generate_reply(state)
             print(reply)
             group_chat.add_message(sender_id=agent.agent_id, message=reply)
         except Exception as e:
-            print(f"Erro ao processar a resposta do agente: {e}")
+            print(f"Error processing agent reply: {e}")
 
         return state
 
 
 class TerminateChatComponent(PipelineComponent):
     """
-    Componente de Pipeline que verifica se a palavra 'TERMINATE' está presente
-    na última mensagem e, em caso afirmativo, encerra o chat.
+    Pipeline component that checks if the word 'TERMINATE' is present
+    in the last message and, if so, terminates the chat.
     """
 
     def process(self, state):
@@ -164,22 +143,22 @@ class TerminateChatComponent(PipelineComponent):
         chat = state.get_state().get('group_chat')
         if not chat:
             raise ValueError(
-                "Chat é necessário para TerminateChatComponent.")
+                "Chat is required for TerminateChatComponent.")
         messages = chat.get_messages()
         last_message = messages.iloc[-1].message if not messages.empty else None
 
         if last_message and "TERMINATE" in last_message.upper():
-            print("Encerrando chat...")
-            chat_admin.stop()  # Certifique-se de que o método stop() está implementado em GroupChat
+            print("Terminating chat...")
+            chat_admin.stop()  # Make sure the stop() method is implemented in GroupChat
             return "TERMINATE"
 
-        # Continue o fluxo do pipeline normalmente se TERMINATE não estiver presente.
+        # Continue the pipeline flow normally if TERMINATE is not present.
         return state
 
 
 class OpenAIChatComponent(PipelineComponent):
     """
-    Componente de Pipeline para gerar respostas utilizando o modelo de linguagem da OpenAI.
+    Pipeline component to generate responses using the OpenAI language model.
     """
 
     def __init__(self):
@@ -193,14 +172,14 @@ class OpenAIChatComponent(PipelineComponent):
 
             if not chat or not agent:
                 raise ValueError(
-                    "groupchat e agent são obrigatórios para OpenAIResponseComponent.")
+                    "groupchat and agent are required for OpenAIResponseComponent.")
             messages = chat.get_messages('json')
             prompt = self._construct_prompt(agent, messages)
             print(prompt)
             response = self._call_openai_api(prompt)
             return response.choices[0].message.content
         except Exception as e:
-            self.logger.error(f"Erro em OpenAIResponseComponent: {e}")
+            self.logger.error(f"Error in OpenAIResponseComponent: {e}")
             raise
 
     def _construct_prompt(self, agent, messages):
@@ -213,7 +192,7 @@ class OpenAIChatComponent(PipelineComponent):
         return formatted_messages
 
     def _call_openai_api(self, prompt):
-        """ Realiza a chamada à API da OpenAI. """
+        """ Calls the OpenAI API. """
         try:
             return self.client.chat.completions.create(
                 model="gpt-4-1106-preview",
@@ -221,72 +200,72 @@ class OpenAIChatComponent(PipelineComponent):
                 temperature=1
             )
         except Exception as e:
-            self.logger.error(f"Erro ao chamar a API da OpenAI: {e}")
+            self.logger.error(f"Error calling the OpenAI API: {e}")
             raise
 
 
 class OpenAIThreadComponent(PipelineComponent):
     def __init__(self):
         self.client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-        self.assistant_id = None  # Inicializa sem um assistant_id
+        self.assistant_id = None  # Initialize without an assistant_id
         self.thread = None
         self.logger = logging.getLogger(__name__)
 
     def set_assistant_id(self, assistant_id):
         """
-        Configura o ID do assistente para o componente.
+        Sets the assistant ID for the component.
 
         Args:
-            assistant_id (str): ID do assistente da OpenAI.
+            assistant_id (str): OpenAI assistant's ID.
         """
         self.assistant_id = assistant_id
 
     def set_thread(self, thread):
         """
-        Configura o ID do assistente para o componente.
+        Sets the thread ID for the component.
 
         Args:
-            assistant_id (str): ID do assistente da OpenAI.
+            assistant_id (str): OpenAI assistant's ID.
         """
         self.assistant_id = thread
 
     def process(self, state):
         """
-        Processa o estado atual para interagir com a thread do assistente da OpenAI.
+        Processes the current state to interact with the OpenAI assistant's thread.
 
         Args:
-            state (PipelineState): Estado atual do pipeline.
+            state (PipelineState): Current pipeline state.
 
         Returns:
-            PipelineState: Estado atualizado do pipeline.
+            PipelineState: Updated pipeline state.
         """
         if not self.assistant_id:
             raise ValueError(
-                "Assistant ID não definido para OpenAIThreadComponent.")
+                "Assistant ID not set for OpenAIThreadComponent.")
 
         if not self.thread:
             self.thread = self._create_thread()
 
         try:
-            # Obter informações necessárias do estado
+            # Get necessary information from the state
             chat = state.get_state().get('group_chat')
             agent = state.get_state().get('selected_agent')
 
             if not chat or not agent:
                 raise ValueError(
-                    "group_chat e selected_agent são necessários para OpenAIThreadComponent.")
+                    "group_chat and selected_agent are required for OpenAIThreadComponent.")
 
-            # Construção do prompt
+            # Construct the prompt
             prompt = self._construct_prompt(chat)
-            # Submissão da mensagem
+            # Submit the message
             run = self._submit_message(self.assistant_id, self.thread, prompt)
-            # Espera pela resposta
+            # Wait for the response
             run = self._wait_on_run(run, self.thread)
-            # Obtenção da resposta
+            # Get the response
             response = self._get_response(self.thread, self.assistant_id)
 
         except Exception as e:
-            self.logger.error(f"Erro em OpenAIThreadComponent: {e}")
+            self.logger.error(f"Error in OpenAIThreadComponent: {e}")
             raise
 
         return response
@@ -334,11 +313,11 @@ class Jinja2TemplatesComponent(PipelineComponent):
 
     def add_template(self, template_str, role):
         """
-        Adiciona um template à lista com seu respectivo papel.
+        Add a template to the list with its respective role.
 
         Args:
-            template_str (str): String contendo o template Jinja2.
-            role (str): Papel do template ('system', 'user', 'assistant').
+            template_str (str): String containing the Jinja2 template.
+            role (str): Template's role ('system', 'user', 'assistant').
         """
         self.templates.append({'template': template_str, 'role': role})
 
@@ -347,10 +326,10 @@ class Jinja2TemplatesComponent(PipelineComponent):
 
     def _generate_combined_result(self):
         """
-        Gera o resultado combinado dos templates renderizados.
+        Generate the combined result of rendered templates.
 
         Returns:
-            str: String JSON combinada.
+            str: Combined JSON string.
         """
         combined_result = []
         for item in self.templates:
@@ -358,10 +337,10 @@ class Jinja2TemplatesComponent(PipelineComponent):
             role = item['role']
             template = self.env.from_string(template_str)
             rendered_content = template.render(self.variables)
-            # Aqui, garantimos que cada item é um dicionário válido para JSON
+            # Here, we ensure that each item is a valid dictionary for JSON
             combined_result.append({"role": role, "content": rendered_content})
 
-        # Convertendo a lista de dicionários em uma string JSON
+        # Converting the list of dictionaries into a JSON string
         return json.dumps(combined_result)
 
     def process(self, state):
@@ -370,7 +349,7 @@ class Jinja2TemplatesComponent(PipelineComponent):
         messages = json.loads(chat.get_messages()[
                               ['sender_id', 'message']].to_json(orient='records'))
 
-        # Verifica se as variáveis foram definidas
+        # Check if variables have been defined
         if self.variables is None:
             self.variables = state.get_state().get('variables', {})
 
@@ -378,7 +357,7 @@ class Jinja2TemplatesComponent(PipelineComponent):
         self.variables['agent'] = agent
         self.variables['messages'] = messages
         combined_json_str = self._generate_combined_result()
-        # Converte a string JSON em um objeto Python para atualizar o estado
+        # Convert the JSON string into a Python object to update the state
         combined_json = json.loads(combined_json_str)
         print(combined_json)
         state.update_state(prompt=combined_json)
@@ -392,44 +371,35 @@ class NextAgentMessageComponent(PipelineComponent):
 
     def set_alternative_next(self, alternative_next):
         """
-        Configura o próximo componente a ser executado caso não seja encontrado um agente
-        na última mensagem.
+        Set the next component to be executed if no agent is found
+        in the last message.
 
         Args:
-            alternative_next (PipelineComponent): Próximo componente a ser executado.
+            alternative_next (PipelineComponent): Next component to be executed.
         """
         self.alternative_next = alternative_next
 
     def process(self, state):
-        """
-        Processa a seleção do próximo agente com base na última mensagem do chat.
-
-        Args:
-            state (PipelineState): Estado atual do pipeline.
-
-        Returns:
-            PipelineState: Estado atualizado do pipeline.
-        """
         chat = state.get_state().get('group_chat')
         agents = chat.agentList
 
-        # Obtém a última mensagem do chat
+        # Get the last message from the chat
         messages = chat.get_messages()
         last_message = messages.iloc[-1].message if not messages.empty else None
 
         next_agent = None
         if last_message:
-            # Procura pelo agent_id de cada agente na última mensagem
+            # Search for the agent_id of each agent in the last message
             for agent in agents:
                 if agent.agent_id in last_message:
                     next_agent = agent
                     break
 
-        # Atualiza o estado com o próximo agente selecionado, se encontrado
+        # Update the state with the selected next agent, if found
         if next_agent:
             state.update_state(selected_agent=next_agent)
         else:
-            print("Nenhum agente correspondente encontrado na última mensagem.")
+            print("No matching agent found in the last message.")
             self.alternative_next.process(state)
 
         return state
@@ -438,32 +408,32 @@ class NextAgentMessageComponent(PipelineComponent):
 class UpdateNextAgentComponent(PipelineComponent):
     def __init__(self):
         """
-        Inicializa o componente com a lista de agentes disponíveis.
+        Initializes the component with the list of available agents.
 
         Args:
-            agents (list): Lista de agentes disponíveis no sistema.
+            agents (list): List of agents available in the system.
         """
         self.next_agent_id = None
 
     def set_next_agent_id(self, next_agent_id):
         """
-        Configura o ID do próximo agente a ser definido no estado.
+        Sets the ID of the next agent to be set in the state.
 
         Args:
-            next_agent_id (str): ID do próximo agente.
+            next_agent_id (str): ID of the next agent.
         """
         self.next_agent_id = next_agent_id
 
     def process(self, state):
         """
-        Atualiza o estado para indicar o próximo agente com base no agent_id fornecido.
+        Updates the state to indicate the next agent based on the provided agent_id.
 
         Args:
-            state (PipelineState): Estado atual do pipeline.
-            agent_id (str): ID do agente a ser definido como o próximo.
+            state (PipelineState): Current state of the pipeline.
+            agent_id (str): ID of the agent to be set as the next one.
 
         Returns:
-            PipelineState: Estado atualizado do pipeline.
+            PipelineState: Updated state of the pipeline.
         """
         chat = state.get_state().get('group_chat')
         agents = chat.agentList
@@ -475,10 +445,10 @@ class UpdateNextAgentComponent(PipelineComponent):
 
         if next_agent:
             state.update_state(selected_agent=next_agent)
-            print(f"Próximo agente atualizado para: {self.next_agent_id}")
+            print(f"Next agent updated to: {self.next_agent_id}")
         else:
             raise ValueError(
-                f"Agent ID '{self.next_agent_id}' não encontrado entre os agentes disponíveis.")
+                f"Agent ID '{self.next_agent_id}' not found among the available agents.")
 
         return state
 
@@ -486,7 +456,7 @@ class UpdateNextAgentComponent(PipelineComponent):
 class Jinja2SingleTemplateComponent(PipelineComponent):
     def __init__(self):
         """
-        Inicializa o componente sem um template ou variáveis.
+        Initializes the component without a template or variables.
         """
         self.template_str = None
         self.variables = None
@@ -494,31 +464,31 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
 
     def set_template_str(self, template_str):
         """
-        Configura a string do template para o componente.
+        Sets the template string for the component.
 
         Args:
-            template_str (str): String contendo o template Jinja2.
+            template_str (str): String containing the Jinja2 template.
         """
         self.template_str = template_str
 
     def set_variables(self, variables):
         """
-        Configura as variáveis para o componente.
+        Sets the variables for the component.
 
         Args:
-            variables (dict): Dicionário de variáveis para o template.
+            variables (dict): Dictionary of variables for the template.
         """
         self.variables = variables
 
     def process(self, state):
         """
-        Processa o estado atual do pipeline, substituindo as variáveis no template.
+        Processes the current state of the pipeline, replacing variables in the template.
 
         Args:
-            state (PipelineState): Estado atual do pipeline contendo as variáveis.
+            state (PipelineState): Current state of the pipeline containing the variables.
 
         Returns:
-            PipelineState: Estado atualizado do pipeline.
+            PipelineState: Updated state of the pipeline.
         """
         template = self.env.from_string(self.template_str)
         chat = state.get_state().get('group_chat')
@@ -526,19 +496,19 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
         messages = json.loads(chat.get_messages()[
                               ['sender_id', 'message']].to_json(orient='records'))
 
-        # Verifica se as variáveis foram definidas
+        # Check if variables have been defined
         if self.variables is None:
             self.variables = state.get_state().get('variables', {})
 
         self.variables['chat'] = chat
         self.variables['agent'] = agent
         self.variables['messages'] = messages
-        # Renderiza o template com as variáveis fornecidas
+        # Render the template with the provided variables
         prompt = template.render(self.variables)
         prompt = json.loads(prompt)
         print(prompt)
 
-        # Atualiza o estado do pipeline com a saída renderizada
+        # Update the pipeline state with the rendered output
         state.update_state(prompt=prompt)
 
         return state
@@ -553,13 +523,13 @@ class LLMResponseComponent(PipelineComponent):
     def process(self, state):
         prompt = state.get_state().get('prompt')
         if not prompt:
-            self.logger.error("Prompt ausente no estado do pipeline.")
+            self.logger.error("Prompt missing in pipeline state.")
             return state
 
         response = self.llm_client.get_model_response(prompt, self.model_name)
         if response:
             return response
         else:
-            self.logger.error("Falha ao obter resposta do LLM.")
-            state.update_state({'error': "Falha ao obter resposta do LLM."})
+            self.logger.error("Failed to get response from LLM.")
+            state.update_state({'error': "Failed to get response from LLM."})
             return state

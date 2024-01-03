@@ -1,68 +1,75 @@
 class Agent:
     """
-    Classe que representa um agente autônomo.
+    Represents an agent in the system.
 
-    Atributos:
-        agent_id (str): Identificador único do agente.
-        name (str): Nome representativo do agente.
-        role (str): Função ou especialização do agente.
-        pipeline (Pipeline): Pipeline de processamento associado ao agente.
-        status (str): Estado atual do agente (ativo, inativo, processando).
-
-    Métodos:
-        generate_reply(state): Gera uma resposta com base no estado atual.
-        get_status(): Retorna o status atual do agente.
+    Attributes:
+        agent_id (int): The ID of the agent.
+        name (str): The name of the agent.
+        role (str): The role of the agent.
+        pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
+        status (str): The status of the agent. Defaults to "available".
     """
 
     def __init__(self, agent_id, name, role, pipeline=None):
+        """
+        Initializes a new instance of the Agent class.
+
+        Args:
+            agent_id (int): The ID of the agent.
+            name (str): The name of the agent.
+            role (str): The role of the agent.
+            pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
+        """
         self.agent_id = agent_id
         self.name = name
         self.role = role
         self.pipeline = pipeline
-        self.status = "ativo"  # Pode ser 'ativo', 'inativo' ou 'processando'
+        self.status = "available"
 
     def generate_reply(self, state):
         """
-        Gera uma resposta com base no estado atual do pipeline.
+        Generates a reply based on the given state.
 
         Args:
-            state (PipelineState): O estado atual do pipeline.
+            state (State): The state to process.
 
         Returns:
-            str: A resposta gerada pelo agente.
+            str: The generated reply.
         """
         if self.pipeline:
-            # Processa o estado através do pipeline
             reply = self.pipeline.run(state)
         else:
-            reply = f"{self.name}: Estou ativo e pronto para responder, mas não possuo pipeline."
+            reply = f"{self.name}: I'm active and ready to respond, but I don't have a pipeline."
 
-        self.status = 'ativo'
+        self.status = 'available'
         return reply
 
     def get_status(self):
         """
-        Retorna o status atual do agente.
+        Gets the status of the agent.
 
         Returns:
-            str: O status atual do agente.
+            str: The status of the agent.
         """
         return self.status
 
     @staticmethod
     def from_json(json_data):
         """
-        Cria uma instância de Agent a partir de um dicionário JSON.
+        Creates an Agent instance from JSON data.
 
         Args:
-            json_data (dict): Dicionário contendo dados do agente.
+            json_data (dict): The JSON data representing the agent.
 
         Returns:
-            Agent: Uma nova instância de Agent.
+            Agent: The created Agent instance.
+
+        Raises:
+            ValueError: If the JSON data is missing required keys.
         """
         required_keys = ['agent_id', 'name', 'role']
         if not all(key in json_data for key in required_keys):
-            raise ValueError("JSON deve conter as chaves 'agent_id', 'name' e 'role'.")
+            raise ValueError("JSON must contain the keys 'agent_id', 'name' and 'role'.")
 
         agent_id = json_data['agent_id']
         name = json_data['name']

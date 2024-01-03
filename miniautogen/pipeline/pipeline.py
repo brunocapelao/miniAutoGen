@@ -2,24 +2,27 @@ from abc import ABC, abstractmethod
 
 class Pipeline:
     """
-    Classe que representa um pipeline de processamento de dados.
+    Class that represents a data processing pipeline.
+
+    Attributes:
+        components (list of PipelineComponent): List of pipeline components.
     """
 
     def __init__(self, components=None):
         """
-        Inicializa o pipeline com uma lista de componentes.
+        Initializes the pipeline with a list of components.
 
         Args:
-            components (list of PipelineComponent): Lista de componentes do pipeline.
+            components (list of PipelineComponent): List of pipeline components.
         """
         self.components = components if components is not None else []
 
     def add_component(self, component):
         """
-        Adiciona um componente ao pipeline.
+        Adds a component to the pipeline.
 
         Args:
-            component (PipelineComponent): Componente a ser adicionado ao pipeline.
+            component (PipelineComponent): Component to be added to the pipeline.
         """
         if not issubclass(type(component), PipelineComponent):
             raise TypeError("Component must be a subclass of PipelineComponent")
@@ -27,13 +30,13 @@ class Pipeline:
 
     def run(self, state):
         """
-        Executa o pipeline no estado fornecido, passando o estado de cada componente para o próximo.
+        Executes the pipeline on the provided state, passing the state of each component to the next.
 
         Args:
-            state (ChatPipelineState): Estado do chat a ser processado.
+            state (ChatPipelineState): State of the chat to be processed.
 
         Returns:
-            ChatPipelineState: Estado do chat após o processamento de todos os componentes.
+            ChatPipelineState: State of the chat after processing all components.
         """
         for component in self.components:
             state = component.process(state)
@@ -41,44 +44,44 @@ class Pipeline:
 
 class PipelineComponent(ABC):
     """
-    Classe base abstrata para componentes individuais do pipeline.
+    Abstract base class for individual pipeline components.
     """
 
     @abstractmethod
     def process(self, state):
         """
-        Processa os dados e retorna o resultado.
+        Processes the data and returns the result.
 
         Args:
-            state (PipelineState): Instância do estado do pipeline para ser acessado ou modificado.
+            state (PipelineState): Instance of the pipeline state to be accessed or modified.
         """
         pass
 
 class PipelineState(ABC):
     """
-    Classe abstrata para gerenciar o estado durante a execução do pipeline.
+    Abstract class to manage the state during pipeline execution.
     """
 
     @abstractmethod
     def get_state(self):
         """
-        Recupera o estado atual.
+        Retrieves the current state.
         """
         pass
 
     @abstractmethod
     def update_state(self, **kwargs):
         """
-        Atualiza o estado com novos dados.
+        Updates the state with new data.
 
         Args:
-            **kwargs: Argumentos de palavra-chave contendo os dados para atualizar o estado.
+            **kwargs: Keyword arguments containing the data to update the state.
         """
         pass
 
 class ChatPipelineState(PipelineState):
     """
-    Implementação dinâmica de PipelineState para o chat.
+    Dynamic implementation of PipelineState for chat.
     """
 
     def __init__(self, **kwargs):
@@ -89,16 +92,3 @@ class ChatPipelineState(PipelineState):
 
     def update_state(self, **kwargs):
         self.state_data.update(kwargs)
-
-
-
-
-# # Inicializando o estado do pipeline
-# state = ChatPipelineState(group_chat=group_chat, chat_admin=chat_admin)
-
-# # Criando componentes com argumentos customizados
-# user_response_component = UserResponseComponent(novo_argumento="valor_do_argumento")
-
-# # Criando e executando o pipeline
-# pipeline = Pipeline([user_response_component])
-# pipeline.run(state)
