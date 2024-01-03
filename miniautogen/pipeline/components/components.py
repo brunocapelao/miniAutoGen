@@ -3,10 +3,10 @@ import openai
 import os
 import logging
 from dotenv import load_dotenv
-from .pipeline import PipelineComponent
 import time
 from jinja2 import Environment, select_autoescape
 import json
+from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 
 load_dotenv()
 

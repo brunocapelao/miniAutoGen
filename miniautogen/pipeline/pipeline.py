@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 
 class Pipeline:
     """
@@ -42,20 +43,6 @@ class Pipeline:
             state = component.process(state)
         return state
 
-class PipelineComponent(ABC):
-    """
-    Abstract base class for individual pipeline components.
-    """
-
-    @abstractmethod
-    def process(self, state):
-        """
-        Processes the data and returns the result.
-
-        Args:
-            state (PipelineState): Instance of the pipeline state to be accessed or modified.
-        """
-        pass
 
 class PipelineState(ABC):
     """
