@@ -56,6 +56,25 @@ Drawing inspiration from [AutoGen](https://github.com/microsoft/autogen), MiniAu
 Explore our assortment of pre-built components, available [here](../miniautogen/pipeline/components/components.py).
 
 
+## Exemples
+
+### Using Multi-Agent Conversations to Develop a New Component for MiniAutoGen Itself
+
+Multi-agent conversations represent interactions involving multiple agents, whether autonomous or human, each endowed with autonomy and specialized abilities. They work together to solve complex problems, share information, or perform specific tasks.
+
+In this example, we will set up a conversation between two agents: one playing the role of a Product Owner and the other acting as an expert in developing MiniAutoGen components in Python.
+
+The main goal of this test is to demonstrate the flexibility, ease, and efficiency of MiniAutoGen in creating and coordinating multi-agent conversations, as well as the simplicity in developing new components, thanks to the library's flexible design.
+
+
+**The complete conversation history:** [chat_history.md](/exemples/multi-agent-develop/chat_history.md)
+
+**View the notebook [here](/exemples/multi-agent-develop/Jinja2TemplatesComponent.ipynb)**
+
+### Discover More Examples
+For additional insights and inspiration, visit our [Examples folder](/exemples/). Here, you'll find a variety of scenarios demonstrating the versatility and capabilities of MiniAutoGen in different contexts.
+
+
 ## Contribute to MiniAutoGen
 
 We invite AI enthusiasts, developers, and researchers to contribute and shape the future of multi-agent conversations. Your expertise can help evolve MiniAutoGen, creating more robust and diverse applications.
