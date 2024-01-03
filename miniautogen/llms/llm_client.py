@@ -31,9 +31,9 @@ class LiteLLMClient(LLMClientInterface):
         self.logger = logging.getLogger(__name__)
         self.model = model
 
-    def get_model_response(self, prompt, model="gpt-3.5-turbo"):
+    def get_model_response(self, prompt, model_name=None):
         try:
-            response = completion(model=model, messages=prompt)
+            response = completion(self.model, messages=prompt)
             return response.choices[0].message.content
         except Exception as e:
             self.logger.error(f"Erro ao chamar a API da LiteLMM: {e}")
