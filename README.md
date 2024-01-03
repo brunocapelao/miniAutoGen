@@ -1,54 +1,71 @@
-# MiniAutoGen: A **lightweight and flexible** library for creating agents and multi-agent conversations.
+# MiniAutoGen: A **Lightweight and Flexible** Library for Creating Agents and Multi-Agent Conversations
+
 ![MiniAutoGen Logo](miniautogen.png)
 
 ## About MiniAutoGen
 
-MiniAutoGen is an innovative open-source library designed to empower next-generation applications in Large Language Models (LLMs) through [multi-agent conversations](docs/eng/multi_agent_chats.md). This framework stands out for its lightweight and flexible structure, making it ideal for developers and researchers looking to explore and push the boundaries of conversational AI.
+MiniAutoGen is an innovative, open-source library designed for the next generation of applications in Large Language Models (LLMs). Focused on enabling [multi-agent conversations](docs/eng/multi_agent_chats.md), MiniAutoGen is celebrated for its lightweight and flexible structure. It's ideal for developers and researchers who aim to explore and expand the frontiers of conversational AI.
 
-Inspired by [AutoGen](https://github.com/microsoft/autogen), MiniAutoGen provides a unified conversation interface (`chat`), a [coordination mechanism](docs/eng/coordination.md) (`chatadmin`), agent customization (`agent`), and an action pipeline (`pipeline`), all designed to facilitate the creation, experimentation, and implementation of multi-agent systems.
+Drawing inspiration from [AutoGen](https://github.com/microsoft/autogen), MiniAutoGen offers a comprehensive suite of tools:
+- **Unified Conversation Interface (`chat`):** Facilitates the creation and management of multi-agent conversations.
+- **Coordination Mechanism (`chatadmin`):** Ensures efficient synchronization and management of agents.
+- **Customizable Agents (`agent`):** Provides the flexibility to tailor agents according to specific needs.
+- **Action Pipeline (`pipeline`):** Automates and streamlines agent operations, enhancing scalability and maintenance.
 
-## Why MiniAutoGen?
+**Incorporating [LiteLLM](docs.litellm.ai/docs/), MiniAutoGen already integrates with over 100 LLMs. Use Bedrock, Azure, OpenAI, Cohere, Anthropic, Ollama, Sagemaker, HuggingFace, Replicate.**
+
+
+## Why Choose MiniAutoGen?
 
 ### Multi-Agent Conversations
-Empower conversations involving multiple intelligent agents, each with distinct abilities, raising the complexity and sophistication of interactions.
+- **Complex Interactions:** Foster sophisticated dialogues involving multiple intelligent agents, each with unique abilities.
 
 ### Agent Customization
-Tailor agents to meet specific requirements by adapting behavior, reactions, and response patterns as needed.
+- **Tailored Behaviors:** Adapt agents to meet specific interaction requirements, enhancing the versatility of conversations.
 
 ### Flexibility and Modularity
-With MiniAutoGen, you have the freedom to shape dynamic conversations, enabling agent dialogue initiatives, automatic reactions, and human interventions when necessary.
+- **Dynamic Conversations:** Shape engaging and responsive dialogues, with provisions for both automated and manual interventions.
 
 ### Effective Agent Coordination
-Utilize our framework for agents to collaborate efficiently, working towards common goals in a shared environment.
+- **Collaborative Goals:** Utilize our framework to facilitate seamless collaboration among agents towards common objectives.
+
+### State-of-the-Art LLM Integration
+- **Advanced AI Capabilities:** Leverage the power of Large Language Models to enrich conversations with intelligent and context-aware responses.
 
 ## Key Components
 
-### Agent
-The core of each conversation, representing an individual agent with specific abilities and behaviors, essential for dynamic and autonomous interactions.
+### [Agent](docs/eng/agent.md)
+- **Dynamic Participants:** Each agent is an autonomous entity, capable of complex interactions and behaviors.
 
-### Chat
-Manages group chat sessions, ensuring effective maintenance of conversation state and context, essential for continuity and coherence of interactions.
+### [Chat](docs/eng/chat.md)
+- **Conversation Management:** Handles group chat sessions, maintaining state and context for coherence and continuity.
 
-### ChatAdmin
-A key element for coordinating group chat, synchronizing actions, and managing conversation dynamics to ensure efficient collaboration.
+### [ChatAdmin](docs/eng/chat_admin.md)
+- **Orchestration:** Central to coordinating chat dynamics, ensuring efficient and harmonious agent collaboration.
 
-### Pipeline
-Automates and organizes agent operations, promoting scalability and easy system maintenance.
+### [Pipeline](docs/eng/pipeline.md)
+- **Operational Efficiency:** Streamlines agent operations, enabling scalable and maintainable system architectures.
+
+### [LLM Clients](docs/eng/llm_client.md)
+- **AI-Powered Interactions:** Integrates diverse LLM clients, providing agents with sophisticated language processing tools.
+
+### [Pipeline Components](docs/eng/components.md)
+
+- **Simplified Development:** Our modular design makes it a breeze to create new pipeline components, empowering developers to tailor their conversational data processing and handling. This flexibility allows for the seamless integration of advanced AI features, including LLM responses, user interactions, and intricate decision-making processes, directly into the `agent` pipeline.
+
+Explore our assortment of pre-built components, available [here](../miniautogen/pipeline/components/components.py).
+
 
 ## Contribute to MiniAutoGen
 
-As an open-source project, MiniAutoGen invites AI enthusiasts, developers, and researchers to contribute and help shape the future of multi-agent conversations. Your knowledge and experience can help expand MiniAutoGen's capabilities, creating more robust and versatile solutions for the developer community.
+We invite AI enthusiasts, developers, and researchers to contribute and shape the future of multi-agent conversations. Your expertise can help evolve MiniAutoGen, creating more robust and diverse applications.
 
 ### How You Can Contribute:
-- **Development of New Features:** Assist in adding new functionalities and enhancing existing ones.
-- **Documentation and Tutorials:** Contribute clear documentation and tutorials to ease the framework's usage for new users.
-- **Testing and Feedback:** Participate in testing the framework and provide valuable feedback for continuous improvements.
-- **Sharing Ideas and Experiences:** Share your experiences and ideas to enrich the community and drive innovations.
-
-## Start Contributing Today
-
-Visit our GitHub repository to learn more about how you can get involved and start contributing. Join us on this exciting journey to advance multi-agent conversations in the world of artificial intelligence!
+- **Feature Development:** Enhance the framework by developing new features or refining existing ones.
+- **Documentation & Tutorials:** Create clear guides and tutorials to facilitate user adoption.
+- **Testing & Feedback:** Participate in testing and provide feedback for ongoing improvements.
+- **Idea Sharing:** Contribute your innovative ideas and experiences to foster a vibrant community.
 
 ---
 
-MiniAutoGen: Developing today the future of intelligent conversations.
+MiniAutoGen: Pioneering the future of intelligent, interactive conversations.

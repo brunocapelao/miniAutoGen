@@ -1,9 +1,9 @@
 # `Pipeline`
 
 ## Overview
-The `Pipeline` framework in MiniAutoGen is a flexible and modular system designed for data processing, particularly in chat applications. It allows for the sequential processing of data through a series of components, each handling specific tasks or transformations.
+The `Pipeline` framework in MiniAutoGen is a flexible and modular system designed for data processing, particularly in chat applications. It allows for the sequential processing of data through a series of [**components**](components.md), each handling specific tasks or transformations.
 
-## Core Components
+## Core
 
 ### `class Pipeline`
 #### Description:
@@ -41,12 +41,4 @@ my_pipeline = Pipeline(components=[component1, component2])
 ### Adding a Component to the Pipeline
 ```python
 my_pipeline.add_component(new_component)
-```
-
-### Implementing a Custom Pipeline Component
-```python
-class MyComponent(PipelineComponent):
-    def process(self, state):
-        # Process the state and return the modified state
-        return modified_state
 ```

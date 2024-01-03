@@ -3,6 +3,9 @@
 ## Overview
 The `PipelineComponent` module is a crucial part of the MiniAutoGen framework, providing a range of pipeline components for managing and automating interactions in a multi-agent chat environment. This module includes components for user response processing, agent selection, agent responses, etc...
 
+We provide a selection of pre-built components, accessible [here](../miniautogen/pipeline/components/components.py).
+
+
 ### Architecture
 
 1. **Modular and Extensible Architecture:**

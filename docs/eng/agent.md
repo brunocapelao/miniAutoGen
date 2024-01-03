@@ -74,6 +74,3 @@ data_bot = Agent.from_json(json_data)
 ## Notes
 - The `Agent` class is designed to be flexible and adaptable, fitting into various roles and workflows within the MiniAutoGen framework.
 - The `pipeline` attribute allows for customization of the agent's processing capabilities, enabling it to handle specific types of states or tasks.
-- Proper error handling is crucial when creating agents from JSON data to ensure that all necessary information is provided.
-
-By adhering to these guidelines and effectively utilizing the `Agent` class, developers can create sophisticated multi-agent systems capable of handling complex conversations and tasks within the MiniAutoGen framework.

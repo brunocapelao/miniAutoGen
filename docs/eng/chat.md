@@ -116,6 +116,3 @@ chat_session.add_agent(agent)
 ## Notes
 - Ensure that the storage path provided during initialization is accessible and writable.
 - The `Chat` class is designed to interact seamlessly with other components of the MiniAutoGen framework, such as `Agent` and `ChatStorage`.
-- Proper error handling is recommended, especially when dealing with file operations and message handling.
-
-This documentation provides a comprehensive guide for utilizing the `Chat` class, enabling developers to effectively manage chat sessions and interactions within the MiniAutoGen framework.
