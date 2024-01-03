@@ -6,7 +6,7 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
 class ChatAdmin(Agent):
-    def __init__(self, agent_id, name, role, pipeline, group_chat, goal, max_rounds):
+    def __init__(self, agent_id, name, role, pipeline, group_chat, max_rounds):
         """
         Initializes a ChatAdmin object.
 
@@ -16,13 +16,11 @@ class ChatAdmin(Agent):
             role (str): The role of the agent.
             pipeline (Pipeline): The pipeline to be used for processing chat messages.
             group_chat (GroupChat): The group chat object.
-            goal (str): The goal of the chat.
             max_rounds (int): The maximum number of chat rounds to execute.
         """
         super().__init__(agent_id, name, role)
         self.pipeline = pipeline
         self.group_chat = group_chat
-        self.goal = goal
         self.round = 0
         self.max_rounds = max_rounds
         self.running = False
