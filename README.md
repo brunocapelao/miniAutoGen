@@ -53,7 +53,7 @@ Drawing inspiration from [AutoGen](https://github.com/microsoft/autogen), MiniAu
 
 - **Simplified Development:** Our modular design makes it a breeze to create new pipeline components, empowering developers to tailor their conversational data processing and handling. This flexibility allows for the seamless integration of advanced AI features, including LLM responses, user interactions, and intricate decision-making processes, directly into the `agent` pipeline.
 
-Explore our assortment of pre-built components, available [here](../miniautogen/pipeline/components/components.py).
+Explore our assortment of pre-built components, available [here](miniautogen/pipeline/components/components.py).
 
 
 ## Exemples
