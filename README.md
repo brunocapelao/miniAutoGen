@@ -85,6 +85,8 @@ We invite AI enthusiasts, developers, and researchers to contribute and shape th
 - **Testing & Feedback:** Participate in testing and provide feedback for ongoing improvements.
 - **Idea Sharing:** Contribute your innovative ideas and experiences to foster a vibrant community.
 
+See more: [contribute](docs/eng/contribute.md)
+
 ---
 
 MiniAutoGen: Pioneering the future of intelligent, interactive conversations.

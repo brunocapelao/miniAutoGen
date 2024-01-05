@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "miniautogen"
-version = "0.0.2"
+version = "0.0.1"
 description = "Lightweight and flexible library for creating multi-agent agents and conversations."
 authors = ["Bruno Capelão <brcapelao@gmail.com>"]
 license = "MIT License"
