@@ -53,7 +53,79 @@ Drawing inspiration from [AutoGen](https://github.com/microsoft/autogen), MiniAu
 
 - **Simplified Development:** Our modular design makes it a breeze to create new pipeline components, empowering developers to tailor their conversational data processing and handling. This flexibility allows for the seamless integration of advanced AI features, including LLM responses, user interactions, and intricate decision-making processes, directly into the `agent` pipeline.
 
-Explore our assortment of pre-built components, available [here](../miniautogen/pipeline/components/components.py).
+Explore our assortment of pre-built components, available [here](miniautogen/pipeline/components/components.py).
+
+
+## Usage
+
+**Install**
+```pip install miniautogen```
+
+**Iniciate a chat with a LLM**
+```
+#Initializing LLM Clients
+
+import os
+os.environ["OPENAI_API_KEY"] = "your-openai-key" 
+from miniautogen.llms.llm_client import LiteLLMClient
+openai_client = LiteLLMClient(model='gpt-3.5-turbo-16k')
+
+# Building the Chat Environment
+
+from miniautogen.chat.chat import Chat
+from miniautogen.agent.agent import Agent
+from miniautogen.chat.chatadmin import ChatAdmin
+from miniautogen.pipeline.pipeline import Pipeline
+from miniautogen.pipeline.components.components import (
+    UserResponseComponent, AgentReplyComponent, TerminateChatComponent,
+    Jinja2SingleTemplateComponent, LLMResponseComponent, NextAgentSelectorComponent
+)
+
+# Define a Jinja2 template for formatting messages
+template_str = """
+[{"role": "system", "content": "{{ agent.role }}"}{% for message in messages %},
+  {% if message.sender_id == agent.agent_id %}
+    {"role": "assistant", "content": {{ message.message | tojson | safe }}}
+  {% else %}
+    {"role": "user", "content": {{ message.message | tojson | safe }}}
+  {% endif %}
+{% endfor %}]
+"""
+
+# Initialize Jinja2 component with the template
+jinja_component = Jinja2SingleTemplateComponent()
+jinja_component.set_template_str(template_str)
+
+# Set up pipelines for different components
+pipeline_user = Pipeline([UserResponseComponent()])
+pipeline_jinja = Pipeline([jinja_component, LLMResponseComponent(litellm_client)])
+pipeline_admin = Pipeline([NextAgentSelectorComponent(), AgentReplyComponent(), TerminateChatComponent()])
+
+# Create the chat environment
+chat = Chat()
+
+# Define agents with JSON data
+json_data = {'agent_id': 'Bruno', 'name': 'Bruno', 'role': 'user'}
+agent1 = Agent.from_json(json_data)
+agent1.pipeline = pipeline_user  # Assign the user pipeline to agent1
+
+agent2 = Agent("dev", "Carlos", "Python Senior Developer")
+agent2.pipeline = pipeline_jinja  # Assign the LLM pipeline to agent2
+
+# Add agents to the chat
+chat.add_agent(agent1)
+chat.add_agent(agent2)
+
+# Add test messages to the chat
+json_messages = [{'sender_id': 'Bruno', 'message': 'It’s a test, don’t worry'}]
+chat.add_messages(json_messages)
+
+# Initialize and configure ChatAdmin
+chat_admin = ChatAdmin("admin", "Admin", "admin_role", pipeline_admin, chat, 10)
+
+#running the chat
+chat_admin.run()
+```
 
 
 ## Exemples
@@ -84,6 +156,8 @@ We invite AI enthusiasts, developers, and researchers to contribute and shape th
 - **Documentation & Tutorials:** Create clear guides and tutorials to facilitate user adoption.
 - **Testing & Feedback:** Participate in testing and provide feedback for ongoing improvements.
 - **Idea Sharing:** Contribute your innovative ideas and experiences to foster a vibrant community.
+
+See more: [contribute](docs/eng/contribute.md)
 
 ---
 
