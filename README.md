@@ -121,7 +121,15 @@ json_messages = [{'sender_id': 'Bruno', 'message': 'It’s a test, don’t worry
 chat.add_messages(json_messages)
 
 # Initialize and configure ChatAdmin
-chat_admin = ChatAdmin("admin", "Admin", "admin_role", pipeline_admin, chat, 10)
+chat_admin = ChatAdmin(
+    "admin",
+    "Admin",
+    "admin_role",
+    pipeline_admin,
+    chat,
+    "manage_chat",
+    10,
+)
 
 #running the chat
 chat_admin.run()
