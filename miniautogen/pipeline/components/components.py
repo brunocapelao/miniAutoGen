@@ -626,6 +626,16 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
         self.variables['chat'] = chat
         self.variables['agent'] = agent
         self.variables['messages'] = messages
+
+        # Safely add tool-related information to the template variables if it exists
+        tool_call = state.get_state().get('tool_call')
+        if tool_call:
+            self.variables['tool_call'] = tool_call
+
+        tool_output = state.get_state().get('tool_output')
+        if tool_output:
+            self.variables['tool_output'] = tool_output
+
         # Render the template with the provided variables
         prompt = template.render(self.variables)
         prompt = json.loads(prompt)

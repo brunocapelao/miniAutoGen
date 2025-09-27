@@ -4,7 +4,7 @@ from litellm import completion
 
 # Interface for the LLM client
 class LLMClientInterface:
-    def get_model_response(self, prompt, model_name="gpt-4", temperature=1):
+    def get_model_response(self, prompt, model_name: str = "gpt-4", temperature: int = 1):
         """
         Retrieves a model response based on the given prompt.
 
@@ -30,7 +30,7 @@ class OpenAIClient(LLMClientInterface):
         self.client = openai.OpenAI(api_key=api_key)
         self.logger = logging.getLogger(__name__)
 
-    def get_model_response(self, prompt, model="gpt-3.5-turbo", temperature=1):
+    def get_model_response(self, prompt, model: str = "gpt-3.5-turbo", temperature: int = 1):
         """
         Retrieves a model response using the OpenAI API.
 
@@ -55,30 +55,34 @@ class OpenAIClient(LLMClientInterface):
         
 
 class LiteLLMClient(LLMClientInterface):
-    def __init__(self, model):
+    def __init__(self, default_model: str = "gpt-3.5-turbo"):
         """
         Initializes the LiteLLM client.
 
         Args:
-            model: The LiteLLM model to use.
+            default_model (str): The default LiteLLM model to use if none is specified at runtime.
         """
         self.logger = logging.getLogger(__name__)
-        self.model = model
+        self.default_model = default_model
 
-    def get_model_response(self, prompt, model_name=None):
+    def get_model_response(self, prompt, model_name: str = None):
         """
         Retrieves a model response using the LiteLLM API.
 
         Args:
-            prompt (str): The input prompt for the model.
-            model_name (str, optional): The name of the model to use. Defaults to None.
+            prompt (list): The input prompt for the model, as a list of messages.
+            model_name (str, optional): The name of the model to use. If None, the client's default_model is used.
 
         Returns:
             str: The generated model response.
         """
+        model_to_use = model_name if model_name is not None else self.default_model
+        if not model_to_use:
+            raise ValueError("No model specified for LiteLLMClient call and no default_model was set.")
+
         try:
-            response = completion(self.model, messages=prompt)
+            response = completion(model=model_to_use, messages=prompt)
             return response.choices[0].message.content
         except Exception as e:
-            self.logger.error(f"Error calling the LiteLMM API: {e}")
+            self.logger.error(f"Error calling the LiteLLM API: {e}")
             return None

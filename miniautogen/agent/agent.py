@@ -1,29 +1,37 @@
+from typing import Optional, List
+from ..pipeline.pipeline import Pipeline
+from ..tools.tool import Tool
+
+
 class Agent:
     """
     Represents an agent in the system.
 
     Attributes:
-        agent_id (int): The ID of the agent.
+        agent_id (str): The ID of the agent.
         name (str): The name of the agent.
         role (str): The role of the agent.
-        pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
+        pipeline (Optional[Pipeline]): The pipeline used to process the state. Defaults to None.
+        tools (List[Tool]): A list of tools the agent can use. Defaults to an empty list.
         status (str): The status of the agent. Defaults to "available".
     """
 
-    def __init__(self, agent_id, name, role, pipeline=None):
+    def __init__(self, agent_id: str, name: str, role: str, pipeline: Optional[Pipeline] = None, tools: Optional[List[Tool]] = None):
         """
         Initializes a new instance of the Agent class.
 
         Args:
-            agent_id (int): The ID of the agent.
+            agent_id (str): The ID of the agent.
             name (str): The name of the agent.
             role (str): The role of the agent.
-            pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
+            pipeline (Optional[Pipeline]): The pipeline used to process the state. Defaults to None.
+            tools (Optional[List[Tool]]): A list of tools the agent can use. Defaults to None.
         """
         self.agent_id = agent_id
         self.name = name
         self.role = role
         self.pipeline = pipeline
+        self.tools = tools if tools is not None else []
         self.status = "available"
 
     def generate_reply(self, state):
@@ -57,6 +65,9 @@ class Agent:
     def from_json(json_data):
         """
         Creates an Agent instance from JSON data.
+
+        Note: This method does not currently support initializing tools from JSON.
+        Tools should be added programmatically after creating the agent.
 
         Args:
             json_data (dict): The JSON data representing the agent.
