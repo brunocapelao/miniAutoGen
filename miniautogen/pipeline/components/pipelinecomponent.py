@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Any
 
 class PipelineComponent(ABC):
     """
@@ -6,9 +7,9 @@ class PipelineComponent(ABC):
     """
 
     @abstractmethod
-    def process(self, state):
+    async def process(self, state: Any) -> Any:
         """
-        Processes the data and returns the result.
+        Processes the data and returns the result asynchronously.
 
         Args:
             state (PipelineState): Instance of the pipeline state to be accessed or modified.

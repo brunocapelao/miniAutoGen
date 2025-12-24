@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
+from typing import List, Any
 
 class Pipeline:
     """
@@ -9,7 +10,7 @@ class Pipeline:
         components (list of PipelineComponent): List of pipeline components.
     """
 
-    def __init__(self, components=None):
+    def __init__(self, components: List[PipelineComponent] = None):
         """
         Initializes the pipeline with a list of components.
 
@@ -18,20 +19,20 @@ class Pipeline:
         """
         self.components = components if components is not None else []
 
-    def add_component(self, component):
+    def add_component(self, component: PipelineComponent):
         """
         Adds a component to the pipeline.
 
         Args:
             component (PipelineComponent): Component to be added to the pipeline.
         """
-        if not issubclass(type(component), PipelineComponent):
+        if not isinstance(component, PipelineComponent):
             raise TypeError("Component must be a subclass of PipelineComponent")
         self.components.append(component)
 
-    def run(self, state):
+    async def run(self, state: Any) -> Any:
         """
-        Executes the pipeline on the provided state, passing the state of each component to the next.
+        Executes the pipeline on the provided state asynchronously, passing the state of each component to the next.
 
         Args:
             state (ChatPipelineState): State of the chat to be processed.
@@ -40,7 +41,7 @@ class Pipeline:
             ChatPipelineState: State of the chat after processing all components.
         """
         for component in self.components:
-            state = component.process(state)
+            state = await component.process(state)
         return state
 
 

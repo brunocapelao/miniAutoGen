@@ -1,24 +1,21 @@
+from typing import Optional, Dict, Any
+from miniautogen.pipeline.pipeline import Pipeline, ChatPipelineState
+
 class Agent:
     """
     Represents an agent in the system.
 
     Attributes:
-        agent_id (int): The ID of the agent.
+        agent_id (str): The ID of the agent.
         name (str): The name of the agent.
         role (str): The role of the agent.
         pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
         status (str): The status of the agent. Defaults to "available".
     """
 
-    def __init__(self, agent_id, name, role, pipeline=None):
+    def __init__(self, agent_id: str, name: str, role: str, pipeline: Optional[Pipeline] = None):
         """
         Initializes a new instance of the Agent class.
-
-        Args:
-            agent_id (int): The ID of the agent.
-            name (str): The name of the agent.
-            role (str): The role of the agent.
-            pipeline (Pipeline, optional): The pipeline used to process the state. Defaults to None.
         """
         self.agent_id = agent_id
         self.name = name
@@ -26,53 +23,40 @@ class Agent:
         self.pipeline = pipeline
         self.status = "available"
 
-    def generate_reply(self, state):
+    async def generate_reply(self, state: ChatPipelineState) -> str:
         """
-        Generates a reply based on the given state.
+        Generates a reply based on the given state asynchronously.
 
         Args:
-            state (State): The state to process.
+            state (ChatPipelineState): The state to process.
 
         Returns:
             str: The generated reply.
         """
         if self.pipeline:
-            reply = self.pipeline.run(state)
+            # Run the pipeline asynchronously
+            final_state = await self.pipeline.run(state)
+
+            # Assuming the pipeline puts the 'reply' in the state or returns it.
+            # Based on previous code, the pipeline modifies the state.
+            # We need to extract the reply. This logic depends on component implementation.
+            # For now, let's assume 'reply' key in state data or just return a placeholder
+            # if the pipeline design is purely side-effect based (which is risky).
+            # Looking at previous examples, components modified state.
+
+            # Let's standardize: The pipeline should populate a 'response' or similar field in state,
+            # OR the last component return value is used.
+            # To preserve flexibility:
+            return final_state.get_state().get('reply', f"{self.name}: I processed the pipeline but found no 'reply' in state.")
         else:
-            reply = f"{self.name}: I'm active and ready to respond, but I don't have a pipeline."
+            return f"{self.name}: I'm active and ready to respond, but I don't have a pipeline."
 
-        self.status = 'available'
-        return reply
-
-    def get_status(self):
-        """
-        Gets the status of the agent.
-
-        Returns:
-            str: The status of the agent.
-        """
+    def get_status(self) -> str:
         return self.status
 
     @staticmethod
-    def from_json(json_data):
-        """
-        Creates an Agent instance from JSON data.
-
-        Args:
-            json_data (dict): The JSON data representing the agent.
-
-        Returns:
-            Agent: The created Agent instance.
-
-        Raises:
-            ValueError: If the JSON data is missing required keys.
-        """
+    def from_json(json_data: Dict[str, Any]) -> 'Agent':
         required_keys = ['agent_id', 'name', 'role']
         if not all(key in json_data for key in required_keys):
             raise ValueError("JSON must contain the keys 'agent_id', 'name' and 'role'.")
-
-        agent_id = json_data['agent_id']
-        name = json_data['name']
-        role = json_data['role']
-
-        return Agent(agent_id, name, role)
+        return Agent(json_data['agent_id'], json_data['name'], json_data['role'])
