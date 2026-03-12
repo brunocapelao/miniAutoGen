@@ -1,64 +1,47 @@
 # Módulo `chat.py`
 
-## Visão Geral
+Para a visão arquitetural completa, consulte [C4 Nível 2: Containers lógicos](architecture/02-containers.md) e [C4 Nível 3: Componentes internos](architecture/03-componentes.md).
 
-O módulo `chat.py` é parte integrante do framework MiniAutoGen, responsável por gerenciar sessões de chat em grupo e manter um registro estruturado das interações. Este módulo lida com a armazenagem de mensagens, gestão de agentes participantes e manutenção do contexto da conversa.
+## Visão geral
 
-## Classes e Métodos
+`Chat` é o núcleo de conversação da biblioteca. No estado atual, ele não persiste mensagens em arquivo nem usa DataFrame como mecanismo principal. Em vez disso, delega armazenamento a uma implementação de `ChatRepository`.
 
-### Classe `Chat`
+## Responsabilidades
 
-#### Inicialização
-- `__init__(self, storage_path='groupchat_data', custom_df=None)`: 
-  - **Parâmetros**:
-    - `storage_path` (str): Caminho para o diretório de armazenamento dos dados.
-    - `custom_df` (pd.DataFrame, opcional): DataFrame personalizado para a criação de uma tabela customizada.
-  - **Descrição**: Inicializa uma instância do chat, preparando o armazenamento e carregando o contexto existente.
+- registrar mensagens com `add_message`;
+- consultar histórico com `get_messages`;
+- manter a lista de agentes ativos na conversa;
+- manter um `ChatState` local;
+- sincronizar o histórico local com o repositório.
 
-#### Métodos Privados
-- `_ensure_storage_directory_exists()`: Garante a existência do diretório de armazenamento.
-- `_load_state()`: Carrega o estado atual do contexto do chat a partir de um arquivo JSON.
+## Persistência atual
 
-#### Persistência de Dados
-- `persist()`: Salva o contexto atual do chat em um arquivo JSON.
+O `Chat` recebe um `repository` opcional no construtor:
 
-#### Gestão de Mensagens
-- `add_message(sender_id, message, additional_info=None)`: Adiciona uma mensagem individual ao chat.
-- `add_messages(messages)`: Adiciona múltiplas mensagens ao chat, aceitando tanto DataFrames quanto listas de dicionários.
-- `remove_message(message_id)`: Remove uma mensagem específica do chat.
-- `get_messages(type='dataframe')`: Retorna todas as mensagens armazenadas no formato especificado ('dataframe' ou 'json').
+- se nenhum for informado, usa `InMemoryChatRepository`;
+- se um repositório assíncrono SQL for informado, passa a persistir mensagens nesse backend.
 
-#### Conversão de Mensagens
-- `_messages_to_dataframe(messages)`: Converte mensagens para DataFrame do pandas.
-- `_messages_to_json(messages)`: Converte mensagens para uma lista de dicionários no formato JSON.
+## Principais métodos
 
-#### Gestão de Contexto e Agentes
-- `get_current_context()`: Retorna o contexto atual da conversa.
-- `update_context(new_context)`: Atualiza o contexto da conversa com novas informações.
-- `add_agent(agent)`: Adiciona um novo agente à conversa.
-- `remove_agent(agent_id)`: Remove um agente da conversa com base em seu identificador.
+### `add_message(sender_id, content, additional_info=None)`
 
-## Uso do Módulo
+- cria um objeto `Message`;
+- persiste a mensagem via `repository.add_message`;
+- adiciona a mensagem a `context.messages`.
 
-Para utilizar o módulo `chat.py` no seu projeto, primeiro importe-o e inicialize uma instância do `Chat`. Você pode adicionar ou remover mensagens e agentes conforme necessário, além de atualizar o contexto da conversa. O módulo também permite que você recupere todas as mensagens armazenadas em diferentes formatos para análises ou relatórios.
+### `get_messages(limit=100)`
 
-## Exemplo de Uso
+- consulta o repositório e retorna uma lista de `Message`.
+
+### `add_agent(agent)` e `remove_agent(agent_id)`
+
+- gerenciam os participantes registrados no chat.
+
+## Uso típico
 
 ```python
-from chat import Chat
+from miniautogen.chat.chat import Chat
+from miniautogen.storage.in_memory_repository import InMemoryChatRepository
 
-# Inicializando o chat
-chat_session = Chat()
-
-# Adicionando uma mensagem
-chat_session.add_message(sender_id="agent1", message="Olá, Mundo!")
-
-# Recuperando mensagens
-messages = chat_session.get_messages(type='json')
-print(messages)
-
-# Atualizando o contexto
-chat_session.update_context({"tema": "Introdução ao MiniAutoGen"})
+chat = Chat(repository=InMemoryChatRepository())
 ```
-
-Este módulo é uma ferramenta essencial para desenvolvedores que trabalham com sistemas de conversação multi-agentes, fornecendo uma maneira estruturada e eficiente de gerenciar interações complexas em chats de grupo.

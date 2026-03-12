@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
+from typing import Any, List
+
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
-from typing import List, Any
+
 
 class Pipeline:
     """
@@ -32,7 +34,8 @@ class Pipeline:
 
     async def run(self, state: Any) -> Any:
         """
-        Executes the pipeline on the provided state asynchronously, passing the state of each component to the next.
+        Executes the pipeline on the provided state asynchronously,
+        passing the state from each component to the next.
 
         Args:
             state (ChatPipelineState): State of the chat to be processed.

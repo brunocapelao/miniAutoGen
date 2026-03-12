@@ -1,0 +1,9 @@
+STABILITY_STABLE = "stable"
+STABILITY_EXPERIMENTAL = "experimental"
+STABILITY_INTERNAL = "internal"
+
+__all__ = [
+    "STABILITY_EXPERIMENTAL",
+    "STABILITY_INTERNAL",
+    "STABILITY_STABLE",
+]

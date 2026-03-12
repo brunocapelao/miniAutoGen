@@ -1,64 +1,40 @@
-# Documentação do Módulo `chatadmin.py`
+# Módulo `chatadmin.py`
 
-## Visão Geral
-O módulo `chatadmin.py` é parte integrante do framework MiniAutoGen, responsável por gerenciar e coordenar as interações em um ambiente de chat multi-agente. Este módulo define a classe `ChatAdmin`, que herda da classe `Agent` e integra funcionalidades adicionais específicas para a administração de chats em grupo.
+Para a visão arquitetural completa, consulte [C4 Nível 2: Containers lógicos](architecture/02-containers.md), [C4 Nível 3: Componentes internos](architecture/03-componentes.md) e [Fluxos de execução](architecture/04-fluxos.md).
 
-## Classe `ChatAdmin`
+## Visão geral
 
-### Descrição
-`ChatAdmin` é uma subclasse de `Agent` que atua como o administrador de um chat em grupo. Esta classe utiliza um pipeline para gerenciar o estado e as interações dentro do chat, assegurando que os objetivos do chat sejam alcançados de forma eficiente.
+`ChatAdmin` é o coordenador do ciclo de execução. Embora herde de `Agent`, sua função prática é administrar rodadas, iniciar e encerrar a execução e acionar o pipeline administrativo.
 
-### Métodos e Atributos Principais
+## Responsabilidades
 
-#### `__init__(self, agent_id, name, role, pipeline, group_chat, goal, max_rounds)`
-Construtor da classe `ChatAdmin`.
-- **Parâmetros:**
-  - `agent_id`: Identificador único do agente administrador.
-  - `name`: Nome do agente administrador.
-  - `role`: Papel ou função do agente no contexto do chat.
-  - `pipeline`: Instância de `Pipeline` que será usada para processar o estado do chat.
-  - `group_chat`: Referência ao objeto `GroupChat` que está sendo administrado.
-  - `goal`: Objetivo específico que o `ChatAdmin` visa alcançar no chat.
-  - `max_rounds`: Número máximo de rodadas que o chat deve executar.
+- iniciar o loop de execução com `run`;
+- montar o `ChatPipelineState` com `group_chat` e `chat_admin`;
+- executar rodadas até atingir `max_rounds` ou ser interrompido;
+- controlar o estado `running`.
 
-#### `start(self)`
-Inicia o administrador do chat.
-- **Efeitos:**
-  - Define `running` como `True`.
-  - Registra no log o início da execução do administrador.
+## Estado relevante
 
-#### `stop(self)`
-Encerra o administrador do chat.
-- **Efeitos:**
-  - Define `running` como `False`.
-  - Registra no log a parada da execução do administrador.
+- `group_chat`: referência ao objeto `Chat`;
+- `goal`: objetivo textual do chat;
+- `round`: rodada atual;
+- `max_rounds`: limite de iterações;
+- `running`: indica se a execução deve continuar.
 
-#### `run(self)`
-Executa o ciclo principal do `ChatAdmin`.
-- **Funcionalidade:**
-  - Inicia o `ChatAdmin`.
-  - Executa rodadas de interação até que o número máximo de rodadas seja alcançado ou até que seja interrompido.
-  - Encerra a execução após a conclusão das rodadas.
+## Fluxo atual
 
-#### `execute_round(self, state)`
-Executa uma rodada de interação no chat.
-- **Parâmetros:**
-  - `state`: Estado atual do chat, encapsulado em uma instância de `ChatPipelineState`.
-- **Efeitos:**
-  - Atualiza o estado do chat.
-  - Incrementa o contador de rodadas.
-  - Persiste o estado atual do chat.
+1. `run()` chama `start()`;
+2. cria um `ChatPipelineState`;
+3. executa `execute_round(state)` enquanto houver rodadas disponíveis;
+4. `execute_round` delega a lógica ao pipeline administrativo;
+5. o ciclo termina por limite de rodadas ou por `stop()`.
 
-#### `from_json(json_data, pipeline, group_chat, goal, max_rounds)`
-Método estático para criar uma instância de `ChatAdmin` a partir de dados JSON.
-- **Parâmetros:**
-  - `json_data`: Dicionário contendo os dados de configuração.
-  - `pipeline`: Pipeline a ser associado ao `ChatAdmin`.
-  - `group_chat`: Objeto `GroupChat` associado.
-  - `goal`: Objetivo definido para o `ChatAdmin`.
-  - `max_rounds`: Número máximo de rodadas permitidas.
-- **Retorno:**
-  - Uma nova instância de `ChatAdmin`.
+## Pipeline administrativo típico
 
-### Uso
-O `ChatAdmin` é fundamental para gerenciar a dinâmica e a progressão de um chat em grupo dentro do framework MiniAutoGen. Ele deve ser configurado com os parâmetros apropriados, incluindo um pipeline e um grupo de chat, e pode ser iniciado para gerenciar a sequência de interações no chat.
+```python
+Pipeline([
+    NextAgentSelectorComponent(),
+    AgentReplyComponent(),
+    TerminateChatComponent(),
+])
+```

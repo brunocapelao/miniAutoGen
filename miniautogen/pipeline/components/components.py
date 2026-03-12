@@ -1,13 +1,15 @@
 import asyncio
-import logging
 import json
-import time
-from typing import Any, List, Dict
+import logging
+from typing import Any
+
+from jinja2 import Environment, select_autoescape
+
+from miniautogen.observability import get_logger
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
-from miniautogen.schemas import Message
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class UserExitException(Exception):
     pass
@@ -105,7 +107,7 @@ class LLMResponseComponent(PipelineComponent):
     def __init__(self, llm_client, model_name="gpt-4"):
         self.llm_client = llm_client
         self.model_name = model_name
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger(__name__)
 
     async def process(self, state: Any) -> Any:
         prompt = state.get_state().get('prompt')
@@ -124,9 +126,6 @@ class LLMResponseComponent(PipelineComponent):
         else:
             raise RuntimeError("Failed to get response from LLM.")
 
-# Re-implementing Jinja2SingleTemplateComponent to work with Pydantic models
-from jinja2 import Environment, select_autoescape
-
 class Jinja2SingleTemplateComponent(PipelineComponent):
     def __init__(self):
         self.template_str = None
@@ -141,7 +140,7 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
 
     async def process(self, state: Any) -> Any:
         if not self.template_str:
-             raise ValueError("Template string not set.")
+            raise ValueError("Template string not set.")
 
         template = self.env.from_string(self.template_str)
         chat = state.get_state().get('group_chat')
@@ -159,9 +158,9 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
         if self.variables is None:
             self.variables = state.get_state().get('variables', {})
 
-        self.variables['chat'] = chat
-        self.variables['agent'] = agent
-        self.variables['messages'] = messages
+        self.variables["chat"] = chat
+        self.variables["agent"] = agent
+        self.variables["messages"] = messages
 
         prompt_str = template.render(self.variables)
         try:

@@ -1,8 +1,10 @@
 import pytest
+
+from miniautogen.agent.agent import Agent
+from miniautogen.chat.chat import Chat
 from miniautogen.schemas import Message
 from miniautogen.storage.in_memory_repository import InMemoryChatRepository
-from miniautogen.chat.chat import Chat
-from miniautogen.agent.agent import Agent
+
 
 @pytest.mark.asyncio
 async def test_repository_add_get():

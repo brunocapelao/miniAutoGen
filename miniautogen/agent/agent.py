@@ -1,5 +1,7 @@
-from typing import Optional, Dict, Any
-from miniautogen.pipeline.pipeline import Pipeline, ChatPipelineState
+from typing import Any, Dict, Optional
+
+from miniautogen.pipeline.pipeline import ChatPipelineState, Pipeline
+
 
 class Agent:
     """
@@ -13,7 +15,13 @@ class Agent:
         status (str): The status of the agent. Defaults to "available".
     """
 
-    def __init__(self, agent_id: str, name: str, role: str, pipeline: Optional[Pipeline] = None):
+    def __init__(
+        self,
+        agent_id: str,
+        name: str,
+        role: str,
+        pipeline: Optional[Pipeline] = None,
+    ):
         """
         Initializes a new instance of the Agent class.
         """
@@ -44,19 +52,28 @@ class Agent:
             # if the pipeline design is purely side-effect based (which is risky).
             # Looking at previous examples, components modified state.
 
-            # Let's standardize: The pipeline should populate a 'response' or similar field in state,
+            # Let's standardize: The pipeline should populate a
+            # 'response' or similar field in state,
             # OR the last component return value is used.
             # To preserve flexibility:
-            return final_state.get_state().get('reply', f"{self.name}: I processed the pipeline but found no 'reply' in state.")
-        else:
-            return f"{self.name}: I'm active and ready to respond, but I don't have a pipeline."
+            return final_state.get_state().get(
+                "reply",
+                (
+                    f"{self.name}: I processed the pipeline but found no "
+                    "'reply' in state."
+                ),
+            )
+        return (
+            f"{self.name}: I'm active and ready to respond, "
+            "but I don't have a pipeline."
+        )
 
     def get_status(self) -> str:
         return self.status
 
     @staticmethod
-    def from_json(json_data: Dict[str, Any]) -> 'Agent':
-        required_keys = ['agent_id', 'name', 'role']
+    def from_json(json_data: Dict[str, Any]) -> "Agent":
+        required_keys = ["agent_id", "name", "role"]
         if not all(key in json_data for key in required_keys):
             raise ValueError("JSON must contain the keys 'agent_id', 'name' and 'role'.")
-        return Agent(json_data['agent_id'], json_data['name'], json_data['role'])
+        return Agent(json_data["agent_id"], json_data["name"], json_data["role"])

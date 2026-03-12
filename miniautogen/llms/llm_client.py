@@ -1,13 +1,19 @@
-import openai
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any
-from litellm import acompletion
+from typing import Dict, List, Optional
+
+from miniautogen.adapters.llm import LiteLLMProvider, OpenAIProvider
+
 
 # Interface for the LLM client
 class LLMClientInterface(ABC):
     @abstractmethod
-    async def get_model_response(self, prompt: List[Dict[str, str]], model_name: Optional[str] = None, temperature: float = 1.0) -> Optional[str]:
+    async def get_model_response(
+        self,
+        prompt: List[Dict[str, str]],
+        model_name: Optional[str] = None,
+        temperature: float = 1.0,
+    ) -> Optional[str]:
         """
         Retrieves a model response based on the given prompt asynchronously.
 
@@ -19,37 +25,33 @@ class LLMClientInterface(ABC):
         Returns:
             str: The generated model response.
         """
-        pass
+        raise NotImplementedError
 
 # Concrete implementation for the OpenAI client
-class OpenAIClient(LLMClientInterface):
-    def __init__(self, api_key: str):
+class OpenAIClient(OpenAIProvider, LLMClientInterface):
+    def __init__(self, api_key: str | None = None, client: object | None = None):
         """
         Initializes the OpenAI client.
 
         Args:
             api_key (str): The API key for accessing the OpenAI service.
         """
-        self.client = openai.AsyncOpenAI(api_key=api_key)
         self.logger = logging.getLogger(__name__)
+        super().__init__(api_key=api_key, client=client)
 
-    async def get_model_response(self, prompt: List[Dict[str, str]], model_name: str = "gpt-3.5-turbo", temperature: float = 1.0) -> str:
+    async def get_model_response(
+        self,
+        prompt: List[Dict[str, str]],
+        model_name: str = "gpt-3.5-turbo",
+        temperature: float = 1.0,
+    ) -> str:
         """
         Retrieves a model response using the OpenAI API asynchronously.
         """
-        try:
-            response = await self.client.chat.completions.create(
-                model=model_name,
-                messages=prompt,
-                temperature=temperature
-            )
-            return response.choices[0].message.content
-        except Exception as e:
-            self.logger.error(f"Error calling the OpenAI API: {e}")
-            raise  # Fail fast, let the caller handle the error
+        return await self.generate_response(prompt, model_name, temperature)
 
-class LiteLLMClient(LLMClientInterface):
-    def __init__(self, default_model: str):
+class LiteLLMClient(LiteLLMProvider, LLMClientInterface):
+    def __init__(self, default_model: str, client: object | None = None):
         """
         Initializes the LiteLLM client.
 
@@ -57,16 +59,15 @@ class LiteLLMClient(LLMClientInterface):
             default_model (str): The default LiteLLM model to use if none is provided in the call.
         """
         self.logger = logging.getLogger(__name__)
-        self.default_model = default_model
+        super().__init__(default_model=default_model, client=client)
 
-    async def get_model_response(self, prompt: List[Dict[str, str]], model_name: Optional[str] = None, temperature: float = 1.0) -> str:
+    async def get_model_response(
+        self,
+        prompt: List[Dict[str, str]],
+        model_name: Optional[str] = None,
+        temperature: float = 1.0,
+    ) -> str:
         """
         Retrieves a model response using the LiteLLM API asynchronously.
         """
-        model = model_name if model_name else self.default_model
-        try:
-            response = await acompletion(model=model, messages=prompt, temperature=temperature)
-            return response.choices[0].message.content
-        except Exception as e:
-            self.logger.error(f"Error calling the LiteLLM API: {e}")
-            raise
+        return await self.generate_response(prompt, model_name, temperature)

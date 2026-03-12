@@ -14,11 +14,33 @@ sqlalchemy = ">=2.0.23"
 litellm = ">=1.16.12"
 pydantic = ">=2.5.0"
 aiosqlite = ">=0.19.0"
+anyio = ">=4.0.0"
+jinja2 = ">=3.1.0"
+structlog = ">=24.0.0"
+tenacity = ">=8.2.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "6.28.0"
 pytest = "^7.4.0"
 pytest-asyncio = "^0.23.0"
+ruff = "^0.15.0"
+mypy = "^1.9.0"
+hypothesis = "^6.130.0"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+check_untyped_defs = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
 
 [build-system]
 requires = ["poetry-core"]

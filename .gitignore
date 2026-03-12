@@ -8,6 +8,7 @@ __pycache__/
 *.csv
 *.json
 cache/
+.hypothesis/
 *.pyc
 
 # Virtual environment
@@ -39,3 +40,7 @@ dist/
 *.bak
 *.swp
 *~
+
+
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
