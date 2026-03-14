@@ -4,6 +4,7 @@ from enum import Enum
 class EventType(str, Enum):
     RUN_STARTED = "run_started"
     RUN_FINISHED = "run_finished"
+    RUN_FAILED = "run_failed"
     RUN_CANCELLED = "run_cancelled"
     RUN_TIMED_OUT = "run_timed_out"
     COMPONENT_STARTED = "component_started"

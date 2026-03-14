@@ -115,8 +115,10 @@ class LLMResponseComponent(PipelineComponent):
             self.logger.error("Prompt missing in pipeline state.")
             return state
 
-        # Await the async client
-        response = await self.llm_client.get_model_response(prompt, self.model_name)
+        if hasattr(self.llm_client, "generate_response"):
+            response = await self.llm_client.generate_response(prompt, self.model_name)
+        else:
+            response = await self.llm_client.get_model_response(prompt, self.model_name)
 
         if response:
             # We must update the state to pass the reply to the next component
