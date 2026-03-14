@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Any, Optional, cast
 
 import openai
 from litellm import acompletion
@@ -32,7 +32,8 @@ class OpenAIProvider(LLMProvider):
                 return await self.client.get_model_response(prompt, model_name, temperature)
 
             model = model_name or "gpt-3.5-turbo"
-            response = await self.client.chat.completions.create(
+            client = cast(Any, self.client)
+            response = await client.chat.completions.create(
                 model=model,
                 messages=prompt,
                 temperature=temperature,

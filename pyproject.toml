@@ -42,6 +42,18 @@ ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 
+[[tool.mypy.overrides]]
+module = [
+    "litellm",
+    "litellm.*",
+    "openai",
+    "openai.*",
+    "torch",
+    "torch.*",
+]
+follow_imports = "skip"
+ignore_missing_imports = true
+
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"

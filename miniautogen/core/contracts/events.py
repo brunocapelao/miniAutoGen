@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
@@ -12,7 +12,7 @@ class ExecutionEvent(BaseModel):
         serialization_alias="type",
     )
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         validation_alias=AliasChoices("timestamp", "created_at"),
         serialization_alias="timestamp",
     )

@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from sqlalchemy import DateTime, String, Text, select
@@ -44,12 +44,12 @@ class SQLAlchemyRunStore(RunStore):
                     db_run = DBRun(
                         run_id=run_id,
                         payload_json=json.dumps(payload),
-                        updated_at=datetime.now(UTC),
+                        updated_at=datetime.now(timezone.utc),
                     )
                     session.add(db_run)
                 else:
                     db_run.payload_json = json.dumps(payload)
-                    db_run.updated_at = datetime.now(UTC)
+                    db_run.updated_at = datetime.now(timezone.utc)
 
     async def get_run(self, run_id: str) -> dict[str, Any] | None:
         async with self.async_session() as session:

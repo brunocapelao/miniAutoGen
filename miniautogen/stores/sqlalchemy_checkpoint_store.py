@@ -1,5 +1,5 @@
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any, cast
 
 from sqlalchemy import DateTime, String, Text, select
@@ -44,12 +44,12 @@ class SQLAlchemyCheckpointStore(CheckpointStore):
                     db_checkpoint = DBCheckpoint(
                         run_id=run_id,
                         payload_json=json.dumps(payload),
-                        updated_at=datetime.now(UTC),
+                        updated_at=datetime.now(timezone.utc),
                     )
                     session.add(db_checkpoint)
                 else:
                     db_checkpoint.payload_json = json.dumps(payload)
-                    db_checkpoint.updated_at = datetime.now(UTC)
+                    db_checkpoint.updated_at = datetime.now(timezone.utc)
 
     async def get_checkpoint(self, run_id: str) -> dict[str, Any] | None:
         async with self.async_session() as session:
