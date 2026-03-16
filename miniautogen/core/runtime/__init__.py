@@ -1,6 +1,7 @@
 """Runtime primitives for controlled pipeline execution."""
 
 from .agentic_loop import detect_stagnation, should_stop_loop
+from .agentic_loop_runtime import AgenticLoopRuntime
 from .composite_runtime import CompositeRuntime
 from .deliberation import apply_leader_review, build_follow_up_tasks, summarize_peer_reviews
 from .deliberation_runtime import DeliberationRuntime
@@ -9,6 +10,7 @@ from .pipeline_runner import PipelineRunner
 from .workflow_runtime import WorkflowRuntime
 
 __all__ = [
+    "AgenticLoopRuntime",
     "CompositeRuntime",
     "DeliberationRuntime",
     "PipelineRunner",
