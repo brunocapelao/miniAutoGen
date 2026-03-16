@@ -53,7 +53,14 @@ class AgenticLoopRuntime:
         context: RunContext,
         plan: AgenticLoopPlan,
     ) -> RunResult:
-        """Execute an agentic loop plan and return a RunResult."""
+        """Execute an agentic loop plan and return a RunResult.
+
+        Note: ``agents`` is part of the CoordinationMode protocol signature
+        for composability. Actual agent resolution uses the ``agent_registry``
+        injected at construction time.
+        """
+        # TODO(review): Enforce timeout_seconds from ConversationPolicy - code-reviewer, 2026-03-16, Severity: Medium
+        # TODO(review): Use Conversation contract instead of raw list[dict] for history - code-reviewer, 2026-03-16, Severity: Medium
         run_id = context.run_id
         correlation_id = context.correlation_id
         logger = self._logger.bind(
