@@ -1,5 +1,6 @@
 """Typed contracts for the MiniAutoGen core."""
 
+from .agent import ConversationalAgent, DeliberationAgent, WorkflowAgent
 from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
 from .coordination import (
     CoordinationKind,
@@ -17,11 +18,13 @@ from .run_result import RunResult
 
 __all__ = [
     "AgenticLoopState",
+    "ConversationalAgent",
     "ConversationPolicy",
     "CoordinationKind",
     "CoordinationMode",
     "Contribution",
     "CoordinationPlan",
+    "DeliberationAgent",
     "DeliberationPlan",
     "DeliberationState",
     "ExecutionEvent",
@@ -33,6 +36,7 @@ __all__ = [
     "RouterDecision",
     "RunContext",
     "RunResult",
+    "WorkflowAgent",
     "WorkflowPlan",
     "WorkflowStep",
 ]
