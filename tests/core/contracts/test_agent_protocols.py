@@ -43,7 +43,7 @@ class _FakeDeliberationAgent:
 class _FakeConversationalAgent:
     """Satisfies ConversationalAgent structurally."""
 
-    async def reply(self, conversation_history: list[Any]) -> str:
+    async def reply(self, message: str, context: dict[str, Any]) -> str:
         return "Hello"
 
     async def route(self, conversation_history: list[Any]) -> RouterDecision:
@@ -71,7 +71,7 @@ class _BrokenDeliberationAgent:
 class _BrokenConversationalAgent:
     """Does NOT satisfy ConversationalAgent — missing route()."""
 
-    async def reply(self, conversation_history: list[Any]) -> str:
+    async def reply(self, message: str, context: dict[str, Any]) -> str:
         return "Hello"
 
 
@@ -123,7 +123,7 @@ class _MultiCapabilityAgent:
     async def process(self, input: Any) -> Any:
         return input
 
-    async def reply(self, conversation_history: list[Any]) -> str:
+    async def reply(self, message: str, context: dict[str, Any]) -> str:
         return "ok"
 
     async def route(self, conversation_history: list[Any]) -> RouterDecision:

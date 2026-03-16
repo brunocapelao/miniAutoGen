@@ -30,10 +30,11 @@ class EventType(str, Enum):
 
 
 AGENTIC_LOOP_EVENT_TYPES = {
-    "agentic_loop_started",
-    "router_decision_emitted",
-    "agent_reply_recorded",
-    "agentic_loop_stopped",
+    EventType.AGENTIC_LOOP_STARTED.value,
+    EventType.ROUTER_DECISION.value,
+    EventType.AGENT_REPLIED.value,
+    EventType.AGENTIC_LOOP_STOPPED.value,
+    EventType.STAGNATION_DETECTED.value,
 }
 
 DELIBERATION_EVENT_TYPES = {
