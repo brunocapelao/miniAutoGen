@@ -50,6 +50,11 @@ from miniautogen.core.runtime import (
 from miniautogen.core.runtime.composite_runtime import CompositionStep
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
+from miniautogen.backends import (
+    AgentDriver,
+    BackendCapabilities,
+    BackendResolver,
+)
 from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 
 __all__ = [
@@ -93,4 +98,8 @@ __all__ = [
     # Policy enforcement
     "BudgetTracker",
     "BudgetExceededError",
+    # Backend driver abstraction
+    "AgentDriver",
+    "BackendCapabilities",
+    "BackendResolver",
 ]
