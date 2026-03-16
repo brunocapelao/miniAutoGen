@@ -49,3 +49,20 @@ export MINIAUTOGEN_GATEWAY_BASE_URL=http://127.0.0.1:8000
 - o gateway envia prompts por `stdin`, não por `-p`
 - o executor CLI é tratado como solução transitória; a borda HTTP permite troca futura por SDK/API nativa
 - o limite de concorrência deve permanecer baixo no início para evitar saturação da máquina host
+- o runner do gateway já suporta retry/backoff local para falhas transitórias do CLI
+
+## Notebooks e demos longas
+
+Workflows deliberativos e notebooks com múltiplas rodadas tendem a ser mais sensíveis à instabilidade do CLI do que exemplos curtos.
+
+Prática recomendada:
+- manter Gemini CLI como motor real;
+- ativar cache de respostas por etapa para reexecução;
+- tratar a primeira execução como `cold run`;
+- tratar reexecuções como `warm run`.
+
+Na prática:
+- `cold run`: consulta o Gemini CLI e grava respostas reutilizáveis;
+- `warm run`: reaproveita respostas válidas já persistidas no cache e reduz custo/instabilidade operacional.
+
+Esse cache não muda o contrato do framework. Ele existe apenas para estabilizar demos, notebooks e ciclos repetidos de pesquisa.

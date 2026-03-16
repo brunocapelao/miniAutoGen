@@ -16,7 +16,8 @@ class NonZeroProcessResult:
 
 @pytest.mark.asyncio
 async def test_run_gemini_command_raises_on_non_zero_exit(monkeypatch) -> None:
-    async def fake_run_process(command, input=None):
+    async def fake_run_process(command, input=None, check=True):
+        assert check is False
         return NonZeroProcessResult()
 
     monkeypatch.setattr("gemini_cli_gateway.runner.anyio.run_process", fake_run_process)

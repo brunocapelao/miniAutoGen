@@ -26,6 +26,8 @@ async def complete_chat(
         command,
         prompt,
         timeout_seconds=settings.command_timeout_seconds,
+        max_attempts=settings.retry_max_attempts,
+        retry_delay_seconds=settings.retry_delay_seconds,
     )
     return {
         "id": f"chatcmpl-gemini-cli-{uuid4().hex[:12]}",

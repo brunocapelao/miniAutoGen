@@ -77,6 +77,55 @@ O encerramento hoje depende de duas condições:
 - `ChatAdmin` atingir `max_rounds`;
 - `TerminateChatComponent` encontrar a palavra `TERMINATE` na última mensagem e chamar `chat_admin.stop()`.
 
+## Fluxo 6: pesquisa deliberativa multiagente
+
+O fluxo deliberativo adiciona uma camada de colaboração estruturada sobre o runtime oficial.
+
+1. O `Lead Researcher` produz o plano inicial da investigação.
+2. Especialistas executam a primeira rodada e retornam `ResearchOutput` com:
+   - fatos
+   - evidências
+   - inferências
+   - incertezas
+   - próximos testes
+3. Cada especialista revisa a saída de outro especialista via `PeerReview`.
+4. O runtime agrega essas revisões com `summarize_peer_reviews` e gera follow-ups com `build_follow_up_tasks`.
+5. O líder consolida:
+   - fatos aceitos
+   - conflitos abertos
+   - gaps pendentes
+   - suficiência da rodada
+   - razões de rejeição
+6. Só as frentes reprovadas ou incompletas voltam para a rodada seguinte.
+7. O `Documentation Agent` gera um `FinalDocument` orientado a decisão.
+8. O documento final é renderizado por `render_final_document_markdown`.
+
+Esse desenho melhora três coisas ao mesmo tempo:
+- qualidade do raciocínio, porque obriga separação entre fato e inferência;
+- colaboração, porque inclui revisão cruzada antes da decisão do líder;
+- qualidade do artefato final, porque o documento passa a carregar trilha decisória explícita.
+
+## Fluxo 7: agentic loop com contenção sistêmica
+
+O modo agentic reintroduz conversa livre como capability controlada do runtime.
+
+1. Um roteador emite `RouterDecision` com:
+   - resumo do estado atual;
+   - informação faltante;
+   - próximo agente;
+   - sinal de término;
+   - risco de estagnação.
+2. O agente selecionado produz sua resposta.
+3. A mensagem é persistida no `MessageStore`.
+4. `ConversationPolicy` avalia:
+   - `max_turns`
+   - `timeout_seconds`
+   - `budget_cap`
+   - estagnação
+5. O loop continua ou termina de forma controlada.
+
+Esse modo não substitui o runtime novo. Ele roda dentro dele.
+
 ## Pontos de extensão
 
 O desenho atual favorece extensão em três locais principais:

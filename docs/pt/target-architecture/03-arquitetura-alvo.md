@@ -218,6 +218,17 @@ flowchart TB
 
     Adapters --> LLM["Adapters de LLM"]
     Adapters --> HTTP["Adapters HTTP"]
+
+## Modo agentic como capability
+
+O diálogo livre entre agentes não deve voltar como centro do sistema. Ele deve existir como capability encapsulada do runtime:
+
+- `DynamicChatPipeline`: pipeline especializado em interação dinâmica;
+- `AgenticLoopComponent`: componente de loop injetável;
+- `RouterDecision`: passagem de bastão tipada;
+- `ConversationPolicy`: camada de contenção.
+
+Esse desenho preserva a arquitetura nova e reintroduz experimentação conversacional de forma auditável.
     Adapters --> Template["Adapters de template"]
     Adapters --> Tools["Adapters de tools"]
 

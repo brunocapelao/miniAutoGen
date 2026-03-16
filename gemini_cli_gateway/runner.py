@@ -65,32 +65,59 @@ async def run_gemini_command(
     prompt: str,
     *,
     timeout_seconds: float = 60.0,
+    max_attempts: int = 1,
+    retry_delay_seconds: float = 0.0,
 ) -> GeminiCLIResult:
-    started = perf_counter()
-    try:
-        with anyio.fail_after(timeout_seconds):
-            result = await anyio.run_process(command, input=prompt.encode("utf-8"))
-    except TimeoutError as exc:
-        raise GeminiCLIExecutionError(
-            f"Gemini CLI timed out after {timeout_seconds} seconds."
-        ) from exc
-    except FileNotFoundError as exc:
-        raise GeminiCLIExecutionError("Gemini CLI binary was not found.") from exc
+    attempts = max(1, max_attempts)
+    last_error: GeminiCLIExecutionError | None = None
 
-    duration_ms = (perf_counter() - started) * 1000.0
-    stdout = result.stdout.decode("utf-8", errors="replace")
-    stderr = result.stderr.decode("utf-8", errors="replace")
+    for attempt in range(1, attempts + 1):
+        started = perf_counter()
+        try:
+            with anyio.fail_after(timeout_seconds):
+                result = await anyio.run_process(
+                    command,
+                    input=prompt.encode("utf-8"),
+                    check=False,
+                )
+        except TimeoutError as exc:
+            last_error = GeminiCLIExecutionError(
+                f"Gemini CLI timed out after {timeout_seconds} seconds."
+            )
+            if attempt == attempts:
+                raise last_error from exc
+        except FileNotFoundError as exc:
+            raise GeminiCLIExecutionError("Gemini CLI binary was not found.") from exc
+        else:
+            duration_ms = (perf_counter() - started) * 1000.0
+            stdout = result.stdout.decode("utf-8", errors="replace")
+            stderr = result.stderr.decode("utf-8", errors="replace")
 
-    if result.returncode != 0:
-        raise GeminiCLIExecutionError(
-            f"Gemini CLI failed with exit code {result.returncode}. stderr={stderr!r}"
-        )
+            if result.returncode != 0:
+                last_error = GeminiCLIExecutionError(
+                    f"Gemini CLI failed with exit code {result.returncode}. stderr={stderr!r}"
+                )
+                if attempt == attempts:
+                    raise last_error
+            else:
+                try:
+                    text = parse_gemini_output(stdout, stderr)
+                except GeminiCLIExecutionError as exc:
+                    last_error = exc
+                    if attempt == attempts:
+                        raise
+                else:
+                    return GeminiCLIResult(
+                        text=text,
+                        raw_stdout=stdout,
+                        raw_stderr=stderr,
+                        returncode=result.returncode,
+                        duration_ms=duration_ms,
+                    )
 
-    text = parse_gemini_output(stdout, stderr)
-    return GeminiCLIResult(
-        text=text,
-        raw_stdout=stdout,
-        raw_stderr=stderr,
-        returncode=result.returncode,
-        duration_ms=duration_ms,
-    )
+        if retry_delay_seconds > 0:
+            await anyio.sleep(retry_delay_seconds)
+
+    if last_error is not None:
+        raise last_error
+    raise GeminiCLIExecutionError("Gemini CLI execution failed without a recoverable result.")
