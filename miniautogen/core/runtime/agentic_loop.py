@@ -5,6 +5,7 @@ from miniautogen.core.contracts.agentic_loop import (
     ConversationPolicy,
     RouterDecision,
 )
+from miniautogen.core.contracts.enums import LoopStopReason
 
 
 def detect_stagnation(history: list[RouterDecision], window: int) -> bool:
@@ -23,5 +24,5 @@ def should_stop_loop(
     state: AgenticLoopState, policy: ConversationPolicy
 ) -> tuple[bool, str | None]:
     if state.turn_count >= policy.max_turns:
-        return True, "max_turns"
+        return True, LoopStopReason.MAX_TURNS
     return False, None

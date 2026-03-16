@@ -12,6 +12,7 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     CoordinationPlan,
 )
+from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.observability import get_logger
@@ -77,7 +78,7 @@ class CompositeRuntime:
         if not plan:
             return RunResult(
                 run_id=context.run_id,
-                status="finished",
+                status=RunStatus.FINISHED,
                 output=context.input_payload,
             )
 
@@ -113,7 +114,7 @@ class CompositeRuntime:
             )
 
             # 4. Fail fast
-            if result.status == "failed":
+            if result.status == RunStatus.FAILED:
                 logger.error(
                     "composition_failed",
                     step=step_label,

@@ -20,6 +20,7 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     WorkflowPlan,
 )
+from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
@@ -71,7 +72,7 @@ class WorkflowRuntime:
         validation_error = self._validate_plan(plan)
         if validation_error is not None:
             logger.error("workflow_validation_failed", error=validation_error)
-            return RunResult(run_id=run_id, status="failed", error=validation_error)
+            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=validation_error)
 
         # --- Emit RUN_STARTED ---
         await self._emit(event_type=EventType.RUN_STARTED.value, run_id=run_id, correlation_id=correlation_id)
@@ -106,13 +107,13 @@ class WorkflowRuntime:
                 payload={"error": combined_error},
             )
             logger.error("workflow_failed", error=combined_error)
-            return RunResult(run_id=run_id, status="failed", error=combined_error)
+            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=combined_error)
 
         # --- Emit RUN_FINISHED ---
         await self._emit(event_type=EventType.RUN_FINISHED.value, run_id=run_id, correlation_id=correlation_id)
         logger.info("workflow_finished")
 
-        return RunResult(run_id=run_id, status="finished", output=final_output)
+        return RunResult(run_id=run_id, status=RunStatus.FINISHED, output=final_output)
 
     # ------------------------------------------------------------------
     # Internal helpers

@@ -18,6 +18,7 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     DeliberationPlan,
 )
+from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.deliberation import (
     DeliberationState,
     FinalDocument,
@@ -85,7 +86,7 @@ class DeliberationRuntime:
             logger.error("deliberation_validation_failed", error=error_msg)
             return RunResult(
                 run_id=context.run_id,
-                status="failed",
+                status=RunStatus.FAILED,
                 error=error_msg,
             )
 
@@ -95,7 +96,7 @@ class DeliberationRuntime:
             logger.error("deliberation_validation_failed", missing=missing)
             return RunResult(
                 run_id=context.run_id,
-                status="failed",
+                status=RunStatus.FAILED,
                 error=error_msg,
             )
 
@@ -105,7 +106,7 @@ class DeliberationRuntime:
             logger.error("deliberation_validation_failed", error=error_msg)
             return RunResult(
                 run_id=context.run_id,
-                status="failed",
+                status=RunStatus.FAILED,
                 error=error_msg,
             )
 
@@ -159,7 +160,7 @@ class DeliberationRuntime:
                     )
                     return RunResult(
                         run_id=context.run_id,
-                        status="failed",
+                        status=RunStatus.FAILED,
                         error=error_msg,
                     )
 
@@ -200,7 +201,7 @@ class DeliberationRuntime:
                         )
                         return RunResult(
                             run_id=context.run_id,
-                            status="failed",
+                            status=RunStatus.FAILED,
                             error=error_msg,
                         )
 
@@ -238,7 +239,7 @@ class DeliberationRuntime:
                 )
                 return RunResult(
                     run_id=context.run_id,
-                    status="failed",
+                    status=RunStatus.FAILED,
                     error=error_msg,
                 )
 
@@ -278,7 +279,7 @@ class DeliberationRuntime:
             )
             return RunResult(
                 run_id=context.run_id,
-                status="failed",
+                status=RunStatus.FAILED,
                 error=error_msg,
             )
 
@@ -297,7 +298,7 @@ class DeliberationRuntime:
 
         return RunResult(
             run_id=context.run_id,
-            status="finished",
+            status=RunStatus.FINISHED,
             output=state,
             metadata={
                 "final_document": final_doc.model_dump(),

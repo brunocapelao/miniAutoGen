@@ -20,6 +20,7 @@ from miniautogen.core.contracts.coordination import (
     AgenticLoopPlan,
     CoordinationKind,
 )
+from miniautogen.core.contracts.enums import LoopStopReason, RunStatus
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
@@ -74,7 +75,7 @@ class AgenticLoopRuntime:
         validation_error = self._validate_plan(plan)
         if validation_error is not None:
             logger.error("agentic_loop_validation_failed", error=validation_error)
-            return RunResult(run_id=run_id, status="failed", error=validation_error)
+            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=validation_error)
 
         # --- Emit AGENTIC_LOOP_STARTED ---
         await self._emit(
@@ -98,7 +99,7 @@ class AgenticLoopRuntime:
 
         routing_history: list[RouterDecision] = []
         state = AgenticLoopState()
-        stop_reason = "max_turns"
+        stop_reason: str = LoopStopReason.MAX_TURNS
         router_agent = self._registry[plan.router_agent]
 
         try:
@@ -107,7 +108,7 @@ class AgenticLoopRuntime:
                     # Check should_stop_loop
                     should_stop, reason = should_stop_loop(state, plan.policy)
                     if should_stop:
-                        stop_reason = reason or "max_turns"
+                        stop_reason = reason or LoopStopReason.MAX_TURNS
                         break
 
                     # Call router — pass messages as list of dicts for router interface
@@ -133,7 +134,7 @@ class AgenticLoopRuntime:
 
                     # Check termination
                     if decision.terminate:
-                        stop_reason = "router_terminated"
+                        stop_reason = LoopStopReason.ROUTER_TERMINATED
                         break
 
                     # Check stagnation
@@ -145,7 +146,7 @@ class AgenticLoopRuntime:
                             run_id=run_id,
                             correlation_id=correlation_id,
                         )
-                        stop_reason = "stagnation"
+                        stop_reason = LoopStopReason.STAGNATION
                         break
 
                     # Validate and get selected agent
@@ -158,7 +159,7 @@ class AgenticLoopRuntime:
                         )
                         return RunResult(
                             run_id=run_id,
-                            status="failed",
+                            status=RunStatus.FAILED,
                             error=(
                                 f"Router selected agent '{agent_id}' which is not a declared "
                                 f"participant. Valid participants: {plan.participants}"
@@ -196,10 +197,10 @@ class AgenticLoopRuntime:
 
         except TimeoutError:
             logger.warning("agentic_loop_timed_out", timeout=plan.policy.timeout_seconds)
-            stop_reason = "timeout"
+            stop_reason = LoopStopReason.TIMEOUT
         except Exception as exc:
             logger.error("agentic_loop_failed", error=str(exc))
-            return RunResult(run_id=run_id, status="failed", error=str(exc))
+            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=str(exc))
 
         # --- Emit AGENTIC_LOOP_STOPPED ---
         await self._emit(
@@ -219,7 +220,7 @@ class AgenticLoopRuntime:
 
         return RunResult(
             run_id=run_id,
-            status="finished",
+            status=RunStatus.FINISHED,
             output=[
                 {"sender": m.sender_id, "content": m.content}
                 for m in conversation.messages
