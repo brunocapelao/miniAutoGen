@@ -11,9 +11,7 @@ from typing import Any
 
 import anyio
 
-if sys.version_info >= (3, 11):
-    pass  # BaseExceptionGroup is a builtin
-else:
+if sys.version_info < (3, 11):  # TODO(review): simplify — pass branch on 3.11+ is unused (code-reviewer, 2026-03-16, Severity: Low)
     from exceptiongroup import BaseExceptionGroup  # type: ignore[no-redef]
 
 from miniautogen.core.contracts.coordination import (
