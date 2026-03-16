@@ -28,3 +28,9 @@ AGENTIC_LOOP_EVENT_TYPES = {
     "agent_reply_recorded",
     "agentic_loop_stopped",
 }
+
+DELIBERATION_EVENT_TYPES = {
+    "deliberation_started",
+    "deliberation_finished",
+    "deliberation_failed",
+}
