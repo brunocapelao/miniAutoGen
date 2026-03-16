@@ -9,6 +9,7 @@ from .coordination import (
     CoordinationMode,
     CoordinationPlan,
     DeliberationPlan,
+    SubrunRequest,
     WorkflowPlan,
     WorkflowStep,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "RouterDecision",
     "RunContext",
     "RunResult",
+    "SubrunRequest",
     "WorkflowAgent",
     "WorkflowPlan",
     "WorkflowStep",

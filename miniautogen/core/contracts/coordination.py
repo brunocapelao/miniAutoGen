@@ -104,3 +104,21 @@ class AgenticLoopPlan(CoordinationPlan):
     policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
     goal: str = ""
     initial_message: str | None = None
+
+
+# --- Subrun contracts ---
+
+
+class SubrunRequest(BaseModel):
+    """Request to execute a nested coordination run.
+
+    Enables nested execution: e.g., a workflow step that triggers
+    a sub-deliberation, or a deliberation round that spawns a sub-workflow.
+    """
+
+    mode: CoordinationKind
+    plan: CoordinationPlan
+    label: str = ""
+    input_key: str | None = None
+    output_key: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
