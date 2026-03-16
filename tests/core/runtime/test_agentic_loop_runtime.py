@@ -525,3 +525,46 @@ async def test_router_selecting_agent_outside_participants_returns_error() -> No
     assert "secret" in result.error
     assert "not a declared participant" in result.error
     assert secret_agent.call_count == 0  # secret agent was NOT called
+
+
+@pytest.mark.asyncio
+async def test_timeout_emits_run_timed_out_event() -> None:
+    """When the loop times out, a RUN_TIMED_OUT event must be emitted."""
+    import asyncio
+
+    class _SlowAgent:
+        async def reply(self, last_message: str, context: dict[str, Any]) -> str:
+            await asyncio.sleep(5.0)
+            return "slow-reply"
+
+    router = _FakeRouter([
+        RouterDecision(
+            current_state_summary="start",
+            missing_information="need a",
+            next_agent="slow_agent",
+        )
+        for _ in range(10)
+    ])
+    slow_agent = _SlowAgent()
+
+    registry: dict[str, Any] = {"router": router, "slow_agent": slow_agent}
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    runtime = AgenticLoopRuntime(runner=runner, agent_registry=registry)
+
+    plan = AgenticLoopPlan(
+        router_agent="router",
+        participants=["slow_agent"],
+        policy=ConversationPolicy(max_turns=10, timeout_seconds=0.1),
+    )
+    result = await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+    assert result.status == "finished"
+    assert result.metadata["stop_reason"] == "timeout"
+
+    event_types = [e.type for e in event_sink.events]
+    assert "run_timed_out" in event_types
+
+    timed_out_events = [e for e in event_sink.events if e.type == "run_timed_out"]
+    assert len(timed_out_events) == 1
+    assert timed_out_events[0].payload["timeout_seconds"] == 0.1
