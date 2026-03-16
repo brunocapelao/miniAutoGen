@@ -103,3 +103,4 @@ class AgenticLoopPlan(CoordinationPlan):
     participants: list[str] = Field(min_length=1)
     policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
     goal: str = ""
+    initial_message: str | None = None
