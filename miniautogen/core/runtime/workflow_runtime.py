@@ -93,22 +93,14 @@ class WorkflowRuntime:
             else:
                 final_output = outputs
 
-        except BaseExceptionGroup as exc:
-            error_messages = [str(e) for e in exc.exceptions]
-            combined_error = "; ".join(error_messages)
-            try:
-                await self._emit(
-                    event_type=EventType.RUN_FAILED.value,
-                    run_id=run_id,
-                    correlation_id=correlation_id,
-                    payload={"error": combined_error},
-                )
-            except Exception:
-                logger.warning("failed_to_emit_error_event", original_error=combined_error)
-            logger.error("workflow_failed", error=combined_error)
-            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=combined_error)
-        except Exception as exc:
-            combined_error = str(exc)
+        except BaseException as exc:
+            if isinstance(exc, BaseExceptionGroup):
+                error_messages = [str(e) for e in exc.exceptions]
+                combined_error = "; ".join(error_messages)
+            elif isinstance(exc, Exception):
+                combined_error = str(exc)
+            else:
+                raise  # Let KeyboardInterrupt, SystemExit propagate
             try:
                 await self._emit(
                     event_type=EventType.RUN_FAILED.value,

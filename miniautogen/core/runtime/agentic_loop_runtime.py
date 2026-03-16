@@ -198,12 +198,15 @@ class AgenticLoopRuntime:
         except TimeoutError:
             logger.warning("agentic_loop_timed_out", timeout=plan.policy.timeout_seconds)
             stop_reason = LoopStopReason.TIMEOUT
-            await self._emit(
-                event_type=EventType.RUN_TIMED_OUT.value,
-                run_id=run_id,
-                correlation_id=correlation_id,
-                payload={"timeout_seconds": plan.policy.timeout_seconds},
-            )
+            try:
+                await self._emit(
+                    event_type=EventType.RUN_TIMED_OUT.value,
+                    run_id=run_id,
+                    correlation_id=correlation_id,
+                    payload={"timeout_seconds": plan.policy.timeout_seconds},
+                )
+            except Exception:
+                logger.warning("failed_to_emit_timeout_event", timeout=plan.policy.timeout_seconds)
         except Exception as exc:
             logger.error("agentic_loop_failed", error=str(exc))
             return RunResult(run_id=run_id, status=RunStatus.FAILED, error=str(exc))
