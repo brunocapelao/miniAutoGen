@@ -2,6 +2,7 @@
 
 from .agent import ConversationalAgent, DeliberationAgent, WorkflowAgent
 from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
+from .conversation import Conversation
 from .coordination import (
     CoordinationKind,
     CoordinationMode,
@@ -22,6 +23,7 @@ __all__ = [
     "ConversationPolicy",
     "CoordinationKind",
     "CoordinationMode",
+    "Conversation",
     "Contribution",
     "CoordinationPlan",
     "DeliberationAgent",
