@@ -288,3 +288,37 @@ async def test_events_emitted_for_sequential_run() -> None:
     event_types = [e.type for e in event_sink.events]
     assert "run_started" in event_types
     assert "run_finished" in event_types
+
+
+@pytest.mark.asyncio
+async def test_fan_out_multiple_failures_returns_all_errors() -> None:
+    """When multiple parallel branches fail, all errors are captured in the result."""
+
+    class _FailAgentA:
+        async def process(self, input_data: Any) -> Any:
+            raise RuntimeError("branch-A exploded")
+
+    class _FailAgentB:
+        async def process(self, input_data: Any) -> Any:
+            raise RuntimeError("branch-B exploded")
+
+    registry: dict[str, Any] = {"fail_a": _FailAgentA(), "fail_b": _FailAgentB()}
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    runtime = WorkflowRuntime(runner=runner, agent_registry=registry)
+
+    plan = WorkflowPlan(
+        steps=[
+            WorkflowStep(component_name="step1", agent_id="fail_a"),
+            WorkflowStep(component_name="step2", agent_id="fail_b"),
+        ],
+        fan_out=True,
+    )
+    ctx = _make_context()
+    result = await runtime.run(agents=[], context=ctx, plan=plan)
+
+    assert result.status == "failed"
+    assert result.error is not None
+    # The error message must mention BOTH failures, not just the first one
+    assert "branch-A exploded" in result.error
+    assert "branch-B exploded" in result.error

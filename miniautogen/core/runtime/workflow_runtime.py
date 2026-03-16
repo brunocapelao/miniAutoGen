@@ -5,10 +5,16 @@ Supports sequential execution, fan-out parallelism, and optional synthesis.
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
 from typing import Any
 
 import anyio
+
+if sys.version_info >= (3, 11):
+    pass  # BaseExceptionGroup is a builtin
+else:
+    from exceptiongroup import BaseExceptionGroup  # type: ignore[no-redef]
 
 from miniautogen.core.contracts.coordination import (
     CoordinationKind,
@@ -87,15 +93,20 @@ class WorkflowRuntime:
             else:
                 final_output = outputs
 
-        except Exception as exc:
+        except BaseException as exc:
+            if isinstance(exc, BaseExceptionGroup):
+                error_messages = [str(e) for e in exc.exceptions]
+                combined_error = "; ".join(error_messages)
+            else:
+                combined_error = str(exc)
             await self._emit(
                 event_type=EventType.RUN_FAILED.value,
                 run_id=run_id,
                 correlation_id=correlation_id,
-                payload={"error": str(exc)},
+                payload={"error": combined_error},
             )
-            logger.error("workflow_failed", error=str(exc))
-            return RunResult(run_id=run_id, status="failed", error=str(exc))
+            logger.error("workflow_failed", error=combined_error)
+            return RunResult(run_id=run_id, status="failed", error=combined_error)
 
         # --- Emit RUN_FINISHED ---
         await self._emit(event_type=EventType.RUN_FINISHED.value, run_id=run_id, correlation_id=correlation_id)
@@ -141,26 +152,16 @@ class WorkflowRuntime:
         """Execute all steps in parallel, returning a list of outputs."""
         initial_input = context.input_payload
         results: list[Any] = [None] * len(plan.steps)
-        error_holder: list[Exception] = []
 
         async def _run_branch(index: int, step: Any) -> None:
-            try:
-                if step.agent_id is None:
-                    results[index] = initial_input
-                else:
-                    results[index] = await self._invoke_agent(step.agent_id, initial_input)
-            except Exception as exc:
-                error_holder.append(exc)
-                raise
+            if step.agent_id is None:
+                results[index] = initial_input
+            else:
+                results[index] = await self._invoke_agent(step.agent_id, initial_input)
 
-        try:
-            async with anyio.create_task_group() as tg:
-                for i, step in enumerate(plan.steps):
-                    tg.start_soon(_run_branch, i, step)
-        except BaseException:
-            if error_holder:
-                raise error_holder[0]
-            raise
+        async with anyio.create_task_group() as tg:
+            for i, step in enumerate(plan.steps):
+                tg.start_soon(_run_branch, i, step)
 
         return results
 
