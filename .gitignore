@@ -45,3 +45,7 @@ dist/
 
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
+.venv/
+output/
+!output/jupyter-notebook/
+!output/jupyter-notebook/*.ipynb
