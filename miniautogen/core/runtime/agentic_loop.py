@@ -22,7 +22,8 @@ def detect_stagnation(history: list[RouterDecision], window: int) -> bool:
 
 def should_stop_loop(
     state: AgenticLoopState, policy: ConversationPolicy
-) -> tuple[bool, str | None]:  # TODO(review): narrow return type to tuple[bool, LoopStopReason | None] (code-reviewer, 2026-03-16, Severity: Low)
+) -> tuple[bool, str | None]:
+    # TODO(review): narrow to tuple[bool, LoopStopReason | None] (Low)
     if state.turn_count >= policy.max_turns:
         return True, LoopStopReason.MAX_TURNS
     return False, None
