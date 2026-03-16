@@ -142,8 +142,22 @@ class AgenticLoopRuntime:
                     stop_reason = "stagnation"
                     break
 
-                # Get selected agent and call reply
+                # Validate and get selected agent
                 agent_id = decision.next_agent
+                if agent_id not in plan.participants:
+                    logger.error(
+                        "router_selected_invalid_participant",
+                        selected=agent_id,
+                        valid=plan.participants,
+                    )
+                    return RunResult(
+                        run_id=run_id,
+                        status="failed",
+                        error=(
+                            f"Router selected agent '{agent_id}' which is not a declared "
+                            f"participant. Valid participants: {plan.participants}"
+                        ),
+                    )
                 agent = self._registry[agent_id]
                 last_message = (
                     conversation_history[-1]["content"]

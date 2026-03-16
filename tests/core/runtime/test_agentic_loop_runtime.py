@@ -454,3 +454,38 @@ async def test_result_contains_conversation_history_as_output() -> None:
     assert history[0] == {"sender": "system", "content": "Start"}
     assert history[1]["sender"] == "agent_a"
     assert "a-reply" in history[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_router_selecting_agent_outside_participants_returns_error() -> None:
+    """Router selecting an agent not in the plan's participants list should fail."""
+    secret_agent = _FakeAgent("secret")
+    agent_a = _FakeAgent("a")
+    router = _FakeRouter([
+        RouterDecision(
+            current_state_summary="start",
+            missing_information="need input",
+            next_agent="secret",
+            stagnation_risk=0.0,
+        ),
+    ])
+
+    sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=sink)
+    runtime = AgenticLoopRuntime(
+        runner=runner,
+        agent_registry={"agent_a": agent_a, "secret": secret_agent, "router": router},
+    )
+
+    plan = AgenticLoopPlan(
+        participants=["agent_a"],  # "secret" is NOT a participant
+        router_agent="router",
+        initial_message="go",
+    )
+    ctx = _make_context()
+    result = await runtime.run(agents=[], context=ctx, plan=plan)
+
+    assert result.status == "failed"
+    assert "secret" in result.error
+    assert "not a declared participant" in result.error
+    assert secret_agent.call_count == 0  # secret agent was NOT called
