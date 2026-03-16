@@ -457,6 +457,42 @@ async def test_result_contains_conversation_history_as_output() -> None:
 
 
 @pytest.mark.asyncio
+async def test_timeout_enforcement() -> None:
+    """Loop stops when timeout_seconds is exceeded."""
+    import asyncio
+
+    class _SlowAgent:
+        async def reply(self, last_message: str, context: dict[str, Any]) -> str:
+            await asyncio.sleep(5.0)  # Way longer than timeout
+            return "slow-reply"
+
+    router = _FakeRouter([
+        RouterDecision(
+            current_state_summary="start",
+            missing_information="need a",
+            next_agent="slow_agent",
+        )
+        for _ in range(10)
+    ])
+    slow_agent = _SlowAgent()
+
+    registry: dict[str, Any] = {"router": router, "slow_agent": slow_agent}
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    runtime = AgenticLoopRuntime(runner=runner, agent_registry=registry)
+
+    plan = AgenticLoopPlan(
+        router_agent="router",
+        participants=["slow_agent"],
+        policy=ConversationPolicy(max_turns=10, timeout_seconds=0.1),  # Very short timeout
+    )
+    result = await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+    assert result.status == "finished"
+    assert result.metadata["stop_reason"] == "timeout"
+
+
+@pytest.mark.asyncio
 async def test_router_selecting_agent_outside_participants_returns_error() -> None:
     """Router selecting an agent not in the plan's participants list should fail."""
     secret_agent = _FakeAgent("secret")

@@ -6,9 +6,12 @@ which participant speaks next, until termination, stagnation, or max turns.
 
 from __future__ import annotations
 
+import anyio
 from datetime import datetime, timezone
 from typing import Any
 
+from miniautogen.core.contracts.conversation import Conversation
+from miniautogen.core.contracts.message import Message
 from miniautogen.core.contracts.agentic_loop import (
     AgenticLoopState,
     RouterDecision,
@@ -59,8 +62,6 @@ class AgenticLoopRuntime:
         for composability. Actual agent resolution uses the ``agent_registry``
         injected at construction time.
         """
-        # TODO(review): Enforce timeout_seconds from ConversationPolicy - code-reviewer, 2026-03-16, Severity: Medium
-        # TODO(review): Use Conversation contract instead of raw list[dict] for history - code-reviewer, 2026-03-16, Severity: Medium
         run_id = context.run_id
         correlation_id = context.correlation_id
         logger = self._logger.bind(
@@ -89,10 +90,10 @@ class AgenticLoopRuntime:
         )
 
         # --- Initialize conversation ---
-        conversation_history: list[dict[str, str]] = []
+        conversation = Conversation(id=run_id)
         if plan.initial_message is not None:
-            conversation_history.append(
-                {"sender": "system", "content": plan.initial_message}
+            conversation = conversation.add_message(
+                Message(sender_id="system", content=plan.initial_message)
             )
 
         routing_history: list[RouterDecision] = []
@@ -101,93 +102,101 @@ class AgenticLoopRuntime:
         router_agent = self._registry[plan.router_agent]
 
         try:
-            for _turn in range(plan.policy.max_turns):
-                # Check should_stop_loop
-                should_stop, reason = should_stop_loop(state, plan.policy)
-                if should_stop:
-                    stop_reason = reason or "max_turns"
-                    break
+            with anyio.fail_after(plan.policy.timeout_seconds):
+                for _turn in range(plan.policy.max_turns):
+                    # Check should_stop_loop
+                    should_stop, reason = should_stop_loop(state, plan.policy)
+                    if should_stop:
+                        stop_reason = reason or "max_turns"
+                        break
 
-                # Call router
-                decision: RouterDecision = await router_agent.route(
-                    conversation_history
-                )
-                routing_history.append(decision)
+                    # Call router — pass messages as list of dicts for router interface
+                    history_for_router = [
+                        {"sender": m.sender_id, "content": m.content}
+                        for m in conversation.messages
+                    ]
+                    decision: RouterDecision = await router_agent.route(
+                        history_for_router
+                    )
+                    routing_history.append(decision)
 
-                # Emit ROUTER_DECISION
-                await self._emit(
-                    event_type=EventType.ROUTER_DECISION.value,
-                    run_id=run_id,
-                    correlation_id=correlation_id,
-                    payload={
-                        "next_agent": decision.next_agent,
-                        "terminate": decision.terminate,
-                    },
-                )
-
-                # Check termination
-                if decision.terminate:
-                    stop_reason = "router_terminated"
-                    break
-
-                # Check stagnation
-                if detect_stagnation(
-                    routing_history, plan.policy.stagnation_window
-                ):
+                    # Emit ROUTER_DECISION
                     await self._emit(
-                        event_type=EventType.STAGNATION_DETECTED.value,
+                        event_type=EventType.ROUTER_DECISION.value,
                         run_id=run_id,
                         correlation_id=correlation_id,
+                        payload={
+                            "next_agent": decision.next_agent,
+                            "terminate": decision.terminate,
+                        },
                     )
-                    stop_reason = "stagnation"
-                    break
 
-                # Validate and get selected agent
-                agent_id = decision.next_agent
-                if agent_id not in plan.participants:
-                    logger.error(
-                        "router_selected_invalid_participant",
-                        selected=agent_id,
-                        valid=plan.participants,
+                    # Check termination
+                    if decision.terminate:
+                        stop_reason = "router_terminated"
+                        break
+
+                    # Check stagnation
+                    if detect_stagnation(
+                        routing_history, plan.policy.stagnation_window
+                    ):
+                        await self._emit(
+                            event_type=EventType.STAGNATION_DETECTED.value,
+                            run_id=run_id,
+                            correlation_id=correlation_id,
+                        )
+                        stop_reason = "stagnation"
+                        break
+
+                    # Validate and get selected agent
+                    agent_id = decision.next_agent
+                    if agent_id not in plan.participants:
+                        logger.error(
+                            "router_selected_invalid_participant",
+                            selected=agent_id,
+                            valid=plan.participants,
+                        )
+                        return RunResult(
+                            run_id=run_id,
+                            status="failed",
+                            error=(
+                                f"Router selected agent '{agent_id}' which is not a declared "
+                                f"participant. Valid participants: {plan.participants}"
+                            ),
+                        )
+                    agent = self._registry[agent_id]
+                    last_message = (
+                        conversation.messages[-1].content
+                        if conversation.messages
+                        else ""
                     )
-                    return RunResult(
+                    reply = await agent.reply(
+                        last_message, {"run_id": run_id, "turn": state.turn_count}
+                    )
+
+                    # Append to conversation history
+                    conversation = conversation.add_message(
+                        Message(sender_id=agent_id, content=reply)
+                    )
+
+                    # Emit AGENT_REPLIED
+                    await self._emit(
+                        event_type=EventType.AGENT_REPLIED.value,
                         run_id=run_id,
-                        status="failed",
-                        error=(
-                            f"Router selected agent '{agent_id}' which is not a declared "
-                            f"participant. Valid participants: {plan.participants}"
-                        ),
+                        correlation_id=correlation_id,
+                        payload={"agent": agent_id, "reply_length": len(reply)},
                     )
-                agent = self._registry[agent_id]
-                last_message = (
-                    conversation_history[-1]["content"]
-                    if conversation_history
-                    else ""
-                )
-                reply = await agent.reply(
-                    last_message, {"run_id": run_id, "turn": state.turn_count}
-                )
 
-                # Append to conversation history
-                conversation_history.append(
-                    {"sender": agent_id, "content": reply}
-                )
+                    # Update state
+                    state = AgenticLoopState(
+                        active_agent=agent_id,
+                        turn_count=state.turn_count + 1,
+                        accepted_output=reply,
+                    )
 
-                # Emit AGENT_REPLIED
-                await self._emit(
-                    event_type=EventType.AGENT_REPLIED.value,
-                    run_id=run_id,
-                    correlation_id=correlation_id,
-                    payload={"agent": agent_id, "reply_length": len(reply)},
-                )
-
-                # Update state
-                state = AgenticLoopState(
-                    active_agent=agent_id,
-                    turn_count=state.turn_count + 1,
-                    accepted_output=reply,
-                )
-
+        except TimeoutError:
+            logger.warning("agentic_loop_timed_out", timeout=plan.policy.timeout_seconds)
+            stop_reason = "timeout"
         except Exception as exc:
             logger.error("agentic_loop_failed", error=str(exc))
             return RunResult(run_id=run_id, status="failed", error=str(exc))
@@ -211,7 +220,10 @@ class AgenticLoopRuntime:
         return RunResult(
             run_id=run_id,
             status="finished",
-            output=conversation_history,
+            output=[
+                {"sender": m.sender_id, "content": m.content}
+                for m in conversation.messages
+            ],
             metadata={"stop_reason": stop_reason, "turns": state.turn_count},
         )
 

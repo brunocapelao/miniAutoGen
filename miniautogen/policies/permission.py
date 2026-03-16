@@ -5,9 +5,15 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class PermissionPolicy:
-    """Policy for action permissions."""
+    """Policy for action permissions.
+
+    By default, if no ``allowed_actions`` are configured and ``allow_all``
+    is False, all actions are **denied**. Set ``allow_all=True`` for
+    an explicit permissive policy, or configure specific ``allowed_actions``.
+    """
 
     allowed_actions: tuple[str, ...] = ()
+    allow_all: bool = False
 
 
 class PermissionDeniedError(Exception):
@@ -15,17 +21,9 @@ class PermissionDeniedError(Exception):
 
 
 def check_permission(policy: PermissionPolicy, action: str) -> None:
-    """Check if action is allowed. Raises PermissionDeniedError if not.
-
-    If allowed_actions is empty, all actions are permitted (permissive default).
-
-    .. warning::
-        Empty ``allowed_actions`` is **permissive by default**. If you need
-        deny-by-default semantics, always configure explicit actions.
-    """
-    # TODO(review): Consider deny-by-default with explicit allow_all flag - security-reviewer, 2026-03-16, Severity: Medium
-    if not policy.allowed_actions:
-        return  # Empty = all allowed
+    """Check if action is allowed. Raises PermissionDeniedError if not."""
+    if policy.allow_all:
+        return
     if action not in policy.allowed_actions:
         raise PermissionDeniedError(
             f"Action '{action}' not permitted. Allowed: {policy.allowed_actions}"
