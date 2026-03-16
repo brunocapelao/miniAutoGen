@@ -1,10 +1,49 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from typing import Any
+
+from pydantic import BaseModel, Field, model_validator
 
 
-class ResearchOutput(BaseModel):
-    """Structured output produced by a specialist research agent."""
+# --- General deliberation contracts ---
+
+
+class Contribution(BaseModel):
+    """General-purpose contribution in a deliberation cycle.
+
+    Any participant can produce a Contribution. Specialized forms
+    (e.g., ResearchOutput) extend this base.
+    """
+
+    participant_id: str
+    title: str
+    content: dict[str, Any] = Field(default_factory=dict)
+
+
+class Review(BaseModel):
+    """General-purpose review of another participant's contribution.
+
+    Specialized forms (e.g., PeerReview) extend this base.
+    """
+
+    reviewer_id: str
+    target_id: str
+    target_title: str
+    strengths: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    questions: list[str] = Field(default_factory=list)
+
+
+# --- Research-specific deliberation contracts (backward-compatible) ---
+
+
+class ResearchOutput(Contribution):
+    """Structured output produced by a specialist research agent.
+
+    Extends Contribution with research-specific fields.
+    ``participant_id`` is synced from ``role_name``.
+    ``title`` is synced from ``section_title``.
+    """
 
     role_name: str
     section_title: str
@@ -16,16 +55,41 @@ class ResearchOutput(BaseModel):
     recommendation: str
     next_tests: list[str] = Field(default_factory=list)
 
+    @model_validator(mode="before")
+    @classmethod
+    def sync_base_fields(cls, data: dict) -> dict:
+        if isinstance(data, dict):
+            if "participant_id" not in data and "role_name" in data:
+                data["participant_id"] = data["role_name"]
+            if "title" not in data and "section_title" in data:
+                data["title"] = data["section_title"]
+        return data
 
-class PeerReview(BaseModel):
-    """Cross-review emitted by one specialist about another specialist output."""
+
+class PeerReview(Review):
+    """Cross-review emitted by one specialist about another specialist output.
+
+    Extends Review with research-specific naming.
+    ``reviewer_id`` is synced from ``reviewer_role``.
+    ``target_id`` is synced from ``target_role``.
+    ``target_title`` is synced from ``target_section_title``.
+    """
 
     reviewer_role: str
     target_role: str
     target_section_title: str
-    strengths: list[str] = Field(default_factory=list)
-    concerns: list[str] = Field(default_factory=list)
-    questions: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_base_fields(cls, data: dict) -> dict:
+        if isinstance(data, dict):
+            if "reviewer_id" not in data and "reviewer_role" in data:
+                data["reviewer_id"] = data["reviewer_role"]
+            if "target_id" not in data and "target_role" in data:
+                data["target_id"] = data["target_role"]
+            if "target_title" not in data and "target_section_title" in data:
+                data["target_title"] = data["target_section_title"]
+        return data
 
 
 class DeliberationState(BaseModel):

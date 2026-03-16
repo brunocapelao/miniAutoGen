@@ -9,7 +9,7 @@ from .coordination import (
     WorkflowPlan,
     WorkflowStep,
 )
-from .deliberation import DeliberationState, FinalDocument, PeerReview, ResearchOutput
+from .deliberation import Contribution, DeliberationState, FinalDocument, PeerReview, ResearchOutput, Review
 from .events import ExecutionEvent
 from .message import Message
 from .run_context import RunContext
@@ -20,6 +20,7 @@ __all__ = [
     "ConversationPolicy",
     "CoordinationKind",
     "CoordinationMode",
+    "Contribution",
     "CoordinationPlan",
     "DeliberationPlan",
     "DeliberationState",
@@ -28,6 +29,7 @@ __all__ = [
     "Message",
     "PeerReview",
     "ResearchOutput",
+    "Review",
     "RouterDecision",
     "RunContext",
     "RunResult",
