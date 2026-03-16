@@ -14,6 +14,7 @@ from .coordination import (
     WorkflowStep,
 )
 from .deliberation import Contribution, DeliberationState, FinalDocument, PeerReview, ResearchOutput, Review
+from .enums import LoopStopReason, RunStatus
 from .events import ExecutionEvent
 from .message import Message
 from .run_context import RunContext
@@ -34,6 +35,7 @@ __all__ = [
     "DeliberationState",
     "ExecutionEvent",
     "FinalDocument",
+    "LoopStopReason",
     "Message",
     "PeerReview",
     "ResearchOutput",
@@ -41,6 +43,7 @@ __all__ = [
     "RouterDecision",
     "RunContext",
     "RunResult",
+    "RunStatus",
     "SubrunRequest",
     "WorkflowAgent",
     "WorkflowPlan",

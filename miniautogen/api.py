@@ -10,9 +10,11 @@ identity as a multi-agent coordination library.
 
 from miniautogen.core.contracts import (
     ExecutionEvent,
+    LoopStopReason,
     Message,
     RunContext,
     RunResult,
+    RunStatus,
 )
 from miniautogen.core.contracts.agent import (
     ConversationalAgent,
@@ -52,10 +54,12 @@ from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 
 __all__ = [
     # Core contracts
+    "ExecutionEvent",
+    "LoopStopReason",
     "Message",
     "RunContext",
     "RunResult",
-    "ExecutionEvent",
+    "RunStatus",
     "Conversation",
     # Agent protocols
     "WorkflowAgent",
