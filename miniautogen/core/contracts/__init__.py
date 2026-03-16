@@ -4,6 +4,7 @@ from .agent import ConversationalAgent, DeliberationAgent, WorkflowAgent
 from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
 from .conversation import Conversation
 from .coordination import (
+    AgenticLoopPlan,
     CoordinationKind,
     CoordinationMode,
     CoordinationPlan,
@@ -18,6 +19,7 @@ from .run_context import RunContext
 from .run_result import RunResult
 
 __all__ = [
+    "AgenticLoopPlan",
     "AgenticLoopState",
     "ConversationalAgent",
     "ConversationPolicy",

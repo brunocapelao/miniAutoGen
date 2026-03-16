@@ -28,8 +28,8 @@ def test_coordination_kind_has_workflow_and_deliberation() -> None:
     assert CoordinationKind.DELIBERATION == "deliberation"
 
 
-def test_coordination_kind_only_has_two_members() -> None:
-    assert len(CoordinationKind) == 2
+def test_coordination_kind_has_three_members() -> None:
+    assert len(CoordinationKind) == 3
 
 
 # --- CoordinationPlan ---

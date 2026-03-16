@@ -21,6 +21,13 @@ class EventType(str, Enum):
     POLICY_APPLIED = "policy_applied"
     BUDGET_EXCEEDED = "budget_exceeded"
 
+    # Agentic loop events
+    AGENTIC_LOOP_STARTED = "agentic_loop_started"
+    ROUTER_DECISION = "router_decision"
+    AGENT_REPLIED = "agent_replied"
+    AGENTIC_LOOP_STOPPED = "agentic_loop_stopped"
+    STAGNATION_DETECTED = "stagnation_detected"
+
 
 AGENTIC_LOOP_EVENT_TYPES = {
     "agentic_loop_started",

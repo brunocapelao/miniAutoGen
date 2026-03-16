@@ -20,6 +20,7 @@ class CoordinationKind(str, Enum):
 
     WORKFLOW = "workflow"
     DELIBERATION = "deliberation"
+    AGENTIC_LOOP = "agentic_loop"
 
 
 class CoordinationPlan(BaseModel):
@@ -90,3 +91,15 @@ class DeliberationPlan(CoordinationPlan):
     max_rounds: int = Field(default=3, ge=1, le=50)
     leader_agent: str | None = None
     policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
+
+
+# --- Agentic Loop contracts ---
+
+
+class AgenticLoopPlan(CoordinationPlan):
+    """Plan for agentic loop coordination — conversational agent interaction."""
+
+    router_agent: str
+    participants: list[str] = Field(min_length=1)
+    policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
+    goal: str = ""
