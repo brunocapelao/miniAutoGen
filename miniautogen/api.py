@@ -8,23 +8,47 @@ This module re-exports the essential types that define MiniAutoGen's
 identity as a multi-agent coordination library.
 """
 
-from miniautogen.core.contracts import Message, RunContext, RunResult, ExecutionEvent
+from miniautogen.core.contracts import (
+    ExecutionEvent,
+    Message,
+    RunContext,
+    RunResult,
+)
+from miniautogen.core.contracts.agent import (
+    ConversationalAgent,
+    DeliberationAgent,
+    WorkflowAgent,
+)
+from miniautogen.core.contracts.agentic_loop import (
+    AgenticLoopState,
+    ConversationPolicy,
+    RouterDecision,
+)
+from miniautogen.core.contracts.conversation import Conversation
 from miniautogen.core.contracts.coordination import (
+    AgenticLoopPlan,
     CoordinationKind,
     CoordinationPlan,
     DeliberationPlan,
+    SubrunRequest,
     WorkflowPlan,
     WorkflowStep,
 )
+from miniautogen.core.contracts.deliberation import (
+    Contribution,
+    Review,
+)
 from miniautogen.core.runtime import (
+    AgenticLoopRuntime,
     CompositeRuntime,
     DeliberationRuntime,
     PipelineRunner,
     WorkflowRuntime,
 )
 from miniautogen.core.runtime.composite_runtime import CompositionStep
-from miniautogen.pipeline.pipeline import Pipeline
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
+from miniautogen.pipeline.pipeline import Pipeline
+from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 
 __all__ = [
     # Core contracts
@@ -32,6 +56,19 @@ __all__ = [
     "RunContext",
     "RunResult",
     "ExecutionEvent",
+    "Conversation",
+    # Agent protocols
+    "WorkflowAgent",
+    "DeliberationAgent",
+    "ConversationalAgent",
+    # Agentic loop
+    "RouterDecision",
+    "ConversationPolicy",
+    "AgenticLoopState",
+    "AgenticLoopPlan",
+    # Deliberation (general + specialized)
+    "Contribution",
+    "Review",
     # Coordination
     "CoordinationKind",
     "CoordinationPlan",
@@ -39,7 +76,9 @@ __all__ = [
     "WorkflowPlan",
     "WorkflowStep",
     "CompositionStep",
+    "SubrunRequest",
     # Runtimes (Coordination Modes)
+    "AgenticLoopRuntime",
     "CompositeRuntime",
     "DeliberationRuntime",
     "PipelineRunner",
@@ -47,4 +86,7 @@ __all__ = [
     # Pipeline
     "Pipeline",
     "PipelineComponent",
+    # Policy enforcement
+    "BudgetTracker",
+    "BudgetExceededError",
 ]
