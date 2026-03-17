@@ -23,6 +23,18 @@ async def list_sessions(
     return runs
 
 
+async def show_session(
+    store: RunStore,
+    run_id: str,
+) -> dict[str, Any] | None:
+    """Get detailed info for a single run."""
+    runs = await store.list_runs()
+    for run in runs:
+        if str(run.get("run_id", "")).startswith(run_id):
+            return run
+    return None
+
+
 async def clean_sessions(
     store: RunStore,
     older_than_days: int | None = None,

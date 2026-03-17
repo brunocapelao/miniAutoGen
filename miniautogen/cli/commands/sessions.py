@@ -71,6 +71,41 @@ def sessions_list(
         echo_table(["Run ID", "Status", "Created"], rows)
 
 
+@sessions_group.command("show")
+@click.argument("run_id")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+)
+def sessions_show(run_id: str, output_format: str) -> None:
+    """Show details for a specific run."""
+    from miniautogen.cli.services.session_ops import (
+        create_store_from_config,
+        show_session,
+    )
+
+    _root, config = require_project_config()
+    db_config = (
+        config.database.model_dump()
+        if config.database
+        else None
+    )
+    store = create_store_from_config(db_config)
+
+    run = run_async(show_session, store, run_id)
+
+    if run is None:
+        echo_error(f"Run '{run_id}' not found.")
+        raise SystemExit(1)
+
+    if output_format == "json":
+        echo_json(run)
+    else:
+        for key, value in run.items():
+            click.echo(f"{key}: {value}")
+
+
 @sessions_group.command("clean")
 @click.option(
     "--older-than",

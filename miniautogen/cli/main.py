@@ -48,3 +48,19 @@ cli.add_command(run_command)
 from miniautogen.cli.commands.sessions import sessions_group  # noqa: E402
 
 cli.add_command(sessions_group)
+
+from miniautogen.cli.commands.engine import engine_group  # noqa: E402
+
+cli.add_command(engine_group)
+
+from miniautogen.cli.commands.agent import agent_group  # noqa: E402
+
+cli.add_command(agent_group)
+
+from miniautogen.cli.commands.pipeline import pipeline_group  # noqa: E402
+
+cli.add_command(pipeline_group)
+
+from miniautogen.cli.commands.server import server_group  # noqa: E402
+
+cli.add_command(server_group)
