@@ -10,7 +10,9 @@ import os
 from pathlib import Path
 
 import yaml
+from pydantic import ValidationError
 
+from miniautogen.api import AgentSpec, SkillSpec, ToolSpec
 from miniautogen.cli.config import ProjectConfig
 from miniautogen.cli.models import CheckResult
 
@@ -72,27 +74,33 @@ def _check_agents(
                     category="static",
                 ))
                 continue
-            # Check required fields
-            if "id" not in data:
+            # Validate against AgentSpec schema
+            try:
+                AgentSpec.model_validate(data)
+            except ValidationError as exc:
                 results.append(CheckResult(
                     name=f"agent:{yaml_file.name}",
                     passed=False,
-                    message="Missing required field: id",
+                    message=(
+                        f"Schema validation error:"
+                        f" {exc.error_count()} error(s)"
+                    ),
                     category="static",
                 ))
                 continue
+            has_sub_failures = False
             # Check engine_profile reference
             ep = data.get("engine_profile")
             if ep and ep not in config.engine_profiles:
                 default_ep = config.defaults.engine_profile
                 if ep != default_ep:
+                    has_sub_failures = True
                     results.append(CheckResult(
                         name=f"agent:{yaml_file.name}:engine",
                         passed=False,
                         message=f"Engine profile '{ep}' not found",
                         category="static",
                     ))
-                    continue
             # Check skill references
             skills = data.get("skills", {})
             attached = skills.get("attached", [])
@@ -100,6 +108,7 @@ def _check_agents(
             for skill_id in attached:
                 skill_path = skills_dir / skill_id
                 if not skill_path.is_dir():
+                    has_sub_failures = True
                     results.append(CheckResult(
                         name=f"agent:{yaml_file.name}:skill:{skill_id}",
                         passed=False,
@@ -113,6 +122,7 @@ def _check_agents(
             for tool_name in allowed_tools:
                 tool_file = tools_dir / f"{tool_name}.yaml"
                 if not tool_file.is_file():
+                    has_sub_failures = True
                     results.append(CheckResult(
                         name=f"agent:{yaml_file.name}:tool:{tool_name}",
                         passed=False,
@@ -120,12 +130,13 @@ def _check_agents(
                         category="static",
                     ))
 
-            results.append(CheckResult(
-                name=f"agent:{yaml_file.name}",
-                passed=True,
-                message="Valid",
-                category="static",
-            ))
+            if not has_sub_failures:
+                results.append(CheckResult(
+                    name=f"agent:{yaml_file.name}",
+                    passed=True,
+                    message="Valid",
+                    category="static",
+                ))
         except yaml.YAMLError as exc:
             results.append(CheckResult(
                 name=f"agent:{yaml_file.name}",
@@ -147,15 +158,44 @@ def _check_skills(project_root: Path) -> list[CheckResult]:
     for skill_dir in sorted(skills_dir.iterdir()):
         if not skill_dir.is_dir():
             continue
+        has_failure = False
         skill_md = skill_dir / "SKILL.md"
         if not skill_md.is_file():
+            has_failure = True
             results.append(CheckResult(
                 name=f"skill:{skill_dir.name}",
                 passed=False,
                 message="Missing SKILL.md",
                 category="static",
             ))
-        else:
+        # Validate skill.yaml if present
+        skill_yaml = skill_dir / "skill.yaml"
+        if skill_yaml.is_file():
+            try:
+                with skill_yaml.open() as f:
+                    skill_data = yaml.safe_load(f)
+                if isinstance(skill_data, dict):
+                    SkillSpec.model_validate(skill_data)
+            except ValidationError as exc:
+                has_failure = True
+                results.append(CheckResult(
+                    name=f"skill:{skill_dir.name}:schema",
+                    passed=False,
+                    message=(
+                        f"Schema validation error:"
+                        f" {exc.error_count()} error(s)"
+                    ),
+                    category="static",
+                ))
+            except yaml.YAMLError as exc:
+                has_failure = True
+                results.append(CheckResult(
+                    name=f"skill:{skill_dir.name}:yaml",
+                    passed=False,
+                    message=f"YAML parse error: {exc}",
+                    category="static",
+                ))
+        if not has_failure:
             results.append(CheckResult(
                 name=f"skill:{skill_dir.name}",
                 passed=True,
@@ -184,11 +224,16 @@ def _check_tools(project_root: Path) -> list[CheckResult]:
                     category="static",
                 ))
                 continue
-            if "name" not in data:
+            try:
+                ToolSpec.model_validate(data)
+            except ValidationError as exc:
                 results.append(CheckResult(
                     name=f"tool:{yaml_file.stem}",
                     passed=False,
-                    message="Missing required field: name",
+                    message=(
+                        f"Schema validation error:"
+                        f" {exc.error_count()} error(s)"
+                    ),
                     category="static",
                 ))
                 continue

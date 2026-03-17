@@ -83,6 +83,26 @@ class ProjectConfig(BaseModel):
     database: DatabaseConfig | None = None
 
 
+def require_project_config(
+    start: Path | None = None,
+) -> tuple[Path, "ProjectConfig"]:
+    """Find project root and load config, or raise.
+
+    Returns:
+        Tuple of (project_root, config).
+
+    Raises:
+        ProjectNotFoundError: If no miniautogen.yaml is found.
+    """
+    from miniautogen.cli.errors import ProjectNotFoundError
+
+    root = find_project_root(start or Path.cwd())
+    if root is None:
+        msg = f"No {CONFIG_FILENAME} found in directory tree"
+        raise ProjectNotFoundError(msg)
+    return root, load_config(root / CONFIG_FILENAME)
+
+
 def find_project_root(start: Path | None = None) -> Path | None:
     """Walk up from start looking for miniautogen.yaml.
 

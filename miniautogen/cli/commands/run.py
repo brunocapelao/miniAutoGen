@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
-from miniautogen.cli.config import CONFIG_FILENAME, find_project_root, load_config
-from miniautogen.cli.errors import PipelineNotFoundError, ProjectNotFoundError
+from miniautogen.cli.config import require_project_config
+from miniautogen.cli.errors import PipelineNotFoundError
 from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_json, echo_success
 
@@ -42,13 +40,7 @@ def run_command(
     """Execute a pipeline headlessly."""
     from miniautogen.cli.services.run_pipeline import execute_pipeline
 
-    root = find_project_root(Path.cwd())
-    if root is None:
-        raise ProjectNotFoundError(
-            f"No {CONFIG_FILENAME} found in directory tree"
-        )
-
-    config = load_config(root / CONFIG_FILENAME)
+    root, config = require_project_config()
 
     if pipeline_name not in config.pipelines:
         raise PipelineNotFoundError(

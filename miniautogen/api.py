@@ -79,6 +79,7 @@ from miniautogen.pipeline.pipeline import Pipeline
 from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 from miniautogen.policies.execution import ExecutionPolicy
 from miniautogen.stores.in_memory_run_store import InMemoryRunStore
+from miniautogen.stores.run_store import RunStore
 
 __all__ = [
     # Core contracts
@@ -149,4 +150,5 @@ __all__ = [
     "ExecutionPolicy",
     # Stores
     "InMemoryRunStore",
+    "RunStore",
 ]

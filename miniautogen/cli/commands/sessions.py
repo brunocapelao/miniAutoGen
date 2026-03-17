@@ -2,16 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
-from miniautogen.cli.config import (
-    CONFIG_FILENAME,
-    find_project_root,
-    load_config,
-)
-from miniautogen.cli.errors import ProjectNotFoundError
+from miniautogen.cli.config import require_project_config
 from miniautogen.cli.main import run_async
 from miniautogen.cli.output import (
     echo_error,
@@ -47,13 +40,7 @@ def sessions_list(
         list_sessions,
     )
 
-    root = find_project_root(Path.cwd())
-    if root is None:
-        raise ProjectNotFoundError(
-            f"No {CONFIG_FILENAME} found"
-        )
-
-    config = load_config(root / CONFIG_FILENAME)
+    _root, config = require_project_config()
     db_config = (
         config.database.model_dump()
         if config.database
@@ -109,13 +96,7 @@ def sessions_clean(
         )
         raise SystemExit(1)
 
-    root = find_project_root(Path.cwd())
-    if root is None:
-        raise ProjectNotFoundError(
-            f"No {CONFIG_FILENAME} found"
-        )
-
-    config = load_config(root / CONFIG_FILENAME)
+    _root, config = require_project_config()
     db_config = (
         config.database.model_dump()
         if config.database

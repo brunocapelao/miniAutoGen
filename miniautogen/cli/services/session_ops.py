@@ -5,14 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from miniautogen.api import InMemoryRunStore
+from miniautogen.api import InMemoryRunStore, RunStore
 
 # Status values that are safe to delete
 _CLEANABLE_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
 
 async def list_sessions(
-    store: Any,
+    store: RunStore,
     status: str | None = None,
     limit: int = 20,
 ) -> list[dict[str, Any]]:
@@ -22,7 +22,7 @@ async def list_sessions(
 
 
 async def clean_sessions(
-    store: Any,
+    store: RunStore,
     older_than_days: int | None = None,
 ) -> int:
     """Delete completed/failed/cancelled runs.
@@ -63,7 +63,7 @@ async def clean_sessions(
 
 def create_store_from_config(
     database_config: dict[str, Any] | None,
-) -> Any:
+) -> RunStore:
     """Create a RunStore from project database config.
 
     Uses InMemoryRunStore if no database URL configured.
