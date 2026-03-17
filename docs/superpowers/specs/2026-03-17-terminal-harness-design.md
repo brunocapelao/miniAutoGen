@@ -8,7 +8,7 @@
 
 ## 1. Vision
 
-Transform MiniAutoGen from a framework with CLI scaffolding into an **operator-grade terminal harness**. Three new commands (`chat`, `gateway serve`, `backend ping/list`) provide the operational surface for interacting with backends, serving gateways, and diagnosing infrastructure — all following the patterns established by Claude Code.
+Transform MiniAutoGen from a framework with CLI scaffolding into an **operator-grade terminal harness**. Three new commands (`chat`, `gateway serve`, `backend ping/list`) provide the operational surface for interacting with backends, serving gateways, and diagnosing infrastructure — with Claude Code as the primary reference for operator UX, session model, and extensibility.
 
 ## 2. Objectives
 
@@ -115,9 +115,9 @@ miniautogen chat -b gemini --append-system-prompt-file context.md
 miniautogen chat -p "explain asyncio" -b gemini
 miniautogen chat -p "explain asyncio" -b gemini -o json
 
-# Pipe mode (stdin non-interactive)
-echo "explain asyncio" | miniautogen chat -b gemini --print
-cat prompt.txt | miniautogen chat -b gemini --print
+# Pipe mode (stdin non-interactive — TTY detection, no --print needed)
+echo "explain asyncio" | miniautogen chat -b gemini
+cat prompt.txt | miniautogen chat -b gemini
 
 # Session continuity (M3.2)
 miniautogen chat --continue
@@ -133,7 +133,7 @@ miniautogen chat -b gemini --disallowed-tools "shell_exec"
 
 | Flag | Type | Default | MVP? | Description |
 |------|------|---------|------|-------------|
-| `--backend` / `-b` | `str` | required | Yes | Backend ID from `miniautogen.yaml` |
+| `--backend` / `-b` | `str` | required (MVP) | Yes | Backend ID from `miniautogen.yaml`. In M3.2, `--continue`/`--resume` infer backend from persisted session metadata, making `-b` optional when resuming. |
 | `--print` / `-p` | `str` | `None` | Yes | Single-shot message. Always requires a value. Pipe mode uses TTY detection (no flag needed) |
 | `--system-prompt` / `-s` | `str` | `None` | Yes | System prompt inline (replaces base) |
 | `--append-system-prompt` | `str` | `None` | Yes | Text appended to base system prompt |
@@ -268,6 +268,8 @@ Inputs starting with `/` are interpreted locally, never sent to the backend. The
 | Source | Examples | MVP? |
 |--------|----------|------|
 | Built-in | `/exit`, `/clear`, `/help` | Yes |
+
+**`/clear` semantics:** clears the in-memory transcript (resets conversation context to empty). Does NOT clear the terminal screen. The session remains open with the same `session_id`; only the message history sent to the backend on subsequent turns is reset.
 | Skills | `/commit`, `/review` | M3.2 |
 | MCP prompts | `/mcp:tool-name` | Future |
 
@@ -411,7 +413,7 @@ miniautogen backend list -o json
 ```
 ✓ Backend 'gemini' is reachable (234ms)
 
-  Driver:    agent_api
+  Driver:    agentapi
   Target:    http://localhost:8000
   Status:    ok
   Probe:     basic
@@ -435,7 +437,7 @@ miniautogen backend list -o json
   "status": "ok",
   "reachable": true,
   "latency_ms": 234,
-  "driver": "agent_api",
+  "driver": "agentapi",
   "target": "http://localhost:8000",
   "probe": "basic",
   "capabilities": {
@@ -452,12 +454,12 @@ miniautogen backend list -o json
 
 ### Status field
 
-| Value | Meaning |
-|-------|---------|
-| `ok` | Backend responded within timeout |
-| `timeout` | No response in time |
-| `unreachable` | Connection refused or failed |
-| `misconfigured` | Invalid config (missing endpoint, broken auth) |
+| Value | Meaning | Exit code |
+|-------|---------|-----------|
+| `ok` | Backend responded within timeout | `0` |
+| `timeout` | No response in time | `11` |
+| `unreachable` | Connection refused or failed | `1` |
+| `misconfigured` | Invalid config (missing endpoint, broken auth) | `3` (reuses existing `ConfigurationError`) |
 
 `reachable` is derived: `true` when `status == "ok"`.
 
@@ -467,8 +469,8 @@ Lists all configured backends without connecting:
 
 ```
 Backends configured:
-  gemini      agent_api   http://localhost:8000
-  ollama      agent_api   http://localhost:11434
+  gemini      agentapi   http://localhost:8000
+  ollama      agentapi   http://localhost:11434
   local-pty   pty         gemini --interactive
 ```
 
@@ -518,7 +520,7 @@ This prevents orphaned sessions (especially important for PTY backends with chil
   "backend_id": "gemini",
   "status": "ok",
   "latency_ms": 234,
-  "driver": "agent_api",
+  "driver": "agentapi",
   "target": "http://localhost:8000",
   "probe": "basic",
   "session_probe_performed": false,
