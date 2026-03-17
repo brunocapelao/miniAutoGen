@@ -6,10 +6,14 @@ from uuid import uuid4
 
 import anyio
 
+from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.events import ExecutionEvent
+from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events import EventSink, EventType, NullEventSink
 from miniautogen.observability import get_logger
+from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
 from miniautogen.policies.execution import ExecutionPolicy
+from miniautogen.policies.retry import RetryPolicy, build_retrying_call
 from miniautogen.stores.checkpoint_store import CheckpointStore
 from miniautogen.stores.run_store import RunStore
 
@@ -23,13 +27,28 @@ class PipelineRunner:
         run_store: RunStore | None = None,
         checkpoint_store: CheckpointStore | None = None,
         execution_policy: ExecutionPolicy | None = None,
-    ):
+        approval_gate: ApprovalGate | None = None,
+        retry_policy: RetryPolicy | None = None,
+    ) -> None:
         self.event_sink = event_sink or NullEventSink()
         self.run_store = run_store
         self.checkpoint_store = checkpoint_store
         self.execution_policy = execution_policy
+        self._approval_gate = approval_gate
+        self._retry_policy = retry_policy
         self.last_run_id: str | None = None
         self.logger = get_logger(__name__)
+
+    async def _execute_pipeline(
+        self,
+        pipeline: Any,
+        state: Any,
+    ) -> Any:
+        """Run the pipeline, optionally wrapping with retry policy."""
+        if self._retry_policy is not None:
+            retrying_call = build_retrying_call(self._retry_policy)
+            return await retrying_call(lambda: pipeline.run(state))
+        return await pipeline.run(state)
 
     async def _persist_failed_run(
         self,
@@ -97,12 +116,59 @@ class PipelineRunner:
         )
         logger.info("run_started")
 
+        if self._approval_gate is not None:
+            approval_req = ApprovalRequest(
+                request_id=f"approval_{uuid4().hex[:8]}",
+                action="run_pipeline",
+                description=f"Execute pipeline run {current_run_id}",
+            )
+            await self.event_sink.publish(
+                ExecutionEvent(
+                    type=EventType.APPROVAL_REQUESTED.value,
+                    timestamp=datetime.now(timezone.utc),
+                    run_id=current_run_id,
+                    correlation_id=correlation_id,
+                    scope="pipeline_runner",
+                    payload={
+                        "request_id": approval_req.request_id,
+                        "action": approval_req.action,
+                    },
+                )
+            )
+            approval_resp = await self._approval_gate.request_approval(
+                approval_req,
+            )
+            if approval_resp.decision == "denied":
+                await self.event_sink.publish(
+                    ExecutionEvent(
+                        type=EventType.APPROVAL_DENIED.value,
+                        timestamp=datetime.now(timezone.utc),
+                        run_id=current_run_id,
+                        correlation_id=correlation_id,
+                        scope="pipeline_runner",
+                        payload={"reason": approval_resp.reason},
+                    )
+                )
+                return RunResult(
+                    run_id=current_run_id,
+                    status=RunStatus.CANCELLED,
+                )
+            await self.event_sink.publish(
+                ExecutionEvent(
+                    type=EventType.APPROVAL_GRANTED.value,
+                    timestamp=datetime.now(timezone.utc),
+                    run_id=current_run_id,
+                    correlation_id=correlation_id,
+                    scope="pipeline_runner",
+                )
+            )
+
         try:
             if effective_timeout is None:
-                result = await pipeline.run(state)
+                result = await self._execute_pipeline(pipeline, state)
             else:
                 with anyio.fail_after(effective_timeout):
-                    result = await pipeline.run(state)
+                    result = await self._execute_pipeline(pipeline, state)
         except TimeoutError:
             if self.run_store is not None:
                 await self.run_store.save_run(

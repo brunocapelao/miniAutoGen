@@ -47,6 +47,19 @@ class EventType(str, Enum):
     BACKEND_TURN_COMPLETED = "backend_turn_completed"
     BACKEND_SESSION_CLOSED = "backend_session_closed"
 
+    # Approval lifecycle
+    APPROVAL_REQUESTED = "approval_requested"
+    APPROVAL_GRANTED = "approval_granted"
+    APPROVAL_DENIED = "approval_denied"
+    APPROVAL_TIMEOUT = "approval_timeout"
+
+
+APPROVAL_EVENT_TYPES: set[EventType] = {
+    EventType.APPROVAL_REQUESTED,
+    EventType.APPROVAL_GRANTED,
+    EventType.APPROVAL_DENIED,
+    EventType.APPROVAL_TIMEOUT,
+}
 
 AGENTIC_LOOP_EVENT_TYPES = {
     EventType.AGENTIC_LOOP_STARTED.value,
