@@ -226,6 +226,19 @@ def _check_pipelines(
         module_path, _ = target.rsplit(":", 1)
         # Check if module file exists relative to project
         file_path = project_root / module_path.replace(".", "/")
+        try:
+            resolved = file_path.with_suffix(".py").resolve()
+            project_resolved = project_root.resolve()
+            if not str(resolved).startswith(str(project_resolved)):
+                results.append(CheckResult(
+                    name=f"pipeline:{name}",
+                    passed=False,
+                    message=f"Target '{target}' resolves outside project",
+                    category="static",
+                ))
+                continue
+        except (OSError, ValueError):
+            pass
         if file_path.with_suffix(".py").is_file() or (file_path / "__init__.py").is_file():
             results.append(CheckResult(
                 name=f"pipeline:{name}",

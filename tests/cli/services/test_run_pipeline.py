@@ -35,20 +35,40 @@ def _make_runnable_project(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_resolve_valid_target() -> None:
-    # Use a known stdlib module
-    fn = resolve_pipeline_target("os.path:join")
-    assert callable(fn)
+def test_resolve_valid_target(tmp_path: Path) -> None:
+    """Resolve a target within a project."""
+    mod_dir = tmp_path / "mypkg"
+    mod_dir.mkdir()
+    (mod_dir / "__init__.py").write_text("")
+    (mod_dir / "pipeline.py").write_text("def build(): return 'ok'")
+
+    import sys
+    sys.path.append(str(tmp_path))
+    try:
+        fn = resolve_pipeline_target("mypkg.pipeline:build", tmp_path)
+        assert callable(fn)
+    finally:
+        sys.path.remove(str(tmp_path))
 
 
-def test_resolve_invalid_format() -> None:
+def test_resolve_rejects_outside_project(tmp_path: Path) -> None:
+    with pytest.raises((ValueError, ImportError)):
+        resolve_pipeline_target("os:system", tmp_path)
+
+
+def test_resolve_rejects_path_traversal(tmp_path: Path) -> None:
+    with pytest.raises((ValueError, ImportError)):
+        resolve_pipeline_target("....etc.passwd:read", tmp_path)
+
+
+def test_resolve_invalid_format(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="expected"):
-        resolve_pipeline_target("no_colon_here")
+        resolve_pipeline_target("no_colon_here", tmp_path)
 
 
-def test_resolve_missing_module() -> None:
-    with pytest.raises(ModuleNotFoundError):
-        resolve_pipeline_target("nonexistent.module:func")
+def test_resolve_missing_module(tmp_path: Path) -> None:
+    with pytest.raises(ImportError):
+        resolve_pipeline_target("nonexistent.module:func", tmp_path)
 
 
 @pytest.mark.anyio
