@@ -76,18 +76,21 @@ class AgentAPIDriver(AgentDriver):
 
         turn_id = f"turn_{uuid.uuid4().hex[:12]}"
         logger.debug("send_turn", session_id=request.session_id, turn_id=turn_id)
+
+        # anyio.fail_after wraps only the HTTP call, not the yields.
+        # Cancel scopes cannot span yield points in async generators.
         with anyio.fail_after(self._timeout_seconds):
             response_data = await self._client.chat_completion(
                 messages=request.messages,
                 model=self._model,
             )
-            events = map_completion_response(
-                response_data,
-                session_id=request.session_id,
-                turn_id=turn_id,
-            )
-            for event in events:
-                yield event
+        events = map_completion_response(
+            response_data,
+            session_id=request.session_id,
+            turn_id=turn_id,
+        )
+        for event in events:
+            yield event
 
     async def cancel_turn(
         self,
