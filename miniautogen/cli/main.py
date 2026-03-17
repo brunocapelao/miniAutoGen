@@ -44,3 +44,7 @@ cli.add_command(check_command)
 from miniautogen.cli.commands.run import run_command  # noqa: E402
 
 cli.add_command(run_command)
+
+from miniautogen.cli.commands.sessions import sessions_group  # noqa: E402
+
+cli.add_command(sessions_group)
