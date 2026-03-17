@@ -5,11 +5,10 @@ from __future__ import annotations
 import pytest
 
 from miniautogen.backends.agentapi.mapper import (
-    map_completion_response,
     extract_error_message,
+    map_completion_response,
 )
 from miniautogen.backends.errors import EventMappingError
-from miniautogen.backends.models import AgentEvent
 
 
 class TestMapCompletionResponse:

@@ -6,8 +6,6 @@ from __future__ import annotations
 import os
 from unittest.mock import patch
 
-import pytest
-
 from miniautogen.backends.agentapi.driver import AgentAPIDriver
 from miniautogen.backends.agentapi.factory import agentapi_factory
 from miniautogen.backends.config import AuthConfig, BackendConfig, DriverType

@@ -43,3 +43,14 @@ class TimeoutScope:
                 f"than turn_seconds ({self.turn_seconds})"
             )
             raise ValueError(msg)
+        if (
+            self.pipeline_seconds is not None
+            and self.tool_seconds is not None
+            and self.turn_seconds is None
+            and self.tool_seconds >= self.pipeline_seconds
+        ):
+            msg = (
+                f"tool_seconds ({self.tool_seconds}) must be less "
+                f"than pipeline_seconds ({self.pipeline_seconds})"
+            )
+            raise ValueError(msg)

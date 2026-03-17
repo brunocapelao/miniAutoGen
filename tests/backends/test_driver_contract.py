@@ -19,7 +19,6 @@ from miniautogen.backends.models import (
     SendTurnRequest,
     StartSessionRequest,
 )
-
 from tests.backends.conftest import FakeDriver
 
 

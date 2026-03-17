@@ -13,7 +13,6 @@ from miniautogen.backends.config import BackendConfig, DriverType
 from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.errors import BackendUnavailableError
 
-
 DriverFactory = Callable[[BackendConfig], AgentDriver]
 
 

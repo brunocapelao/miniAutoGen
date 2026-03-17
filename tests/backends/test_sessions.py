@@ -8,7 +8,6 @@ import pytest
 from miniautogen.backends.models import BackendCapabilities
 from miniautogen.backends.sessions import (
     InvalidTransitionError,
-    SessionInfo,
     SessionManager,
     SessionState,
 )

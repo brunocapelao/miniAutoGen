@@ -27,9 +27,8 @@ class ApprovalResponse(BaseModel):
     """Response to an approval request."""
 
     request_id: str
-    decision: Literal["approved", "denied", "modified"]
+    decision: Literal["approved", "denied"]
     reason: str | None = None
-    modifications: dict[str, Any] | None = None
 
 
 @runtime_checkable

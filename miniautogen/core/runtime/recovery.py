@@ -50,9 +50,6 @@ class SessionRecovery:
         if self._run_store is not None:
             await self._run_store.save_run(
                 run_id,
-                {
-                    "status": "resumed",
-                    "resumed_from": run_id,
-                },
+                {"status": "resumed"},
             )
             logger.info("run_marked_resumed", run_id=run_id)

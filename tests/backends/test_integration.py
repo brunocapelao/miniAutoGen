@@ -15,7 +15,6 @@ from miniautogen.backends.models import (
 )
 from miniautogen.backends.resolver import BackendResolver
 from miniautogen.backends.sessions import SessionManager, SessionState
-
 from tests.backends.conftest import FakeDriver
 
 

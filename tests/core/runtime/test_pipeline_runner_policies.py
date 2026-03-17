@@ -2,12 +2,9 @@
 
 import pytest
 
-from miniautogen.core.contracts.enums import RunStatus
-from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.events.event_sink import InMemoryEventSink
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.policies.approval import (
-    ApprovalGate,
     ApprovalRequest,
     ApprovalResponse,
     AutoApproveGate,
@@ -47,7 +44,7 @@ class _FailOncePipeline:
         return {"result": "ok", "calls": self._calls}
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_approval_gate_approved_runs_pipeline() -> None:
     sink = InMemoryEventSink()
     runner = PipelineRunner(
@@ -62,31 +59,36 @@ async def test_approval_gate_approved_runs_pipeline() -> None:
     assert "approval_granted" in types
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_approval_gate_denied_cancels_run() -> None:
     sink = InMemoryEventSink()
     runner = PipelineRunner(
         event_sink=sink,
         approval_gate=_DenyGate(),
     )
-    result = await runner.run_pipeline(_NoOpPipeline(), {})
-    assert result.status == RunStatus.CANCELLED
+    with pytest.raises(RuntimeError, match="denied"):
+        await runner.run_pipeline(_NoOpPipeline(), {})
     types = [e.type for e in sink.events]
     assert "approval_requested" in types
     assert "approval_denied" in types
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_no_approval_gate_runs_normally() -> None:
     sink = InMemoryEventSink()
     runner = PipelineRunner(event_sink=sink)
-    result = await runner.run_pipeline(_NoOpPipeline(), {})
+    await runner.run_pipeline(_NoOpPipeline(), {})
     types = [e.type for e in sink.events]
     assert "approval_requested" not in types
 
 
-@pytest.mark.asyncio
-async def test_retry_policy_retries_on_failure() -> None:
+@pytest.mark.anyio
+@pytest.mark.filterwarnings("ignore::DeprecationWarning")
+async def test_retry_policy_retries_on_failure(
+    anyio_backend: str,
+) -> None:
+    if anyio_backend == "trio":
+        pytest.skip("tenacity uses asyncio internals incompatible with trio")
     sink = InMemoryEventSink()
     pipeline = _FailOncePipeline()
     runner = PipelineRunner(
@@ -98,8 +100,12 @@ async def test_retry_policy_retries_on_failure() -> None:
     assert result["calls"] == 2
 
 
-@pytest.mark.asyncio
-async def test_retry_policy_exhausted_raises() -> None:
+@pytest.mark.anyio
+async def test_retry_policy_exhausted_raises(
+    anyio_backend: str,
+) -> None:
+    if anyio_backend == "trio":
+        pytest.skip("tenacity uses asyncio internals incompatible with trio")
     sink = InMemoryEventSink()
     pipeline = _FailOncePipeline()
     runner = PipelineRunner(

@@ -37,15 +37,6 @@ def test_approval_response_denied_with_reason() -> None:
     assert resp.reason == "Too dangerous"
 
 
-def test_approval_response_modified() -> None:
-    resp = ApprovalResponse(
-        request_id="req-1",
-        decision="modified",
-        modifications={"path": "/tmp/safe.csv"},
-    )
-    assert resp.modifications == {"path": "/tmp/safe.csv"}
-
-
 def test_approval_policy_default_empty() -> None:
     policy = ApprovalPolicy()
     assert len(policy.require_approval_for) == 0

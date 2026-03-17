@@ -6,9 +6,7 @@ from uuid import uuid4
 
 import anyio
 
-from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.events import ExecutionEvent
-from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events import EventSink, EventType, NullEventSink
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
@@ -116,6 +114,8 @@ class PipelineRunner:
         )
         logger.info("run_started")
 
+        # TODO(review): fail-open by design — gate is optional
+        # for SDK use (sec-reviewer, 2026-03-16, Low)
         if self._approval_gate is not None:
             approval_req = ApprovalRequest(
                 request_id=f"approval_{uuid4().hex[:8]}",
@@ -149,10 +149,13 @@ class PipelineRunner:
                         payload={"reason": approval_resp.reason},
                     )
                 )
-                return RunResult(
-                    run_id=current_run_id,
-                    status=RunStatus.CANCELLED,
-                )
+                if self.run_store is not None:
+                    await self.run_store.save_run(
+                        current_run_id,
+                        {"status": "cancelled", "correlation_id": correlation_id},
+                    )
+                msg = f"Pipeline run {current_run_id} denied: {approval_resp.reason}"
+                raise RuntimeError(msg)
             await self.event_sink.publish(
                 ExecutionEvent(
                     type=EventType.APPROVAL_GRANTED.value,

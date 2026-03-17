@@ -34,3 +34,8 @@ def test_timeout_scope_rejects_tool_gte_turn() -> None:
 def test_timeout_scope_partial_hierarchy() -> None:
     scope = TimeoutScope(pipeline_seconds=120.0, tool_seconds=30.0)
     assert scope.turn_seconds is None  # no constraint
+
+
+def test_timeout_scope_rejects_tool_gte_pipeline_no_turn() -> None:
+    with pytest.raises(ValueError, match="tool_seconds"):
+        TimeoutScope(pipeline_seconds=60.0, tool_seconds=90.0)

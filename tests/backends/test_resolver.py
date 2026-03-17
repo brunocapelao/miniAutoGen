@@ -9,7 +9,6 @@ from miniautogen.backends.config import BackendConfig, DriverType
 from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.errors import BackendUnavailableError
 from miniautogen.backends.resolver import BackendResolver
-
 from tests.backends.conftest import FakeDriver
 
 

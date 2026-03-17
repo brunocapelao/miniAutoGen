@@ -5,6 +5,7 @@ Usage::
     from miniautogen.backends import AgentDriver, BackendResolver, BackendConfig
 """
 
+from miniautogen.backends.agentapi import AgentAPIDriver, agentapi_factory
 from miniautogen.backends.config import BackendConfig, DriverType
 from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.models import (
@@ -16,7 +17,6 @@ from miniautogen.backends.models import (
     StartSessionRequest,
     StartSessionResponse,
 )
-from miniautogen.backends.agentapi import AgentAPIDriver, agentapi_factory
 from miniautogen.backends.resolver import BackendResolver
 from miniautogen.backends.sessions import SessionManager
 
