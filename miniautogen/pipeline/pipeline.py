@@ -1,3 +1,4 @@
+import warnings
 from abc import ABC, abstractmethod
 from typing import Any, List
 
@@ -43,6 +44,12 @@ class Pipeline:
         Returns:
             ChatPipelineState: State of the chat after processing all components.
         """
+        warnings.warn(
+            "Pipeline.run() is deprecated. Use PipelineRunner from "
+            "miniautogen.core.runtime instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         for component in self.components:
             state = await component.process(state)
         return state

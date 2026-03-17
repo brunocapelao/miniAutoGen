@@ -5,7 +5,7 @@ from typing import Any
 
 from miniautogen.core.contracts.run_context import RunContext
 
-RUNTIME_RUNNER_CUTOVER_READY = False
+RUNTIME_RUNNER_CUTOVER_READY = True
 
 
 def bridge_chat_pipeline_state(state: Any) -> dict[str, Any]:

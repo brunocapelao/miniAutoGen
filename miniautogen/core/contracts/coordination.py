@@ -14,6 +14,9 @@ from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 
+# TODO(review): validate plan type matches mode before stabilization (biz-reviewer, 2026-03-16, Low)
+_EXPERIMENTAL_CONTRACTS = {"SubrunRequest"}
+
 
 class CoordinationKind(str, Enum):
     """Identifies which coordination mode is in use."""
@@ -110,10 +113,12 @@ class AgenticLoopPlan(CoordinationPlan):
 
 
 class SubrunRequest(BaseModel):
-    """Request to execute a nested coordination run.
+    """Request to spawn a sub-run within a composite execution.
 
-    Enables nested execution: e.g., a workflow step that triggers
-    a sub-deliberation, or a deliberation round that spawns a sub-workflow.
+    .. stability:: experimental
+
+    Reserved for CompositeRuntime sub-execution. This contract is not
+    yet consumed by any runtime and may change without notice.
     """
 
     mode: CoordinationKind

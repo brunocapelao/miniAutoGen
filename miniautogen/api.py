@@ -8,6 +8,11 @@ This module re-exports the essential types that define MiniAutoGen's
 identity as a multi-agent coordination library.
 """
 
+from miniautogen.backends import (
+    AgentDriver,
+    BackendCapabilities,
+    BackendResolver,
+)
 from miniautogen.core.contracts import (
     ExecutionEvent,
     LoopStopReason,
@@ -40,6 +45,8 @@ from miniautogen.core.contracts.deliberation import (
     Contribution,
     Review,
 )
+from miniautogen.core.contracts.store import StoreProtocol
+from miniautogen.core.contracts.tool import ToolProtocol, ToolResult
 from miniautogen.core.runtime import (
     AgenticLoopRuntime,
     CompositeRuntime,
@@ -50,11 +57,6 @@ from miniautogen.core.runtime import (
 from miniautogen.core.runtime.composite_runtime import CompositionStep
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
-from miniautogen.backends import (
-    AgentDriver,
-    BackendCapabilities,
-    BackendResolver,
-)
 from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 
 __all__ = [
@@ -65,6 +67,9 @@ __all__ = [
     "RunContext",
     "RunResult",
     "RunStatus",
+    "StoreProtocol",
+    "ToolProtocol",
+    "ToolResult",
     "Conversation",
     # Agent protocols
     "WorkflowAgent",
