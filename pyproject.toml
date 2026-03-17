@@ -21,6 +21,8 @@ tenacity = ">=8.2.0"
 fastapi = ">=0.115.0"
 uvicorn = ">=0.32.0"
 httpx = ">=0.28.0"
+click = ">=8.0"
+pyyaml = ">=6.0"
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "6.28.0"
@@ -29,6 +31,9 @@ pytest-asyncio = "^0.23.0"
 ruff = "^0.15.0"
 mypy = "^1.9.0"
 hypothesis = "^6.130.0"
+
+[tool.poetry.scripts]
+miniautogen = "miniautogen.cli.main:cli"
 
 [tool.ruff]
 line-length = 100

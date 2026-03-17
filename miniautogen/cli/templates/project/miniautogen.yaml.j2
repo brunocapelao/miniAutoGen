@@ -1,0 +1,29 @@
+project:
+  name: {{ project_name }}
+  version: "0.1.0"
+
+defaults:
+  engine_profile: default_api
+  memory_profile: default
+
+engine_profiles:
+  default_api:
+    kind: api
+    provider: {{ provider }}
+    model: {{ model }}
+    temperature: 0.2
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
+
+pipelines:
+  main:
+    target: pipelines.main:build_pipeline
+
+database:
+  url: sqlite+aiosqlite:///miniautogen.db

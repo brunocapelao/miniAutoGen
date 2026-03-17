@@ -1,0 +1,19 @@
+"""Main pipeline for {{ project_name }}.
+
+This is the default pipeline executed by `miniautogen run main`.
+"""
+
+from __future__ import annotations
+
+
+class MainPipeline:
+    """Simple example pipeline."""
+
+    async def run(self, state: dict) -> dict:
+        """Execute the pipeline."""
+        return {**state, "status": "completed"}
+
+
+def build_pipeline() -> MainPipeline:
+    """Factory function referenced by miniautogen.yaml."""
+    return MainPipeline()
