@@ -1,6 +1,6 @@
 # Milestone 2 — CLI Developer Product: Design Document
 
-**Status:** Approved (v2 — updated with Agent Architecture Spec)
+**Status:** Approved (v3 — with memory architecture and per-agent organization)
 **Date:** 2026-03-17
 
 ## Goal
@@ -35,6 +35,12 @@ Agents defined by `AgentSpec` (YAML), enriched by Skills, Tools, MCP bindings, b
 ### D7: Capability vs execution separation
 `AgentSpec` defines what (role, skills, tools, MCP, permissions). `EngineProfile` defines how (provider, model, adapter). These are independent.
 
+### D8: Memory as runtime-resolved capability
+Memory is NOT a magic attribute on the agent. The agent declares a memory profile; the project defines concrete components; the runtime resolves the profile into retrieval, persistence, compaction, and context injection. See agent-architecture-spec.md.
+
+### D9: Two valid project layouts
+Per-registry (flat, default, scalable) and per-agent (encapsulated, intuitive for small teams). The CLI `init` generates flat by default. The `AgentResolver` handles both layouts.
+
 ## Package Structure
 
 ```
@@ -65,6 +71,7 @@ miniautogen/
 │           ├── skills/example/SKILL.md.j2
 │           ├── skills/example/skill.yaml.j2
 │           ├── tools/web_search.yaml.j2
+│           ├── memory/profiles.yaml.j2
 │           ├── pipelines/main.py.j2
 │           └── .env.j2
 ```
@@ -83,9 +90,9 @@ miniautogen/
 
 ```
 <project>/
-├── miniautogen.yaml              # Project config + engine profiles
+├── miniautogen.yaml              # Project config + engine/memory profiles
 ├── agents/
-│   └── researcher.yaml           # Example AgentSpec
+│   └── researcher.yaml           # Example AgentSpec (with memory profile ref)
 ├── skills/
 │   └── example/
 │       ├── SKILL.md              # Skill instructions
@@ -93,10 +100,14 @@ miniautogen/
 ├── tools/
 │   └── web_search.yaml           # Example ToolSpec
 ├── mcp/                          # MCP bindings (empty initially)
+├── memory/
+│   └── profiles.yaml             # Memory profiles (session, retrieval, compaction)
 ├── pipelines/
 │   └── main.py                   # Example pipeline
 └── .env                          # Environment variables
 ```
+
+Note: This is the flat/per-registry layout (default). Per-agent layout is also valid.
 
 ## Project Config Schema (`miniautogen.yaml`)
 
@@ -107,6 +118,7 @@ project:
 
 defaults:
   engine_profile: default_api
+  memory_profile: default
 
 engine_profiles:
   default_api:
@@ -114,6 +126,14 @@ engine_profiles:
     provider: litellm
     model: gpt-4o-mini
     temperature: 0.2
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
 
 pipelines:
   main:
@@ -133,10 +153,18 @@ class EngineProfileConfig(BaseModel):
     command: str | None = None
     temperature: float = 0.2
 
+class MemoryProfileConfig(BaseModel):
+    session: bool = True
+    retrieval: dict[str, Any] = Field(default_factory=dict)
+    compaction: dict[str, Any] = Field(default_factory=dict)
+    summaries: dict[str, Any] = Field(default_factory=dict)
+    retention: dict[str, Any] = Field(default_factory=dict)
+
 class ProjectConfig(BaseModel):
-    project: ProjectMeta            # name, version
-    defaults: DefaultsConfig        # engine_profile ref
+    project: ProjectMeta
+    defaults: DefaultsConfig        # engine_profile + memory_profile refs
     engine_profiles: dict[str, EngineProfileConfig]
+    memory_profiles: dict[str, MemoryProfileConfig] = Field(default_factory=dict)
     pipelines: dict[str, PipelineConfig]
     database: DatabaseConfig | None = None
 ```
@@ -162,6 +190,8 @@ Validates project configuration, agent specs, and environment.
 - MCP bindings valid
 - Pipeline targets resolvable
 - Engine profiles referenced by agents exist
+- Memory profiles referenced by agents exist
+- Memory profile config valid (session/retrieval/compaction fields)
 
 **Environment checks:**
 - Required API keys present

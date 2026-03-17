@@ -35,6 +35,7 @@ class ProjectMeta(BaseModel):
 
 class DefaultsConfig(BaseModel):
     engine_profile: str
+    memory_profile: str = "default"
 
 class EngineProfileConfig(BaseModel):
     kind: Literal["api", "cli"]
@@ -53,6 +54,7 @@ class ProjectConfig(BaseModel):
     project: ProjectMeta
     defaults: DefaultsConfig
     engine_profiles: dict[str, EngineProfileConfig]
+    memory_profiles: dict[str, dict[str, Any]] = {}
     pipelines: dict[str, PipelineConfig]
     database: DatabaseConfig | None = None
 
@@ -293,6 +295,7 @@ class AgentSpecValidator(BaseModel):
     tool_access: dict | None = None
     mcp_access: list[str] | None = None
     engine_profile: str | None = None
+    memory: dict | None = None
     runtime: dict | None = None
     permissions: dict | None = None
 
@@ -1795,6 +1798,236 @@ git commit -m "feat(cli): add engine profile reference checks"
 **If Task Fails:**
 1. **`config.engine_profiles` missing:** Check Chunk 1 `ProjectConfig` model.
 2. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
+
+### Task 8b: Memory profile checks (extension of Task 8)
+
+Following the same pattern as engine profile reference checks, add memory profile validation:
+
+**Add to tests:**
+
+```python
+class TestMemoryProfileCheck:
+    """Static check: memory profiles exist and agents reference valid ones."""
+
+    @pytest.mark.anyio()
+    async def test_valid_memory_profile_ref_passes(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "memory": {"profile": "default"},
+        }
+        (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        ref_checks = [
+            r for r in results
+            if r.name == "memory_profile_ref_researcher"
+        ]
+        assert len(ref_checks) == 1
+        assert ref_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_missing_memory_profile_ref_fails(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "memory": {"profile": "nonexistent_profile"},
+        }
+        (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        ref_checks = [
+            r for r in results
+            if r.name == "memory_profile_ref_researcher"
+        ]
+        assert len(ref_checks) == 1
+        assert ref_checks[0].passed is False
+        assert "nonexistent_profile" in ref_checks[0].message
+
+    @pytest.mark.anyio()
+    async def test_agent_without_memory_skips(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "minimal",
+            "version": "1.0",
+            "name": "Minimal",
+            "role": "Helper",
+            "goal": "Help",
+            # No memory section — uses project default
+        }
+        (agents_dir / "minimal.yaml").write_text(yaml.dump(agent_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        ref_checks = [
+            r for r in results
+            if r.name == "memory_profile_ref_minimal"
+        ]
+        # No check produced when agent doesn't specify memory
+        assert len(ref_checks) == 0
+
+    @pytest.mark.anyio()
+    async def test_default_memory_profile_check(
+        self, tmp_path: Path,
+    ) -> None:
+        """The defaults.memory_profile must exist in memory_profiles."""
+        config_file = _write_minimal_config(tmp_path)
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        default_checks = [
+            r for r in results if r.name == "default_memory_profile"
+        ]
+        assert len(default_checks) == 1
+        assert default_checks[0].passed is True
+```
+
+**Add to `check_project.py`:**
+
+```python
+def _check_memory_profiles(
+    project_root: Path,
+    config: ProjectConfig,
+) -> list[CheckResult]:
+    """Validate memory profiles exist and agents reference valid ones."""
+    results: list[CheckResult] = []
+
+    # Check profiles.yaml is parseable (if it exists)
+    profiles_file = project_root / "memory" / "profiles.yaml"
+    if profiles_file.is_file():
+        try:
+            raw = yaml.safe_load(
+                profiles_file.read_text(encoding="utf-8")
+            )
+            if not isinstance(raw, dict):
+                results.append(CheckResult(
+                    name="memory_profiles_file",
+                    passed=False,
+                    message="memory/profiles.yaml is not a valid mapping",
+                    category="static",
+                ))
+            else:
+                results.append(CheckResult(
+                    name="memory_profiles_file",
+                    passed=True,
+                    message="memory/profiles.yaml is valid",
+                    category="static",
+                ))
+        except yaml.YAMLError as exc:
+            results.append(CheckResult(
+                name="memory_profiles_file",
+                passed=False,
+                message=f"memory/profiles.yaml parse error: {exc}",
+                category="static",
+            ))
+
+    # Check default memory profile exists
+    default_ref = config.defaults.memory_profile
+    available = set(config.memory_profiles.keys())
+    if default_ref in available:
+        results.append(CheckResult(
+            name="default_memory_profile",
+            passed=True,
+            message=f"Default memory profile '{default_ref}' exists",
+            category="static",
+        ))
+    else:
+        results.append(CheckResult(
+            name="default_memory_profile",
+            passed=False,
+            message=(
+                f"Default memory profile '{default_ref}' not found in "
+                f"memory_profiles. Available: "
+                f"{', '.join(sorted(available)) or '(none)'}"
+            ),
+            category="static",
+        ))
+
+    # Cross-reference: agents referencing memory profiles
+    agents_dir = project_root / "agents"
+    if not agents_dir.is_dir():
+        return results
+
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        agent_name = yaml_file.stem
+        try:
+            raw = yaml.safe_load(
+                yaml_file.read_text(encoding="utf-8")
+            )
+            if not isinstance(raw, dict):
+                continue
+            memory = raw.get("memory")
+            if not isinstance(memory, dict):
+                continue
+            profile_ref = memory.get("profile")
+            if not profile_ref:
+                continue
+            if profile_ref in available:
+                results.append(CheckResult(
+                    name=f"memory_profile_ref_{agent_name}",
+                    passed=True,
+                    message=(
+                        f"Agent '{agent_name}' memory profile "
+                        f"'{profile_ref}' exists"
+                    ),
+                    category="static",
+                ))
+            else:
+                results.append(CheckResult(
+                    name=f"memory_profile_ref_{agent_name}",
+                    passed=False,
+                    message=(
+                        f"Agent '{agent_name}' references memory profile "
+                        f"'{profile_ref}' which does not exist. "
+                        f"Available: "
+                        f"{', '.join(sorted(available)) or '(none)'}"
+                    ),
+                    category="static",
+                ))
+        except yaml.YAMLError:
+            continue  # Already caught by _check_agents
+
+    return results
+```
+
+Update `check_project` — add after engine profile reference checks:
+
+```python
+    # Memory profile checks
+    results.extend(_check_memory_profiles(project_root, config))
+```
+
+**Note:** The `_write_minimal_config` helper must include `memory_profiles` and `defaults.memory_profile` in its generated config. Update it to match the updated `ProjectConfig` schema from Chunk 1.
 
 ---
 

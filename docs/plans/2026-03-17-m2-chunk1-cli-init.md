@@ -2,7 +2,9 @@
 
 > **For Agents:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
-**Goal:** Set up CLI infrastructure (main group, config, errors, output) and implement `miniautogen init <name>` that scaffolds a multi-agent project with agents, skills, tools, mcp, and pipelines.
+**Goal:** Set up CLI infrastructure (main group, config, errors, output) and implement `miniautogen init <name>` that scaffolds a multi-agent project with agents, skills, tools, mcp, memory, and pipelines.
+
+> **Note — Project layouts:** Two valid project structures are supported (see agent-architecture-spec.md). The CLI `init` command generates the **flat/per-registry layout** by default (agents/, skills/, tools/, mcp/, memory/, pipelines/ at project root). The per-agent layout (resources nested under each agent directory) is also valid but not scaffolded by `init`.
 
 **Architecture:** CLI as pure SDK consumer. `commands/` are Click adapters (parse args, render output). `services/` contain testable application logic that never touches Click. `config.py` handles YAML project resolution with Pydantic v2 models. All CLI code may only import from `miniautogen.api` and `miniautogen.cli.*` — never from internal modules (`core`, `stores`, `backends`, etc.). An architectural import boundary test enforces this.
 
@@ -116,7 +118,7 @@ git commit -m "feat(cli): add click and pyyaml dependencies + CLI entry point"
 Run:
 ```bash
 cd /Users/brunocapelao/Projects/miniAutoGen
-mkdir -p miniautogen/cli/commands miniautogen/cli/services miniautogen/cli/templates/project/agents miniautogen/cli/templates/project/skills/example miniautogen/cli/templates/project/tools miniautogen/cli/templates/project/pipelines tests/cli
+mkdir -p miniautogen/cli/commands miniautogen/cli/services miniautogen/cli/templates/project/agents miniautogen/cli/templates/project/skills/example miniautogen/cli/templates/project/tools miniautogen/cli/templates/project/memory miniautogen/cli/templates/project/pipelines tests/cli
 ```
 
 **Expected output:** No output (directories created silently).
@@ -434,6 +436,7 @@ class DefaultsConfig(BaseModel):
     """Project-wide defaults."""
 
     engine_profile: str
+    memory_profile: str = "default"
 
 
 class EngineProfileConfig(BaseModel):
@@ -464,6 +467,7 @@ class ProjectConfig(BaseModel):
     project: ProjectMeta
     defaults: DefaultsConfig
     engine_profiles: dict[str, EngineProfileConfig]
+    memory_profiles: dict[str, dict[str, Any]] = {}
     pipelines: dict[str, PipelineConfig]
     database: DatabaseConfig | None = None
 
@@ -909,6 +913,7 @@ git commit -m "feat(cli): add terminal output helpers (success, error, info, jso
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/SKILL.md.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/skill.yaml.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/tools/web_search.yaml.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/memory/profiles.yaml.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/pipelines/main.py.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/.env.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_templates.py`
@@ -960,9 +965,12 @@ class TestTemplateRendering:
         parsed = yaml.safe_load(result)
         assert parsed["project"]["name"] == "test-project"
         assert parsed["defaults"]["engine_profile"] == "default_api"
+        assert parsed["defaults"]["memory_profile"] == "default"
         assert "default_api" in parsed["engine_profiles"]
         assert parsed["engine_profiles"]["default_api"]["model"] == "gpt-4o-mini"
         assert parsed["engine_profiles"]["default_api"]["provider"] == "litellm"
+        assert "default" in parsed["memory_profiles"]
+        assert parsed["memory_profiles"]["default"]["session"] is True
         assert parsed["pipelines"]["main"]["target"] == "pipelines.main:build_pipeline"
         assert "database" in parsed
 
@@ -973,6 +981,8 @@ class TestTemplateRendering:
         assert "skills" in parsed
         assert "tool_access" in parsed
         assert parsed["engine_profile"] == "default_api"
+        assert parsed["memory"]["profile"] == "default"
+        assert parsed["memory"]["session_memory"] is True
 
     def test_skill_yaml_renders(self) -> None:
         result = self._render("skills/example/skill.yaml.j2")
@@ -1001,6 +1011,12 @@ class TestTemplateRendering:
         result = self._render(".env.j2")
         assert "MINIAUTOGEN" in result or "DATABASE_URL" in result
 
+    def test_memory_profiles_yaml_renders(self) -> None:
+        result = self._render("memory/profiles.yaml.j2")
+        parsed = yaml.safe_load(result)
+        assert "default" in parsed
+        assert parsed["default"]["session"] is True
+
     def test_all_templates_exist(self) -> None:
         expected = [
             "miniautogen.yaml.j2",
@@ -1008,6 +1024,7 @@ class TestTemplateRendering:
             "skills/example/SKILL.md.j2",
             "skills/example/skill.yaml.j2",
             "tools/web_search.yaml.j2",
+            "memory/profiles.yaml.j2",
             "pipelines/main.py.j2",
             ".env.j2",
         ]
@@ -1036,6 +1053,7 @@ project:
 
 defaults:
   engine_profile: default_api
+  memory_profile: default
 
 engine_profiles:
   default_api:
@@ -1043,6 +1061,14 @@ engine_profiles:
     provider: {{ provider }}
     model: {{ model }}
     temperature: 0.2
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
 
 pipelines:
   main:
@@ -1073,6 +1099,12 @@ tool_access:
     - web_search
 
 engine_profile: default_api
+
+memory:
+  profile: default
+  session_memory: true
+  retrieval_memory: false
+  max_context_tokens: 16000
 
 runtime:
   max_turns: 10
@@ -1125,7 +1157,23 @@ policy:
   timeout_seconds: 30
 ```
 
-**Step 8: Create `pipelines/main.py.j2`**
+**Step 8: Create `memory/profiles.yaml.j2`**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/memory/profiles.yaml.j2`:
+
+```
+# Memory profiles for {{ project_name }}
+# Agents reference these profiles by name in their memory.profile field.
+
+default:
+  session: true
+  retrieval:
+    enabled: false
+  compaction:
+    enabled: false
+```
+
+**Step 9: Create `pipelines/main.py.j2`**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/pipelines/main.py.j2`:
 
@@ -1146,7 +1194,7 @@ def build_pipeline() -> Pipeline:
     return pipeline
 ```
 
-**Step 9: Create `.env.j2`**
+**Step 10: Create `.env.j2`**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/.env.j2`:
 
@@ -1167,7 +1215,7 @@ DATABASE_URL=sqlite+aiosqlite:///miniautogen.db
 # MINIAUTOGEN_DEFAULT_TIMEOUT_SECONDS=30
 ```
 
-**Step 10: Run tests to verify they pass**
+**Step 11: Run tests to verify they pass**
 
 Run:
 ```bash
@@ -1181,14 +1229,15 @@ tests/cli/test_templates.py::TestTemplateRendering::test_researcher_yaml_renders
 tests/cli/test_templates.py::TestTemplateRendering::test_skill_yaml_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_skill_md_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_tool_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_memory_profiles_yaml_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_pipeline_main_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_env_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_all_templates_exist PASSED
 
-8 passed
+9 passed
 ```
 
-**Step 11: Commit**
+**Step 12: Commit**
 
 ```bash
 cd /Users/brunocapelao/Projects/miniAutoGen
@@ -1380,6 +1429,7 @@ class TestInitProject:
             "skills/example/skill.yaml",
             "skills/example/SKILL.md",
             "tools/web_search.yaml",
+            "memory/profiles.yaml",
             "pipelines/main.py",
             ".env",
         ]
@@ -1444,6 +1494,7 @@ _TEMPLATE_MAP: list[tuple[str, str]] = [
     ("skills/example/skill.yaml.j2", "skills/example/skill.yaml"),
     ("skills/example/SKILL.md.j2", "skills/example/SKILL.md"),
     ("tools/web_search.yaml.j2", "tools/web_search.yaml"),
+    ("memory/profiles.yaml.j2", "memory/profiles.yaml"),
     ("pipelines/main.py.j2", "pipelines/main.py"),
     (".env.j2", ".env"),
 ]
@@ -1642,6 +1693,7 @@ class TestInitCommand:
             "skills/example/skill.yaml",
             "skills/example/SKILL.md",
             "tools/web_search.yaml",
+            "memory/profiles.yaml",
             "pipelines/main.py",
             ".env",
         ]
@@ -2038,6 +2090,7 @@ tests/cli/test_templates.py::TestTemplateRendering::test_researcher_yaml_renders
 tests/cli/test_templates.py::TestTemplateRendering::test_skill_yaml_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_skill_md_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_tool_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_memory_profiles_yaml_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_pipeline_main_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_env_renders PASSED
 tests/cli/test_templates.py::TestTemplateRendering::test_all_templates_exist PASSED
@@ -2128,6 +2181,7 @@ cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help && p
 | `miniautogen/cli/templates/project/skills/example/SKILL.md.j2` | Skill instructions template |
 | `miniautogen/cli/templates/project/skills/example/skill.yaml.j2` | Skill metadata template |
 | `miniautogen/cli/templates/project/tools/web_search.yaml.j2` | Tool spec template |
+| `miniautogen/cli/templates/project/memory/profiles.yaml.j2` | Memory profiles template |
 | `miniautogen/cli/templates/project/pipelines/main.py.j2` | Pipeline template |
 | `miniautogen/cli/templates/project/.env.j2` | Environment file template |
 
@@ -2138,7 +2192,7 @@ cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help && p
 | `tests/cli/test_config.py` | Config model + loading tests (10 tests) |
 | `tests/cli/test_errors.py` | Error hierarchy tests (6 tests) |
 | `tests/cli/test_output.py` | Output helper tests (5 tests) |
-| `tests/cli/test_templates.py` | Template rendering tests (8 tests) |
+| `tests/cli/test_templates.py` | Template rendering tests (9 tests) |
 | `tests/cli/test_init_service.py` | Init service tests (11 tests) |
 | `tests/cli/test_init_command.py` | Init CLI command tests (7 tests) |
 | `tests/cli/test_import_boundary.py` | Architectural boundary test (2 tests) |
@@ -2148,4 +2202,4 @@ cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help && p
 |---|---|
 | `pyproject.toml` | Added click, pyyaml deps + scripts entry point |
 
-### Total: 49 new tests across 7 test files
+### Total: 50 new tests across 7 test files
