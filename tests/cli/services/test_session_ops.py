@@ -84,3 +84,72 @@ async def test_clean_sessions_cleans_timed_out() -> None:
 def test_create_store_returns_in_memory() -> None:
     store = create_store_from_config(None)
     assert isinstance(store, InMemoryRunStore)
+
+
+@pytest.mark.anyio
+async def test_clean_sessions_with_older_than() -> None:
+    """Only delete runs older than N days."""
+    store = InMemoryRunStore()
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    await store.save_run("run-recent", {
+        "run_id": "run-recent",
+        "status": "completed",
+        "created_at": now,
+    })
+    # Clean with older_than=1 should NOT delete recent run
+    count = await clean_sessions(store, older_than_days=1)
+    assert count == 0
+    assert await store.get_run("run-recent") is not None
+
+
+@pytest.mark.anyio
+async def test_clean_sessions_with_old_run() -> None:
+    """Delete runs older than N days."""
+    store = InMemoryRunStore()
+    await store.save_run("run-old", {
+        "run_id": "run-old",
+        "status": "completed",
+        "created_at": "2020-01-01T00:00:00+00:00",
+    })
+    count = await clean_sessions(store, older_than_days=1)
+    assert count == 1
+
+
+@pytest.mark.anyio
+async def test_clean_sessions_unparseable_date_skipped() -> None:
+    """Runs with unparseable dates are skipped (not deleted)."""
+    store = InMemoryRunStore()
+    await store.save_run("run-bad-date", {
+        "run_id": "run-bad-date",
+        "status": "completed",
+        "created_at": "not-a-date",
+    })
+    count = await clean_sessions(store, older_than_days=1)
+    assert count == 0
+    assert await store.get_run("run-bad-date") is not None
+
+
+@pytest.mark.anyio
+async def test_list_sessions_with_limit() -> None:
+    """Limit parameter restricts results."""
+    store = InMemoryRunStore()
+    for i in range(10):
+        await store.save_run(f"run-{i}", {"status": "completed"})
+    runs = await list_sessions(store, limit=3)
+    assert len(runs) == 3
+
+
+def test_create_store_warns_on_db_config() -> None:
+    """Warns when database config provided but ignored."""
+    import warnings
+
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        store = create_store_from_config(
+            {"url": "sqlite+aiosqlite:///test.db"},
+        )
+        assert isinstance(store, InMemoryRunStore)
+        assert len(w) == 1
+        assert "not yet supported" in str(w[0].message).lower()
