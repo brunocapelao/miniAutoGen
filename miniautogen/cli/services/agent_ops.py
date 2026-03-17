@@ -6,8 +6,14 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from pydantic import ValidationError
 
-from miniautogen.cli.services.yaml_ops import read_yaml, write_yaml
+from miniautogen.api import AgentSpec
+from miniautogen.cli.services.yaml_ops import (
+    read_yaml,
+    update_yaml_preserving,
+    write_yaml,
+)
 
 
 def _agents_dir(project_root: Path) -> Path:
@@ -18,6 +24,22 @@ def _agents_dir(project_root: Path) -> Path:
 
 def _config_path(project_root: Path) -> Path:
     return project_root / "miniautogen.yaml"
+
+
+def _validate_agent(data: dict[str, Any]) -> None:
+    """Validate agent data against AgentSpec schema.
+
+    Raises ValueError with details if invalid.
+    """
+    try:
+        AgentSpec.model_validate(data)
+    except ValidationError as exc:
+        errors = "; ".join(
+            f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
+            for e in exc.errors()
+        )
+        msg = f"Agent validation failed: {errors}"
+        raise ValueError(msg) from exc
 
 
 async def create_agent(
@@ -31,6 +53,8 @@ async def create_agent(
     max_tokens: int | None = None,
 ) -> dict[str, Any]:
     """Create a new agent YAML file in agents/ directory.
+
+    Validates against AgentSpec schema before writing.
 
     Returns the created agent config dict.
     """
@@ -62,7 +86,10 @@ async def create_agent(
     if temperature is not None:
         agent["temperature"] = temperature
     if max_tokens is not None:
-        agent["max_tokens"] = max_tokens
+        agent["runtime"] = {"max_tokens": max_tokens}
+
+    # Validate against AgentSpec before writing
+    _validate_agent(agent)
 
     write_yaml(agent_path, agent, backup=False)
     return agent
@@ -115,6 +142,9 @@ async def update_agent(
 ) -> dict[str, Any]:
     """Update fields on an existing agent.
 
+    Validates the resulting config against AgentSpec before writing.
+    Uses ruamel.yaml to preserve comments when available.
+
     Returns a dict with 'before' and 'after' states.
     """
     agent_path = project_root / "agents" / f"{name}.yaml"
@@ -128,9 +158,12 @@ async def update_agent(
         if v is not None:
             after[k] = v
 
+    # Validate before writing
+    _validate_agent(after)
+
     result = {"before": before, "after": after}
     if not dry_run:
-        write_yaml(agent_path, after)
+        update_yaml_preserving(agent_path, updates)
     return result
 
 
@@ -162,7 +195,8 @@ async def delete_agent(
     if referencing:
         msg = (
             f"Cannot delete agent '{name}': referenced by pipeline(s): "
-            f"{', '.join(referencing)}"
+            f"{', '.join(referencing)}. "
+            f"Remove the agent from these pipelines first."
         )
         raise ValueError(msg)
 

@@ -1,6 +1,8 @@
 """miniautogen engine command group.
 
 CRUD operations for LLM engine profiles in miniautogen.yaml.
+Supports dual mode: interactive wizard when flags missing,
+silent mode when all flags provided (for CI/CD).
 """
 
 from __future__ import annotations
@@ -15,6 +17,21 @@ from miniautogen.cli.output import (
     echo_success,
     echo_table,
 )
+
+_PROVIDER_DEFAULTS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com/v1",
+    "gemini": "https://generativelanguage.googleapis.com/v1",
+    "vllm": "http://localhost:8000/v1",
+    "gemini-cli": "http://localhost:8080/v1",
+}
+
+_PROVIDER_ENV_VARS: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "gemini": "GEMINI_API_KEY",
+    "google": "GOOGLE_API_KEY",
+}
 
 
 @click.group("engine")
@@ -48,13 +65,55 @@ def engine_create(
     """Create a new engine profile."""
     from miniautogen.cli.services.engine_ops import create_engine
 
-    # Interactive mode: prompt for missing required fields
+    root, _config = require_project_config()
+
+    # Interactive wizard for missing required fields
     if provider is None:
-        provider = click.prompt("Provider", type=str)
+        provider = click.prompt(
+            "Provider (openai, gemini, vllm, anthropic, other)",
+            type=str,
+        )
     if model is None:
         model = click.prompt("Model", type=str)
 
-    root, _config = require_project_config()
+    # Interactive: prompt for endpoint with provider-specific default
+    if endpoint is None:
+        default_ep = _PROVIDER_DEFAULTS.get(provider, "")
+        if default_ep:
+            endpoint = click.prompt(
+                "Endpoint",
+                default=default_ep,
+                type=str,
+            )
+        else:
+            raw_ep = click.prompt("Endpoint (leave empty for default)", default="", type=str)
+            endpoint = raw_ep if raw_ep.strip() else None
+
+    # Interactive: prompt for API key env var
+    if api_key_env is None:
+        default_env = _PROVIDER_ENV_VARS.get(provider, "")
+        if default_env:
+            api_key_env = click.prompt(
+                "API key env var",
+                default=default_env,
+                type=str,
+            )
+        else:
+            raw_env = click.prompt(
+                "API key env var (leave empty to skip)",
+                default="",
+                type=str,
+            )
+            api_key_env = raw_env if raw_env.strip() else None
+
+    # Interactive: prompt for capabilities
+    if capabilities is None:
+        raw_caps = click.prompt(
+            "Capabilities (comma-separated: chat,completion,embedding)",
+            default="chat",
+            type=str,
+        )
+        capabilities = raw_caps if raw_caps.strip() else None
 
     caps = [c.strip() for c in capabilities.split(",")] if capabilities else None
 

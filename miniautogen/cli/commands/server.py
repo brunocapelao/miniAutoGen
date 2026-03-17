@@ -9,7 +9,7 @@ import click
 
 from miniautogen.cli.config import require_project_config
 from miniautogen.cli.main import run_async
-from miniautogen.cli.output import echo_error, echo_info, echo_success
+from miniautogen.cli.output import echo_error, echo_info, echo_success, echo_warning
 
 
 @click.group("server")
@@ -21,13 +21,29 @@ def server_group() -> None:
 @click.option("--host", default="127.0.0.1", help="Bind address.")
 @click.option("--port", type=int, default=8080, help="Bind port.")
 @click.option("--daemon", is_flag=True, default=False, help="Run in background.")
-def server_start(host: str, port: int, daemon: bool) -> None:
+@click.option("--timeout", type=int, default=None, help="Request timeout in seconds.")
+@click.option("--max-concurrency", type=int, default=None, help="Max concurrent requests.")
+def server_start(
+    host: str,
+    port: int,
+    daemon: bool,
+    timeout: int | None,
+    max_concurrency: int | None,
+) -> None:
     """Start the gateway server."""
     from miniautogen.cli.services.server_ops import start_server
 
     root, _config = require_project_config()
 
-    result = run_async(start_server, root, host=host, port=port, daemon=daemon)
+    result = run_async(
+        start_server,
+        root,
+        host=host,
+        port=port,
+        daemon=daemon,
+        timeout=timeout,
+        max_concurrency=max_concurrency,
+    )
 
     if result["status"] == "already_running":
         echo_info(result["message"])
@@ -37,19 +53,10 @@ def server_start(host: str, port: int, daemon: bool) -> None:
         echo_info(result["message"])
         # Foreground mode: launch uvicorn directly
         import subprocess
-        import sys
 
+        cmd = result.get("cmd", [])
         try:
-            subprocess.run(
-                [
-                    sys.executable, "-m", "uvicorn",
-                    "miniautogen.gateway:app",
-                    "--host", host,
-                    "--port", str(port),
-                ],
-                cwd=str(root),
-                check=True,
-            )
+            subprocess.run(cmd, cwd=str(root), check=True)
         except KeyboardInterrupt:
             echo_info("\nServer stopped.")
         except subprocess.CalledProcessError:
@@ -85,7 +92,8 @@ def server_status_cmd() -> None:
     if status == "running":
         echo_success(msg)
     elif status == "degraded":
-        from miniautogen.cli.output import echo_warning
+        echo_warning(msg)
+    elif status == "unreachable":
         echo_warning(msg)
     else:
         echo_info(msg)

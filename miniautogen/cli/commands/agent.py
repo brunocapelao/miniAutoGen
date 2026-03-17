@@ -1,6 +1,8 @@
 """miniautogen agent command group.
 
 CRUD operations for agent definitions (agents/*.yaml).
+Supports dual mode: interactive wizard when flags missing,
+silent mode when all flags provided.
 """
 
 from __future__ import annotations
@@ -43,7 +45,7 @@ def agent_create(
 
     root, _config = require_project_config()
 
-    # Interactive mode: prompt for missing required fields
+    # Interactive wizard for missing required fields
     if engine_profile is None:
         engines = run_async(list_engines, root)
         if not engines:
@@ -60,6 +62,33 @@ def agent_create(
         role = click.prompt("Role", type=str)
     if goal is None:
         goal = click.prompt("Goal", type=str)
+
+    # Optional configuration prompts in interactive mode
+    if temperature is None:
+        raw_temp = click.prompt(
+            "Temperature (leave empty for default)",
+            default="",
+            type=str,
+        )
+        if raw_temp.strip():
+            try:
+                temperature = float(raw_temp)
+            except ValueError:
+                echo_error(f"Invalid temperature: {raw_temp}")
+                raise SystemExit(1)
+
+    if max_tokens is None:
+        raw_tokens = click.prompt(
+            "Max tokens (leave empty for default)",
+            default="",
+            type=str,
+        )
+        if raw_tokens.strip():
+            try:
+                max_tokens = int(raw_tokens)
+            except ValueError:
+                echo_error(f"Invalid max tokens: {raw_tokens}")
+                raise SystemExit(1)
 
     try:
         agent = run_async(
@@ -169,7 +198,7 @@ def agent_update(
         result = run_async(
             update_agent, root, name, dry_run=dry_run, **updates,
         )
-    except KeyError as exc:
+    except (KeyError, ValueError) as exc:
         echo_error(str(exc))
         raise SystemExit(1)
 

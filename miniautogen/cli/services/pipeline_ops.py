@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from miniautogen.cli.services.yaml_ops import read_yaml, write_yaml
+from miniautogen.cli.services.yaml_ops import (
+    read_yaml,
+    update_yaml_preserving,
+    write_yaml,
+)
 
 
 def _config_path(project_root: Path) -> Path:
@@ -21,6 +25,7 @@ async def create_pipeline(
     leader: str | None = None,
     target: str | None = None,
     max_rounds: int | None = None,
+    chain_pipelines: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a new pipeline configuration in miniautogen.yaml.
 
@@ -49,6 +54,13 @@ async def create_pipeline(
             msg = f"Leader agent '{leader}' not found in agents/"
             raise ValueError(msg)
 
+    # For composite mode, validate referenced pipelines exist
+    if chain_pipelines:
+        for pname in chain_pipelines:
+            if pname not in pipelines:
+                msg = f"Pipeline '{pname}' not found (needed for composite chain)"
+                raise ValueError(msg)
+
     pipeline: dict[str, Any] = {"mode": mode}
 
     if target:
@@ -62,6 +74,8 @@ async def create_pipeline(
         pipeline["leader"] = leader
     if max_rounds is not None:
         pipeline["max_rounds"] = max_rounds
+    if chain_pipelines:
+        pipeline["chain"] = chain_pipelines
 
     pipelines[name] = pipeline
     write_yaml(cfg_path, data)
@@ -137,6 +151,9 @@ async def update_pipeline(
 ) -> dict[str, Any]:
     """Update fields on an existing pipeline config.
 
+    Supports add_participant and remove_participant for
+    incremental participant management.
+
     Returns a dict with 'before' and 'after' states.
     """
     cfg_path = _config_path(project_root)
@@ -149,6 +166,28 @@ async def update_pipeline(
     raw_cfg = pipelines[name]
     before = dict(raw_cfg) if isinstance(raw_cfg, dict) else {"target": str(raw_cfg)}
     after = dict(before)
+
+    # Handle add_participant / remove_participant
+    add_p = updates.pop("add_participant", None)
+    remove_p = updates.pop("remove_participant", None)
+
+    if add_p is not None:
+        current = list(after.get("participants", []))
+        # Validate agent exists
+        agents_dir = project_root / "agents"
+        agent_file = agents_dir / f"{add_p}.yaml"
+        if not agent_file.is_file():
+            msg = f"Agent '{add_p}' not found in agents/"
+            raise ValueError(msg)
+        if add_p not in current:
+            current.append(add_p)
+        after["participants"] = current
+
+    if remove_p is not None:
+        current = list(after.get("participants", []))
+        if remove_p in current:
+            current.remove(remove_p)
+        after["participants"] = current
 
     for k, v in updates.items():
         if v is not None:

@@ -70,10 +70,22 @@ async def test_scaffold_creates_gitignore(tmp_path) -> None:
 
 
 @pytest.mark.anyio
-async def test_scaffold_fails_if_exists(tmp_path) -> None:
-    (tmp_path / "myproject").mkdir()
+async def test_scaffold_fails_if_exists_nonempty(tmp_path) -> None:
+    d = tmp_path / "myproject"
+    d.mkdir()
+    (d / "existing.txt").write_text("content")
     with pytest.raises(FileExistsError):
         await scaffold_project("myproject", tmp_path)
+
+
+@pytest.mark.anyio
+async def test_scaffold_force_preserves_existing(tmp_path) -> None:
+    d = tmp_path / "myproject"
+    d.mkdir()
+    (d / "miniautogen.yaml").write_text("custom: true\n")
+    result = await scaffold_project("myproject", tmp_path, force=True)
+    assert (result / "miniautogen.yaml").read_text() == "custom: true\n"
+    assert (result / "pipelines" / "main.py").is_file()
 
 
 @pytest.mark.anyio

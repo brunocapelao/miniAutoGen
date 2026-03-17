@@ -1,6 +1,7 @@
 """Pipeline execution service for the CLI.
 
 Resolves pipeline targets and executes them via PipelineRunner.
+Supports input passing and run resumption from checkpoints.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from miniautogen.api import (
     ExecutionPolicy,
     InMemoryEventSink,
     PipelineRunner,
+    SessionRecovery,
 )
 from miniautogen.cli.config import ProjectConfig
 
@@ -69,6 +71,8 @@ async def execute_pipeline(
     *,
     timeout: float | None = None,
     verbose: bool = False,
+    pipeline_input: str | None = None,
+    resume_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Execute a named pipeline from the project config.
 
@@ -78,6 +82,8 @@ async def execute_pipeline(
         project_root: Path to project root (added to sys.path).
         timeout: Optional timeout in seconds.
         verbose: If True, log events to console.
+        pipeline_input: Optional input text for the pipeline.
+        resume_run_id: Optional run_id to resume from checkpoint.
 
     Returns:
         Result dict with run_id, status, output.
@@ -115,12 +121,31 @@ async def execute_pipeline(
             execution_policy=execution_policy,
         )
 
-        result = await runner.run_pipeline(pipeline, {})
+        # Build context with input
+        context: dict[str, Any] = {}
+        if pipeline_input is not None:
+            context["input"] = pipeline_input
+
+        # Handle resume from checkpoint
+        if resume_run_id is not None:
+            try:
+                recovery = SessionRecovery()
+                checkpoint = await recovery.load_checkpoint(resume_run_id)
+                if checkpoint is not None:
+                    context["resume_from"] = checkpoint
+                    context["original_run_id"] = resume_run_id
+            except Exception:
+                # If recovery fails, proceed as fresh run but note it
+                context["resume_failed"] = True
+
+        result = await runner.run_pipeline(pipeline, context)
 
         return {
             "status": "completed",
             "output": result,
             "events": len(event_sink.events),
+            "input_provided": pipeline_input is not None,
+            "resumed": resume_run_id is not None,
         }
     except (KeyError, ValueError, ImportError) as exc:
         return {

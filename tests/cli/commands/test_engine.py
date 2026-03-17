@@ -21,14 +21,18 @@ def test_engine_create_silent(tmp_path, monkeypatch) -> None:
         "engine", "create", "gpt4",
         "--provider", "openai",
         "--model", "gpt-4o",
+        "--endpoint", "https://api.openai.com/v1",
+        "--api-key-env", "OPENAI_API_KEY",
+        "--capabilities", "chat",
     ])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
 
     # Verify written to YAML
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert "gpt4" in cfg["engine_profiles"]
     assert cfg["engine_profiles"]["gpt4"]["model"] == "gpt-4o"
+    assert cfg["engine_profiles"]["gpt4"]["api_key"] == "${OPENAI_API_KEY}"
 
 
 def test_engine_create_with_capabilities(tmp_path, monkeypatch) -> None:
@@ -37,11 +41,25 @@ def test_engine_create_with_capabilities(tmp_path, monkeypatch) -> None:
         "engine", "create", "gemini",
         "--provider", "gemini",
         "--model", "gemini-2.5-pro",
+        "--endpoint", "https://generativelanguage.googleapis.com/v1",
+        "--api-key-env", "GEMINI_API_KEY",
         "--capabilities", "chat,embedding",
     ])
-    assert result.exit_code == 0
+    assert result.exit_code == 0, result.output
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert cfg["engine_profiles"]["gemini"]["capabilities"] == ["chat", "embedding"]
+
+
+def test_engine_create_interactive(tmp_path, monkeypatch) -> None:
+    """Test interactive wizard prompts for missing fields."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(
+        cli,
+        ["engine", "create", "myengine"],
+        input="openai\ngpt-4o\nhttps://api.openai.com/v1\nOPENAI_API_KEY\nchat\n",
+    )
+    assert result.exit_code == 0, result.output
+    assert "created" in result.output.lower()
 
 
 def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
@@ -51,8 +69,41 @@ def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
         "engine", "create", "default_api",
         "--provider", "openai",
         "--model", "gpt-4o",
+        "--endpoint", "x",
+        "--api-key-env", "X",
+        "--capabilities", "chat",
     ])
     assert result.exit_code != 0
+
+
+def test_engine_create_validates_schema(tmp_path, monkeypatch) -> None:
+    """Engine create validates against EngineProfileConfig."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, [
+        "engine", "create", "valid",
+        "--provider", "openai",
+        "--model", "gpt-4o",
+        "--endpoint", "x",
+        "--api-key-env", "X",
+        "--capabilities", "chat",
+    ])
+    assert result.exit_code == 0
+
+
+def test_engine_create_credential_safety(tmp_path, monkeypatch) -> None:
+    """Engine create stores only env var references, not keys."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, [
+        "engine", "create", "safe",
+        "--provider", "openai",
+        "--model", "gpt-4o",
+        "--endpoint", "x",
+        "--api-key-env", "MY_SECRET_KEY",
+        "--capabilities", "chat",
+    ])
+    assert result.exit_code == 0
+    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    assert cfg["engine_profiles"]["safe"]["api_key"] == "${MY_SECRET_KEY}"
 
 
 def test_engine_list(tmp_path, monkeypatch) -> None:
@@ -104,7 +155,6 @@ def test_engine_update(tmp_path, monkeypatch) -> None:
 
 def test_engine_update_dry_run(tmp_path, monkeypatch) -> None:
     runner = _init_project(tmp_path, monkeypatch)
-    # Read current model first
     cfg_before = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     original_model = cfg_before["engine_profiles"]["default_api"]["model"]
 
@@ -116,7 +166,6 @@ def test_engine_update_dry_run(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "dry run" in result.output.lower()
 
-    # Original should be unchanged
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert cfg["engine_profiles"]["default_api"]["model"] == original_model
 

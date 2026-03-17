@@ -36,6 +36,7 @@ async def scaffold_project(
     model: str = "gpt-4o-mini",
     provider: str = "litellm",
     include_examples: bool = True,
+    force: bool = False,
 ) -> Path:
     """Create a new MiniAutoGen project with canonical structure.
 
@@ -45,12 +46,15 @@ async def scaffold_project(
         model: Default LLM model.
         provider: Default LLM provider.
         include_examples: If False, skip example agent/skill/tool.
+        force: If True and directory exists, add only missing files
+               without overwriting existing ones.
 
     Returns:
         Path to the created project directory.
 
     Raises:
-        FileExistsError: If the project directory already exists.
+        FileExistsError: If the project directory already exists
+            and force is False.
     """
     if not name or not _VALID_NAME.match(name):
         msg = (
@@ -60,11 +64,17 @@ async def scaffold_project(
         raise ValueError(msg)
 
     project_dir = target_dir / name
-    if project_dir.exists():
-        msg = f"Directory already exists: {project_dir}"
-        raise FileExistsError(msg)
 
-    project_dir.mkdir(parents=True)
+    if project_dir.exists() and not force:
+        # Check if directory is non-empty
+        if any(project_dir.iterdir()):
+            msg = f"Directory already exists and is not empty: {project_dir}"
+            raise FileExistsError(msg)
+        # Empty directory is fine — proceed
+    elif not project_dir.exists():
+        project_dir.mkdir(parents=True)
+
+    created_new = not project_dir.exists()
     try:
         env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),
@@ -93,6 +103,10 @@ async def scaffold_project(
             output_path = project_dir / output_name
             output_path.parent.mkdir(parents=True, exist_ok=True)
 
+            # With --force, never overwrite existing files
+            if force and output_path.exists():
+                continue
+
             template = env.get_template(template_name)
             content = template.render(**context)
             output_path.write_text(content)
@@ -101,7 +115,8 @@ async def scaffold_project(
         for d in _EXTRA_DIRS:
             (project_dir / d).mkdir(parents=True, exist_ok=True)
     except Exception:
-        shutil.rmtree(project_dir, ignore_errors=True)
+        if created_new:
+            shutil.rmtree(project_dir, ignore_errors=True)
         raise
 
     return project_dir

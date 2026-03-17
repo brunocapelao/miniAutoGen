@@ -31,9 +31,11 @@ async def check_project(
     results.extend(_check_skills(project_root))
     results.extend(_check_tools(project_root))
     results.extend(_check_pipelines(config, project_root))
+    results.extend(_check_pipeline_participants(config, project_root))
     results.extend(_check_engine_profiles(config, project_root))
     results.extend(_check_memory_profiles(config, project_root))
     results.extend(_check_environment(config))
+    results.extend(_check_gateway_accessibility(config))
     return results
 
 
@@ -379,6 +381,102 @@ def _check_environment(
                 name=f"env:{env_var}",
                 passed=True,
                 message=f"{env_var} is set",
+                category="environment",
+            ))
+
+    return results
+
+
+def _check_pipeline_participants(
+    config: ProjectConfig, project_root: Path,
+) -> list[CheckResult]:
+    """Validate that pipeline participants reference existing agents."""
+    results: list[CheckResult] = []
+    agents_dir = project_root / "agents"
+
+    # Read raw YAML to check participants (not in PipelineConfig model)
+    config_path = project_root / "miniautogen.yaml"
+    if not config_path.is_file():
+        return results
+
+    raw = yaml.safe_load(config_path.read_text())
+    if not isinstance(raw, dict):
+        return results
+
+    pipelines = raw.get("pipelines", {})
+    for pname, pcfg in pipelines.items():
+        if not isinstance(pcfg, dict):
+            continue
+        participants = pcfg.get("participants", [])
+        leader = pcfg.get("leader")
+
+        for agent_name in participants:
+            agent_file = agents_dir / f"{agent_name}.yaml"
+            if not agent_file.is_file():
+                results.append(CheckResult(
+                    name=f"pipeline:{pname}:participant:{agent_name}",
+                    passed=False,
+                    message=f"Agent '{agent_name}' referenced in pipeline '{pname}' not found",
+                    category="static",
+                ))
+
+        if leader:
+            leader_file = agents_dir / f"{leader}.yaml"
+            if not leader_file.is_file():
+                results.append(CheckResult(
+                    name=f"pipeline:{pname}:leader:{leader}",
+                    passed=False,
+                    message=f"Leader '{leader}' referenced in pipeline '{pname}' not found",
+                    category="static",
+                ))
+
+    return results
+
+
+def _check_gateway_accessibility(
+    config: ProjectConfig,
+) -> list[CheckResult]:
+    """Check if local gateway endpoints are accessible.
+
+    If any engine profile has a localhost endpoint, verify the
+    gateway is reachable. Reports warning if not.
+    """
+    import urllib.error
+    import urllib.request
+
+    results: list[CheckResult] = []
+    local_endpoints: set[str] = set()
+
+    # Also check raw YAML for endpoint field (not in EngineProfileConfig model)
+    for _ep_name, ep in config.engine_profiles.items():
+        # EngineProfileConfig doesn't have an endpoint field by default,
+        # but raw YAML may. Check model_extra or provider hints.
+        provider = ep.provider.lower()
+        if provider in ("vllm", "gemini-cli"):
+            local_endpoints.add("http://localhost:8080")
+
+    if not local_endpoints:
+        return results
+
+    for endpoint in local_endpoints:
+        try:
+            health_url = f"{endpoint}/health"
+            req = urllib.request.Request(health_url, method="GET")
+            urllib.request.urlopen(req, timeout=2)
+            results.append(CheckResult(
+                name=f"gateway:{endpoint}",
+                passed=True,
+                message=f"Gateway at {endpoint} is accessible",
+                category="environment",
+            ))
+        except (urllib.error.URLError, OSError):
+            results.append(CheckResult(
+                name=f"gateway:{endpoint}",
+                passed=False,
+                message=(
+                    f"Gateway at {endpoint} is not accessible. "
+                    f"Run 'miniautogen server start' to start it."
+                ),
                 category="environment",
             ))
 

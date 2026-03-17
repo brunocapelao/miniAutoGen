@@ -1,6 +1,7 @@
 """miniautogen pipeline command group.
 
 CRUD operations for pipeline configurations in miniautogen.yaml.
+Supports all coordination modes: workflow, deliberation, loop, composite.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ from miniautogen.cli.config import require_project_config
 from miniautogen.cli.main import run_async
 from miniautogen.cli.output import (
     echo_error,
+    echo_info,
     echo_json,
     echo_success,
     echo_table,
@@ -40,6 +42,11 @@ def pipeline_group() -> None:
 @click.option("--leader", default=None, help="Leader agent (for deliberation mode).")
 @click.option("--target", default=None, help="Pipeline target (module:callable).")
 @click.option("--max-rounds", type=int, default=None, help="Max coordination rounds.")
+@click.option(
+    "--chain-pipelines",
+    default=None,
+    help="Comma-separated pipeline names to chain (composite mode).",
+)
 def pipeline_create(
     name: str,
     mode: str | None,
@@ -47,9 +54,11 @@ def pipeline_create(
     leader: str | None,
     target: str | None,
     max_rounds: int | None,
+    chain_pipelines: str | None,
 ) -> None:
     """Create a new pipeline configuration."""
-    from miniautogen.cli.services.pipeline_ops import create_pipeline
+    from miniautogen.cli.services.agent_ops import list_agents
+    from miniautogen.cli.services.pipeline_ops import create_pipeline, list_pipelines
 
     root, _config = require_project_config()
 
@@ -62,15 +71,83 @@ def pipeline_create(
         )
 
     participant_list = None
-    if participants:
-        participant_list = [p.strip() for p in participants.split(",")]
-    elif mode != "composite":
-        raw = click.prompt("Participants (comma-separated agent names)", default="", type=str)
-        if raw.strip():
-            participant_list = [p.strip() for p in raw.split(",")]
+    chain_list = None
 
-    if mode == "deliberation" and leader is None:
-        leader = click.prompt("Leader agent", type=str)
+    if mode == "composite":
+        # Composite wizard: list existing pipelines to chain
+        if chain_pipelines:
+            chain_list = [p.strip() for p in chain_pipelines.split(",")]
+        else:
+            existing = run_async(list_pipelines, root)
+            if existing:
+                echo_info("Existing pipelines:")
+                for p in existing:
+                    click.echo(f"  - {p['name']} ({p['mode']})")
+            raw = click.prompt(
+                "Pipelines to chain (comma-separated names)",
+                default="",
+                type=str,
+            )
+            if raw.strip():
+                chain_list = [p.strip() for p in raw.split(",")]
+    elif mode in ("workflow", "loop"):
+        # Workflow/loop wizard: list agents and ask order
+        if participants:
+            participant_list = [p.strip() for p in participants.split(",")]
+        else:
+            agents = run_async(list_agents, root)
+            if agents:
+                echo_info("Available agents:")
+                for a in agents:
+                    click.echo(f"  - {a['name']} ({a['role']})")
+            if mode == "workflow":
+                raw = click.prompt(
+                    "Agents to chain in order (comma-separated)",
+                    default="",
+                    type=str,
+                )
+            else:
+                raw = click.prompt(
+                    "Participant agents (comma-separated)",
+                    default="",
+                    type=str,
+                )
+            if raw.strip():
+                participant_list = [p.strip() for p in raw.split(",")]
+
+        if mode == "loop" and leader is None:
+            leader = click.prompt("Router agent", type=str)
+
+    elif mode == "deliberation":
+        if participants:
+            participant_list = [p.strip() for p in participants.split(",")]
+        else:
+            agents = run_async(list_agents, root)
+            if agents:
+                echo_info("Available agents:")
+                for a in agents:
+                    click.echo(f"  - {a['name']} ({a['role']})")
+            raw = click.prompt(
+                "Peer agents (comma-separated)",
+                default="",
+                type=str,
+            )
+            if raw.strip():
+                participant_list = [p.strip() for p in raw.split(",")]
+
+        if leader is None:
+            leader = click.prompt("Leader agent", type=str)
+
+        if max_rounds is None:
+            raw_rounds = click.prompt(
+                "Max deliberation rounds",
+                default="3",
+                type=str,
+            )
+            try:
+                max_rounds = int(raw_rounds)
+            except ValueError:
+                pass
 
     try:
         pipeline = run_async(
@@ -82,6 +159,7 @@ def pipeline_create(
             leader=leader,
             target=target,
             max_rounds=max_rounds,
+            chain_pipelines=chain_list,
         )
         echo_success(f"Pipeline '{name}' created: mode={pipeline['mode']}")
     except ValueError as exc:
@@ -149,7 +227,9 @@ def pipeline_show(name: str, output_format: str) -> None:
 @pipeline_group.command("update")
 @click.argument("name")
 @click.option("--mode", type=click.Choice(_VALID_MODES), default=None, help="New mode.")
-@click.option("--participants", default=None, help="New comma-separated participants.")
+@click.option("--participants", default=None, help="Replace participants (comma-separated).")
+@click.option("--add-participant", default=None, help="Add agent to participants.")
+@click.option("--remove-participant", default=None, help="Remove agent from participants.")
 @click.option("--leader", default=None, help="New leader agent.")
 @click.option("--max-rounds", type=int, default=None, help="New max rounds.")
 @click.option("--dry-run", is_flag=True, default=False, help="Show changes without applying.")
@@ -157,6 +237,8 @@ def pipeline_update(
     name: str,
     mode: str | None,
     participants: str | None,
+    add_participant: str | None,
+    remove_participant: str | None,
     leader: str | None,
     max_rounds: int | None,
     dry_run: bool,
@@ -171,6 +253,10 @@ def pipeline_update(
         updates["mode"] = mode
     if participants is not None:
         updates["participants"] = [p.strip() for p in participants.split(",")]
+    if add_participant is not None:
+        updates["add_participant"] = add_participant
+    if remove_participant is not None:
+        updates["remove_participant"] = remove_participant
     if leader is not None:
         updates["leader"] = leader
     if max_rounds is not None:
@@ -184,13 +270,19 @@ def pipeline_update(
         result = run_async(
             update_pipeline, root, name, dry_run=dry_run, **updates,
         )
-    except KeyError as exc:
+    except (KeyError, ValueError) as exc:
         echo_error(str(exc))
         raise SystemExit(1)
 
     if dry_run:
         click.echo("Dry run — changes not applied:")
+        before_p = result["before"].get("participants", [])
+        after_p = result["after"].get("participants", [])
+        if before_p != after_p:
+            click.echo(f"  participants: {before_p} -> {after_p}")
         for key in updates:
+            if key in ("add_participant", "remove_participant", "participants"):
+                continue
             before_val = result["before"].get(key, "(unset)")
             after_val = result["after"].get(key)
             click.echo(f"  {key}: {before_val} -> {after_val}")

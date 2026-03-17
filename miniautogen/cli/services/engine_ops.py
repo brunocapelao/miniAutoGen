@@ -5,12 +5,38 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from miniautogen.cli.config import ProjectConfig, load_config
-from miniautogen.cli.services.yaml_ops import read_yaml, write_yaml
+from pydantic import ValidationError
+
+from miniautogen.cli.config import EngineProfileConfig
+from miniautogen.cli.services.yaml_ops import (
+    read_yaml,
+    update_yaml_preserving,
+    write_yaml,
+)
 
 
 def _config_path(project_root: Path) -> Path:
     return project_root / "miniautogen.yaml"
+
+
+def _validate_engine(data: dict[str, Any]) -> None:
+    """Validate engine data against EngineProfileConfig schema.
+
+    Raises ValueError with details if invalid.
+    """
+    # Strip non-schema keys for validation
+    validatable = {
+        k: v for k, v in data.items()
+        if k in {"kind", "provider", "model", "command", "temperature"}
+    }
+    try:
+        EngineProfileConfig.model_validate(validatable)
+    except ValidationError as exc:
+        errors = "; ".join(
+            f"{e['loc']}: {e['msg']}" for e in exc.errors()
+        )
+        msg = f"Engine validation failed: {errors}"
+        raise ValueError(msg) from exc
 
 
 async def create_engine(
@@ -26,6 +52,9 @@ async def create_engine(
     capabilities: list[str] | None = None,
 ) -> dict[str, Any]:
     """Create a new engine profile in miniautogen.yaml.
+
+    Validates against EngineProfileConfig before writing.
+    Stores only env var references for API keys, never plain text.
 
     Returns the created engine config dict.
     """
@@ -44,11 +73,15 @@ async def create_engine(
         "temperature": temperature,
     }
     if api_key_env:
+        # Store only the env var reference, never the actual key
         engine["api_key"] = f"${{{api_key_env}}}"
     if endpoint:
         engine["endpoint"] = endpoint
     if capabilities:
         engine["capabilities"] = capabilities
+
+    # Validate before writing
+    _validate_engine(engine)
 
     engines[name] = engine
     write_yaml(cfg_path, data)
@@ -99,6 +132,9 @@ async def update_engine(
 ) -> dict[str, Any]:
     """Update fields on an existing engine profile.
 
+    Validates the resulting config before writing.
+    Uses ruamel.yaml to preserve comments when available.
+
     Returns a dict with 'before' and 'after' states.
     If dry_run is True, does not write changes.
     """
@@ -116,10 +152,16 @@ async def update_engine(
         if v is not None:
             after[k] = v
 
+    # Validate before writing
+    _validate_engine(after)
+
     result = {"before": before, "after": after}
 
     if not dry_run:
-        engines[name] = after
-        write_yaml(cfg_path, data)
+        update_yaml_preserving(
+            cfg_path,
+            {name: after},
+            section="engine_profiles",
+        )
 
     return result
