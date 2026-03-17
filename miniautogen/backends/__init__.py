@@ -16,10 +16,12 @@ from miniautogen.backends.models import (
     StartSessionRequest,
     StartSessionResponse,
 )
+from miniautogen.backends.agentapi import AgentAPIDriver, agentapi_factory
 from miniautogen.backends.resolver import BackendResolver
 from miniautogen.backends.sessions import SessionManager
 
 __all__ = [
+    "AgentAPIDriver",
     "AgentDriver",
     "AgentEvent",
     "ArtifactRef",
@@ -32,4 +34,5 @@ __all__ = [
     "SessionManager",
     "StartSessionRequest",
     "StartSessionResponse",
+    "agentapi_factory",
 ]
