@@ -123,7 +123,11 @@ class AgentAPIClient:
                     return resp.json()
 
         except _RetryableServerError as exc:
-            logger.error("chat_completion_failed", attempts=self._max_retry_attempts, error=str(exc))
+            logger.error(
+                "chat_completion_failed",
+                attempts=self._max_retry_attempts,
+                error=str(exc),
+            )
             msg = f"Server error after {self._max_retry_attempts} attempts: {exc}"
             raise TurnExecutionError(msg) from exc
         except httpx.ConnectError as exc:

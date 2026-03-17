@@ -30,7 +30,10 @@ class SessionState(str, Enum):
 _TRANSITIONS: dict[SessionState, set[SessionState]] = {
     SessionState.CREATED: {SessionState.ACTIVE, SessionState.FAILED},
     SessionState.ACTIVE: {SessionState.BUSY, SessionState.COMPLETED, SessionState.FAILED},
-    SessionState.BUSY: {SessionState.ACTIVE, SessionState.INTERRUPTED, SessionState.COMPLETED, SessionState.FAILED},
+    SessionState.BUSY: {
+        SessionState.ACTIVE, SessionState.INTERRUPTED,
+        SessionState.COMPLETED, SessionState.FAILED,
+    },
     SessionState.INTERRUPTED: {SessionState.ACTIVE, SessionState.FAILED},
     SessionState.COMPLETED: set(),
     SessionState.FAILED: set(),

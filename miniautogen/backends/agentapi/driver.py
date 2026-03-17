@@ -10,9 +10,6 @@ import uuid
 from typing import AsyncIterator
 
 from miniautogen.backends.agentapi.client import AgentAPIClient
-from miniautogen.observability.logging import get_logger
-
-logger = get_logger(__name__)
 from miniautogen.backends.agentapi.mapper import map_completion_response
 from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.errors import CancelNotSupportedError
@@ -25,6 +22,9 @@ from miniautogen.backends.models import (
     StartSessionRequest,
     StartSessionResponse,
 )
+from miniautogen.observability.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class AgentAPIDriver(AgentDriver):

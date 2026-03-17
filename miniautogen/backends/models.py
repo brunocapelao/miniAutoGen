@@ -7,12 +7,9 @@ external agent backend (ACP, HTTP bridge, PTY).
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, Literal
-
-from typing import get_args
+from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field
-
 
 CapabilityName = Literal[
     "sessions",
