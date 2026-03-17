@@ -80,6 +80,14 @@ async def test_execute_pipeline_success(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+async def test_execute_rejects_negative_timeout(tmp_path: Path) -> None:
+    project = _make_runnable_project(tmp_path)
+    config = load_config(project / CONFIG_FILENAME)
+    with pytest.raises(ValueError, match="positive"):
+        await execute_pipeline(config, "main", project, timeout=-5)
+
+
+@pytest.mark.anyio
 async def test_execute_pipeline_not_found(tmp_path: Path) -> None:
     project = _make_runnable_project(tmp_path)
     config = load_config(project / CONFIG_FILENAME)

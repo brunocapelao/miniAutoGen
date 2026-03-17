@@ -86,6 +86,10 @@ async def execute_pipeline(
         msg = f"Pipeline '{pipeline_name}' not found in config"
         raise KeyError(msg)
 
+    if timeout is not None and timeout <= 0:
+        msg = f"Timeout must be positive, got {timeout}"
+        raise ValueError(msg)
+
     target = config.pipelines[pipeline_name].target
 
     # Temporarily add project root to sys.path for imports

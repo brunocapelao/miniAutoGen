@@ -22,7 +22,12 @@ def sessions_group() -> None:
 
 @sessions_group.command("list")
 @click.option("--status", default=None, help="Filter by status.")
-@click.option("--limit", default=20, help="Max results.")
+@click.option(
+    "--limit",
+    default=20,
+    type=click.IntRange(min=1, max=1000),
+    help="Max results.",
+)
 @click.option(
     "--format",
     "output_format",

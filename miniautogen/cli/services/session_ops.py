@@ -8,7 +8,9 @@ from typing import Any
 from miniautogen.api import InMemoryRunStore, RunStore
 
 # Status values that are safe to delete
-_CLEANABLE_STATUSES = frozenset({"completed", "failed", "cancelled"})
+_CLEANABLE_STATUSES = frozenset({
+    "completed", "finished", "failed", "cancelled", "timed_out",
+})
 
 
 async def list_sessions(
@@ -50,7 +52,7 @@ async def clean_sessions(
                     if age < older_than_days:
                         continue
                 except (ValueError, TypeError):
-                    pass
+                    continue  # Cannot determine age; skip to be safe
 
         run_id = run.get("run_id")
         if run_id:
@@ -68,6 +70,12 @@ def create_store_from_config(
 
     Uses InMemoryRunStore if no database URL configured.
     """
-    # For M2, always use InMemoryRunStore
-    # SQLAlchemy integration requires async engine setup
+    if database_config and database_config.get("url"):
+        import warnings
+
+        warnings.warn(
+            "Database-backed sessions not yet supported; "
+            "using in-memory store. Data will not persist.",
+            stacklevel=2,
+        )
     return InMemoryRunStore()
