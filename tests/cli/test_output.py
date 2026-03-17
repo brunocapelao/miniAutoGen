@@ -1,7 +1,7 @@
 """Tests for CLI output formatting."""
 
-from click.testing import CliRunner
 import click
+from click.testing import CliRunner
 
 from miniautogen.cli.output import (
     echo_error,

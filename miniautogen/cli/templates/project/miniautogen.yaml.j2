@@ -1,5 +1,5 @@
 project:
-  name: {{ project_name }}
+  name: "{{ project_name }}"
   version: "0.1.0"
 
 defaults:
@@ -9,8 +9,8 @@ defaults:
 engine_profiles:
   default_api:
     kind: api
-    provider: {{ provider }}
-    model: {{ model }}
+    provider: "{{ provider }}"
+    model: "{{ model }}"
     temperature: 0.2
 
 memory_profiles:

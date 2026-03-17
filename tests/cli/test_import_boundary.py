@@ -66,9 +66,9 @@ def test_cli_does_not_import_internal_modules() -> None:
                 continue
             if any(imp.startswith(p) for p in _ALLOWED_PREFIXES):
                 continue
-            if any(imp.startswith(p) for p in _FORBIDDEN_PREFIXES):
-                rel = py_file.relative_to(_CLI_DIR)
-                violations.append(f"{rel}: imports {imp}")
+            # Deny by default — any other miniautogen.* import is forbidden
+            rel = py_file.relative_to(_CLI_DIR)
+            violations.append(f"{rel}: imports {imp}")
 
     assert not violations, (
         "CLI code imports internal SDK modules (D3 violation):\n"

@@ -64,7 +64,31 @@ async def test_scaffold_custom_model_provider(tmp_path) -> None:
 
 
 @pytest.mark.anyio
+async def test_scaffold_creates_gitignore(tmp_path) -> None:
+    result = await scaffold_project("myproject", tmp_path)
+    assert (result / ".gitignore").is_file()
+
+
+@pytest.mark.anyio
 async def test_scaffold_fails_if_exists(tmp_path) -> None:
     (tmp_path / "myproject").mkdir()
     with pytest.raises(FileExistsError):
         await scaffold_project("myproject", tmp_path)
+
+
+@pytest.mark.anyio
+async def test_scaffold_rejects_invalid_name(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Invalid project name"):
+        await scaffold_project("my: project", tmp_path)
+
+
+@pytest.mark.anyio
+async def test_scaffold_rejects_path_traversal(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Invalid project name"):
+        await scaffold_project("../evil", tmp_path)
+
+
+@pytest.mark.anyio
+async def test_scaffold_rejects_empty_name(tmp_path) -> None:
+    with pytest.raises(ValueError, match="Invalid project name"):
+        await scaffold_project("", tmp_path)

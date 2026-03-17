@@ -10,6 +10,13 @@ from typing import Any
 import anyio
 import click
 
+try:
+    from importlib.metadata import version as pkg_version
+
+    _VERSION = pkg_version("miniautogen")
+except Exception:
+    _VERSION = "0.1.0"
+
 
 def run_async(func: Any, *args: Any, **kwargs: Any) -> Any:
     """Run an async function synchronously via anyio."""
@@ -21,7 +28,7 @@ def run_async(func: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 @click.group()
-@click.version_option(version="0.1.0", prog_name="miniautogen")
+@click.version_option(version=_VERSION, prog_name="miniautogen")
 def cli() -> None:
     """MiniAutoGen -- Multi-agent orchestration framework."""
 

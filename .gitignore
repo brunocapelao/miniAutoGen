@@ -25,6 +25,7 @@ venv/
 # Local configuration file
 config.py
 !miniautogen/backends/config.py
+!miniautogen/cli/config.py
 
 # Compiled Python files
 *.pyo

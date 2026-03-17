@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import re
+import shutil
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
+
+_VALID_NAME = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 _TEMPLATES_DIR = Path(__file__).parent.parent / "templates" / "project"
 
@@ -18,6 +22,7 @@ _TEMPLATE_MAP: dict[str, str] = {
     "memory/profiles.yaml.j2": "memory/profiles.yaml",
     "pipelines/main.py.j2": "pipelines/main.py",
     ".env.j2": ".env",
+    ".gitignore.j2": ".gitignore",
 }
 
 # Directories to create even if no template fills them
@@ -47,45 +52,56 @@ async def scaffold_project(
     Raises:
         FileExistsError: If the project directory already exists.
     """
+    if not name or not _VALID_NAME.match(name):
+        msg = (
+            f"Invalid project name '{name}': must start with a letter "
+            "and contain only letters, digits, hyphens, or underscores."
+        )
+        raise ValueError(msg)
+
     project_dir = target_dir / name
     if project_dir.exists():
         msg = f"Directory already exists: {project_dir}"
         raise FileExistsError(msg)
 
     project_dir.mkdir(parents=True)
+    try:
+        env = Environment(
+            loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+            keep_trailing_newline=True,
+            autoescape=False,
+        )
 
-    env = Environment(
-        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
-        keep_trailing_newline=True,
-    )
+        context = {
+            "project_name": name,
+            "model": model,
+            "provider": provider,
+        }
 
-    context = {
-        "project_name": name,
-        "model": model,
-        "provider": provider,
-    }
+        templates_to_render = dict(_TEMPLATE_MAP)
+        if not include_examples:
+            # Remove example files but keep config and pipeline
+            example_keys = [
+                k
+                for k in templates_to_render
+                if "researcher" in k or "example" in k or "web_search" in k
+            ]
+            for k in example_keys:
+                del templates_to_render[k]
 
-    templates_to_render = dict(_TEMPLATE_MAP)
-    if not include_examples:
-        # Remove example files but keep config and pipeline
-        example_keys = [
-            k
-            for k in templates_to_render
-            if "researcher" in k or "example" in k or "web_search" in k
-        ]
-        for k in example_keys:
-            del templates_to_render[k]
+        for template_name, output_name in templates_to_render.items():
+            output_path = project_dir / output_name
+            output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    for template_name, output_name in templates_to_render.items():
-        output_path = project_dir / output_name
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+            template = env.get_template(template_name)
+            content = template.render(**context)
+            output_path.write_text(content)
 
-        template = env.get_template(template_name)
-        content = template.render(**context)
-        output_path.write_text(content)
-
-    # Create extra directories
-    for d in _EXTRA_DIRS:
-        (project_dir / d).mkdir(parents=True, exist_ok=True)
+        # Create extra directories
+        for d in _EXTRA_DIRS:
+            (project_dir / d).mkdir(parents=True, exist_ok=True)
+    except Exception:
+        shutil.rmtree(project_dir, ignore_errors=True)
+        raise
 
     return project_dir

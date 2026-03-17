@@ -57,6 +57,6 @@ def echo_table(
     for row in rows:
         line = "  ".join(
             str(cell).ljust(col_widths[i])
-            for i, cell in enumerate(row)
+            for i, cell in enumerate(row[:len(headers)])
         )
         click.echo(line)
