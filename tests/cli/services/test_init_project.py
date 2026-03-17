@@ -5,16 +5,14 @@ import pytest
 from miniautogen.cli.services.init_project import scaffold_project
 
 
-@pytest.mark.anyio
-async def test_scaffold_creates_directory(tmp_path) -> None:
-    result = await scaffold_project("myproject", tmp_path)
+def test_scaffold_creates_directory(tmp_path) -> None:
+    result = scaffold_project("myproject", tmp_path)
     assert result.exists()
     assert result.name == "myproject"
 
 
-@pytest.mark.anyio
-async def test_scaffold_creates_config(tmp_path) -> None:
-    result = await scaffold_project("myproject", tmp_path)
+def test_scaffold_creates_config(tmp_path) -> None:
+    result = scaffold_project("myproject", tmp_path)
     config = result / "miniautogen.yaml"
     assert config.is_file()
     content = config.read_text()
@@ -23,9 +21,8 @@ async def test_scaffold_creates_config(tmp_path) -> None:
     assert "engine_profiles" in content
 
 
-@pytest.mark.anyio
-async def test_scaffold_creates_full_structure(tmp_path) -> None:
-    result = await scaffold_project("myproject", tmp_path)
+def test_scaffold_creates_full_structure(tmp_path) -> None:
+    result = scaffold_project("myproject", tmp_path)
     assert (result / "agents" / "researcher.yaml").is_file()
     assert (result / "skills" / "example" / "SKILL.md").is_file()
     assert (result / "skills" / "example" / "skill.yaml").is_file()
@@ -36,9 +33,8 @@ async def test_scaffold_creates_full_structure(tmp_path) -> None:
     assert (result / "mcp").is_dir()
 
 
-@pytest.mark.anyio
-async def test_scaffold_no_examples(tmp_path) -> None:
-    result = await scaffold_project(
+def test_scaffold_no_examples(tmp_path) -> None:
+    result = scaffold_project(
         "myproject",
         tmp_path,
         include_examples=False,
@@ -50,9 +46,8 @@ async def test_scaffold_no_examples(tmp_path) -> None:
     assert not (result / "tools" / "web_search.yaml").exists()
 
 
-@pytest.mark.anyio
-async def test_scaffold_custom_model_provider(tmp_path) -> None:
-    result = await scaffold_project(
+def test_scaffold_custom_model_provider(tmp_path) -> None:
+    result = scaffold_project(
         "myproject",
         tmp_path,
         model="gemini-2.5-pro",
@@ -63,44 +58,38 @@ async def test_scaffold_custom_model_provider(tmp_path) -> None:
     assert "gemini" in content
 
 
-@pytest.mark.anyio
-async def test_scaffold_creates_gitignore(tmp_path) -> None:
-    result = await scaffold_project("myproject", tmp_path)
+def test_scaffold_creates_gitignore(tmp_path) -> None:
+    result = scaffold_project("myproject", tmp_path)
     assert (result / ".gitignore").is_file()
 
 
-@pytest.mark.anyio
-async def test_scaffold_fails_if_exists_nonempty(tmp_path) -> None:
+def test_scaffold_fails_if_exists_nonempty(tmp_path) -> None:
     d = tmp_path / "myproject"
     d.mkdir()
     (d / "existing.txt").write_text("content")
     with pytest.raises(FileExistsError):
-        await scaffold_project("myproject", tmp_path)
+        scaffold_project("myproject", tmp_path)
 
 
-@pytest.mark.anyio
-async def test_scaffold_force_preserves_existing(tmp_path) -> None:
+def test_scaffold_force_preserves_existing(tmp_path) -> None:
     d = tmp_path / "myproject"
     d.mkdir()
     (d / "miniautogen.yaml").write_text("custom: true\n")
-    result = await scaffold_project("myproject", tmp_path, force=True)
+    result = scaffold_project("myproject", tmp_path, force=True)
     assert (result / "miniautogen.yaml").read_text() == "custom: true\n"
     assert (result / "pipelines" / "main.py").is_file()
 
 
-@pytest.mark.anyio
-async def test_scaffold_rejects_invalid_name(tmp_path) -> None:
+def test_scaffold_rejects_invalid_name(tmp_path) -> None:
     with pytest.raises(ValueError, match="Invalid project name"):
-        await scaffold_project("my: project", tmp_path)
+        scaffold_project("my: project", tmp_path)
 
 
-@pytest.mark.anyio
-async def test_scaffold_rejects_path_traversal(tmp_path) -> None:
+def test_scaffold_rejects_path_traversal(tmp_path) -> None:
     with pytest.raises(ValueError, match="Invalid project name"):
-        await scaffold_project("../evil", tmp_path)
+        scaffold_project("../evil", tmp_path)
 
 
-@pytest.mark.anyio
-async def test_scaffold_rejects_empty_name(tmp_path) -> None:
+def test_scaffold_rejects_empty_name(tmp_path) -> None:
     with pytest.raises(ValueError, match="Invalid project name"):
-        await scaffold_project("", tmp_path)
+        scaffold_project("", tmp_path)

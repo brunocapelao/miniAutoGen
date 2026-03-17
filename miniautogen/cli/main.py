@@ -64,3 +64,11 @@ cli.add_command(pipeline_group)
 from miniautogen.cli.commands.server import server_group  # noqa: E402
 
 cli.add_command(server_group)
+
+from miniautogen.cli.commands.doctor import doctor_command  # noqa: E402
+
+cli.add_command(doctor_command)
+
+from miniautogen.cli.commands.completions import completions_command  # noqa: E402
+
+cli.add_command(completions_command)

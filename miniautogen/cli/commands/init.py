@@ -6,7 +6,6 @@ from pathlib import Path
 
 import click
 
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_info, echo_success
 from miniautogen.cli.services.init_project import scaffold_project
 
@@ -44,8 +43,7 @@ def init_command(
 ) -> None:
     """Create a new MiniAutoGen project."""
     try:
-        project_dir = run_async(
-            scaffold_project,
+        project_dir = scaffold_project(
             name,
             Path.cwd(),
             model=model,
@@ -53,7 +51,16 @@ def init_command(
             include_examples=not no_examples,
             force=force,
         )
-        echo_success(f"Project created: {project_dir}")
+        echo_success(f"Project created: {project_dir}\n")
+
+        # Next steps guidance
+        echo_info("Next steps:")
+        echo_info(f"  cd {name}")
+        echo_info(f"  miniautogen engine create default --provider openai --model gpt-4o")
+        echo_info(f"  miniautogen agent create researcher --engine default --role \"Researcher\"")
+        echo_info(f"  miniautogen pipeline create main --mode workflow")
+        echo_info(f"  miniautogen check")
+        echo_info(f"  miniautogen run main")
     except FileExistsError:
         echo_error(
             f"Directory '{name}' already exists and is not empty. "

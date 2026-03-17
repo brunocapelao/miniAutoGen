@@ -10,12 +10,13 @@ from __future__ import annotations
 import click
 
 from miniautogen.cli.config import require_project_config
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import (
     echo_error,
+    echo_info,
     echo_json,
     echo_success,
     echo_table,
+    echo_warning,
 )
 
 _PROVIDER_DEFAULTS: dict[str, str] = {
@@ -117,9 +118,25 @@ def engine_create(
 
     caps = [c.strip() for c in capabilities.split(",")] if capabilities else None
 
+    # Confirmation summary
+    echo_info(f"\nEngine '{name}' will be created:")
+    echo_info(f"  provider: {provider}")
+    echo_info(f"  model: {model}")
+    echo_info(f"  kind: {kind}")
+    echo_info(f"  temperature: {temperature}")
+    if endpoint:
+        echo_info(f"  endpoint: {endpoint}")
+    if api_key_env:
+        echo_info(f"  api_key: ${{{api_key_env}}}")
+    if caps:
+        echo_info(f"  capabilities: {', '.join(caps)}")
+
+    if not click.confirm("\nConfirm?", default=True):
+        echo_warning("Cancelled.")
+        return
+
     try:
-        engine = run_async(
-            create_engine,
+        engine = create_engine(
             root,
             name,
             provider=provider,
@@ -148,7 +165,7 @@ def engine_list(output_format: str) -> None:
     from miniautogen.cli.services.engine_ops import list_engines
 
     root, _config = require_project_config()
-    engines = run_async(list_engines, root)
+    engines = list_engines(root)
 
     if output_format == "json":
         echo_json(engines)
@@ -177,7 +194,7 @@ def engine_show(name: str, output_format: str) -> None:
     root, _config = require_project_config()
 
     try:
-        engine = run_async(show_engine, root, name)
+        engine = show_engine(root, name)
     except KeyError as exc:
         echo_error(str(exc))
         raise SystemExit(1)
@@ -224,9 +241,7 @@ def engine_update(
         raise SystemExit(1)
 
     try:
-        result = run_async(
-            update_engine, root, name, dry_run=dry_run, **updates,
-        )
+        result = update_engine(root, name, dry_run=dry_run, **updates)
     except KeyError as exc:
         echo_error(str(exc))
         raise SystemExit(1)
@@ -239,3 +254,25 @@ def engine_update(
             click.echo(f"  {key}: {before_val} -> {after_val}")
     else:
         echo_success(f"Engine '{name}' updated.")
+
+
+@engine_group.command("delete")
+@click.argument("name")
+@click.option("--yes", "skip_confirm", is_flag=True, default=False, help="Skip confirmation.")
+def engine_delete(name: str, skip_confirm: bool) -> None:
+    """Delete an engine profile."""
+    from miniautogen.cli.services.engine_ops import delete_engine
+
+    root, _config = require_project_config()
+
+    if not skip_confirm:
+        if not click.confirm(f"Delete engine '{name}'?"):
+            click.echo("Cancelled.")
+            return
+
+    try:
+        result = delete_engine(root, name)
+        echo_success(f"Engine '{result['deleted']}' deleted.")
+    except (KeyError, ValueError) as exc:
+        echo_error(str(exc))
+        raise SystemExit(1)

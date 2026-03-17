@@ -42,7 +42,7 @@ def _validate_agent(data: dict[str, Any]) -> None:
         raise ValueError(msg) from exc
 
 
-async def create_agent(
+def create_agent(
     project_root: Path,
     name: str,
     *,
@@ -62,7 +62,7 @@ async def create_agent(
     agent_path = agents / f"{name}.yaml"
 
     if agent_path.exists():
-        msg = f"Agent '{name}' already exists"
+        msg = f"Agent '{name}' already exists. Use 'miniautogen agent update {name}' to modify it."
         raise ValueError(msg)
 
     # Verify engine profile exists
@@ -95,7 +95,7 @@ async def create_agent(
     return agent
 
 
-async def list_agents(
+def list_agents(
     project_root: Path,
 ) -> list[dict[str, Any]]:
     """List all agents in agents/ directory."""
@@ -121,19 +121,19 @@ async def list_agents(
     return result
 
 
-async def show_agent(
+def show_agent(
     project_root: Path,
     name: str,
 ) -> dict[str, Any]:
     """Get detailed info for a single agent."""
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
-        msg = f"Agent '{name}' not found"
+        msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."
         raise KeyError(msg)
     return read_yaml(agent_path)
 
 
-async def update_agent(
+def update_agent(
     project_root: Path,
     name: str,
     *,
@@ -149,7 +149,7 @@ async def update_agent(
     """
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
-        msg = f"Agent '{name}' not found"
+        msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."
         raise KeyError(msg)
 
     before = read_yaml(agent_path)
@@ -167,7 +167,7 @@ async def update_agent(
     return result
 
 
-async def delete_agent(
+def delete_agent(
     project_root: Path,
     name: str,
 ) -> dict[str, Any]:
@@ -178,7 +178,7 @@ async def delete_agent(
     """
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
-        msg = f"Agent '{name}' not found"
+        msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."
         raise KeyError(msg)
 
     # Check for pipeline references in miniautogen.yaml

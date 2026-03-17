@@ -24,7 +24,7 @@ def test_engine_create_silent(tmp_path, monkeypatch) -> None:
         "--endpoint", "https://api.openai.com/v1",
         "--api-key-env", "OPENAI_API_KEY",
         "--capabilities", "chat",
-    ])
+    ], input="y\n")
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
 
@@ -44,7 +44,7 @@ def test_engine_create_with_capabilities(tmp_path, monkeypatch) -> None:
         "--endpoint", "https://generativelanguage.googleapis.com/v1",
         "--api-key-env", "GEMINI_API_KEY",
         "--capabilities", "chat,embedding",
-    ])
+    ], input="y\n")
     assert result.exit_code == 0, result.output
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert cfg["engine_profiles"]["gemini"]["capabilities"] == ["chat", "embedding"]
@@ -56,10 +56,28 @@ def test_engine_create_interactive(tmp_path, monkeypatch) -> None:
     result = runner.invoke(
         cli,
         ["engine", "create", "myengine"],
-        input="openai\ngpt-4o\nhttps://api.openai.com/v1\nOPENAI_API_KEY\nchat\n",
+        input="openai\ngpt-4o\nhttps://api.openai.com/v1\nOPENAI_API_KEY\nchat\ny\n",
     )
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
+
+
+def test_engine_create_cancelled(tmp_path, monkeypatch) -> None:
+    """Test wizard cancellation at confirmation prompt."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, [
+        "engine", "create", "gpt4",
+        "--provider", "openai",
+        "--model", "gpt-4o",
+        "--endpoint", "x",
+        "--api-key-env", "X",
+        "--capabilities", "chat",
+    ], input="n\n")
+    assert result.exit_code == 0
+    assert "cancelled" in result.output.lower()
+    # Engine should NOT be created
+    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    assert "gpt4" not in cfg.get("engine_profiles", {})
 
 
 def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
@@ -72,7 +90,7 @@ def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
         "--endpoint", "x",
         "--api-key-env", "X",
         "--capabilities", "chat",
-    ])
+    ], input="y\n")
     assert result.exit_code != 0
 
 
@@ -86,7 +104,7 @@ def test_engine_create_validates_schema(tmp_path, monkeypatch) -> None:
         "--endpoint", "x",
         "--api-key-env", "X",
         "--capabilities", "chat",
-    ])
+    ], input="y\n")
     assert result.exit_code == 0
 
 
@@ -100,7 +118,7 @@ def test_engine_create_credential_safety(tmp_path, monkeypatch) -> None:
         "--endpoint", "x",
         "--api-key-env", "MY_SECRET_KEY",
         "--capabilities", "chat",
-    ])
+    ], input="y\n")
     assert result.exit_code == 0
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert cfg["engine_profiles"]["safe"]["api_key"] == "${MY_SECRET_KEY}"
@@ -177,3 +195,32 @@ def test_engine_update_not_found(tmp_path, monkeypatch) -> None:
         "--model", "x",
     ])
     assert result.exit_code != 0
+
+
+def test_engine_delete(tmp_path, monkeypatch) -> None:
+    """Test engine deletion with confirmation."""
+    runner = _init_project(tmp_path, monkeypatch)
+    # Create a non-default engine first
+    runner.invoke(cli, [
+        "engine", "create", "extra",
+        "--provider", "openai",
+        "--model", "gpt-4o",
+        "--endpoint", "x",
+        "--api-key-env", "X",
+        "--capabilities", "chat",
+    ], input="y\n")
+    # Delete it
+    result = runner.invoke(cli, ["engine", "delete", "extra", "--yes"])
+    assert result.exit_code == 0
+    assert "deleted" in result.output.lower()
+
+    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    assert "extra" not in cfg.get("engine_profiles", {})
+
+
+def test_engine_delete_default_blocked(tmp_path, monkeypatch) -> None:
+    """Cannot delete the default engine profile."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, ["engine", "delete", "default_api", "--yes"])
+    assert result.exit_code != 0
+    assert "default" in result.output.lower()

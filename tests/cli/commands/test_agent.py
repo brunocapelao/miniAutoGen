@@ -22,7 +22,7 @@ def test_agent_create_silent(tmp_path, monkeypatch) -> None:
         "--role", "Writer",
         "--goal", "Write articles",
         "--engine", "default_api",
-    ], input="\n\n")
+    ], input="\n\ny\n")
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
     assert (tmp_path / "proj" / "agents" / "writer.yaml").is_file()
@@ -34,7 +34,7 @@ def test_agent_create_interactive(tmp_path, monkeypatch) -> None:
     result = runner.invoke(
         cli,
         ["agent", "create", "myagent"],
-        input="default_api\nAnalyst\nAnalyze data\n0.5\n4096\n",
+        input="default_api\nAnalyst\nAnalyze data\n0.5\n4096\ny\n",
     )
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
@@ -48,7 +48,7 @@ def test_agent_create_with_temperature(tmp_path, monkeypatch) -> None:
         "--goal", "Write",
         "--engine", "default_api",
         "--temperature", "0.8",
-    ], input="\n")
+    ], input="\ny\n")
     assert result.exit_code == 0, result.output
     data = yaml.safe_load(
         (tmp_path / "proj" / "agents" / "writer.yaml").read_text()
@@ -64,11 +64,24 @@ def test_agent_create_validates_schema(tmp_path, monkeypatch) -> None:
         "--role", "Tester",
         "--goal", "Test things",
         "--engine", "default_api",
-    ], input="\n\n")
+    ], input="\n\ny\n")
     assert result.exit_code == 0, result.output
-    # File should exist and be valid
     agent_path = tmp_path / "proj" / "agents" / "valid-agent.yaml"
     assert agent_path.is_file()
+
+
+def test_agent_create_cancelled(tmp_path, monkeypatch) -> None:
+    """Test wizard cancellation at confirmation prompt."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, [
+        "agent", "create", "writer",
+        "--role", "Writer",
+        "--goal", "Write",
+        "--engine", "default_api",
+    ], input="\n\nn\n")
+    assert result.exit_code == 0
+    assert "cancelled" in result.output.lower()
+    assert not (tmp_path / "proj" / "agents" / "writer.yaml").exists()
 
 
 def test_agent_create_duplicate_fails(tmp_path, monkeypatch) -> None:
@@ -78,13 +91,13 @@ def test_agent_create_duplicate_fails(tmp_path, monkeypatch) -> None:
         "--role", "Writer",
         "--goal", "Write",
         "--engine", "default_api",
-    ], input="\n\n")
+    ], input="\n\ny\n")
     result = runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
         "--goal", "Write",
         "--engine", "default_api",
-    ], input="\n\n")
+    ], input="\n\ny\n")
     assert result.exit_code != 0
 
 
@@ -95,7 +108,7 @@ def test_agent_create_bad_engine(tmp_path, monkeypatch) -> None:
         "--role", "Writer",
         "--goal", "Write",
         "--engine", "nonexistent_engine",
-    ], input="\n\n")
+    ], input="\n\ny\n")
     assert result.exit_code != 0
 
 

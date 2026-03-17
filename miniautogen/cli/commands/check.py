@@ -5,7 +5,6 @@ from __future__ import annotations
 import click
 
 from miniautogen.cli.config import require_project_config
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_json, echo_success, echo_table
 
 
@@ -21,7 +20,7 @@ def check_command(output_format: str) -> None:
     from miniautogen.cli.services.check_project import check_project
 
     root, config = require_project_config()
-    results = run_async(check_project, config, root)
+    results = check_project(config, root)
 
     if output_format == "json":
         echo_json([

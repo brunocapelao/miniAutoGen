@@ -58,7 +58,7 @@ def _read_port(project_root: Path) -> int:
     return 8080
 
 
-async def start_server(
+def start_server(
     project_root: Path,
     *,
     host: str = "127.0.0.1",
@@ -123,7 +123,7 @@ async def start_server(
         }
 
 
-async def stop_server(
+def stop_server(
     project_root: Path,
 ) -> dict[str, Any]:
     """Stop the gateway daemon."""
@@ -141,7 +141,7 @@ async def stop_server(
     return {"status": "stopped", "pid": pid, "message": f"Server stopped (PID {pid})."}
 
 
-async def server_status(
+def server_status(
     project_root: Path,
 ) -> dict[str, Any]:
     """Check the gateway server status.
@@ -201,7 +201,7 @@ async def server_status(
         }
 
 
-async def server_logs(
+def server_logs(
     project_root: Path,
     lines: int = 50,
 ) -> str:

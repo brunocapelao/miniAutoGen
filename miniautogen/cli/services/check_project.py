@@ -17,7 +17,7 @@ from miniautogen.cli.config import ProjectConfig
 from miniautogen.cli.models import CheckResult
 
 
-async def check_project(
+def check_project(
     config: ProjectConfig,
     project_root: Path,
 ) -> list[CheckResult]:

@@ -21,13 +21,25 @@ def test_pipeline_create_silent(tmp_path, monkeypatch) -> None:
         "pipeline", "create", "etl",
         "--mode", "workflow",
         "--target", "pipelines.etl:build_pipeline",
-    ], input="\n")
+    ], input="\ny\n")
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
 
     cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
     assert "etl" in cfg["pipelines"]
     assert cfg["pipelines"]["etl"]["mode"] == "workflow"
+
+
+def test_pipeline_create_cancelled(tmp_path, monkeypatch) -> None:
+    """Test pipeline creation cancellation."""
+    runner = _init_project(tmp_path, monkeypatch)
+    result = runner.invoke(cli, [
+        "pipeline", "create", "etl",
+        "--mode", "workflow",
+        "--target", "pipelines.etl:build_pipeline",
+    ], input="\nn\n")
+    assert result.exit_code == 0
+    assert "cancelled" in result.output.lower()
 
 
 def test_pipeline_create_duplicate_fails(tmp_path, monkeypatch) -> None:
@@ -37,7 +49,7 @@ def test_pipeline_create_duplicate_fails(tmp_path, monkeypatch) -> None:
         "pipeline", "create", "main",
         "--mode", "workflow",
         "--participants", "",
-    ])
+    ], input="y\n")
     assert result.exit_code != 0
 
 
@@ -82,7 +94,7 @@ def test_pipeline_update(tmp_path, monkeypatch) -> None:
         "pipeline", "create", "etl",
         "--mode", "workflow",
         "--target", "pipelines.etl:build_pipeline",
-    ], input="\n")
+    ], input="\ny\n")
     result = runner.invoke(cli, [
         "pipeline", "update", "etl",
         "--max-rounds", "5",
@@ -97,7 +109,7 @@ def test_pipeline_update_dry_run(tmp_path, monkeypatch) -> None:
         "pipeline", "create", "etl",
         "--mode", "workflow",
         "--target", "pipelines.etl:build_pipeline",
-    ], input="\n")
+    ], input="\ny\n")
     result = runner.invoke(cli, [
         "pipeline", "update", "etl",
         "--mode", "deliberation",

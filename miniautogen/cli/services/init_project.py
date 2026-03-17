@@ -29,7 +29,7 @@ _TEMPLATE_MAP: dict[str, str] = {
 _EXTRA_DIRS: list[str] = ["mcp"]
 
 
-async def scaffold_project(
+def scaffold_project(
     name: str,
     target_dir: Path,
     *,

@@ -8,7 +8,6 @@ from __future__ import annotations
 import click
 
 from miniautogen.cli.config import require_project_config
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_info, echo_success, echo_warning
 
 
@@ -35,8 +34,7 @@ def server_start(
 
     root, _config = require_project_config()
 
-    result = run_async(
-        start_server,
+    result = start_server(
         root,
         host=host,
         port=port,
@@ -70,7 +68,7 @@ def server_stop() -> None:
     from miniautogen.cli.services.server_ops import stop_server
 
     root, _config = require_project_config()
-    result = run_async(stop_server, root)
+    result = stop_server(root)
 
     if result["status"] == "stopped" and result.get("pid"):
         echo_success(result["message"])
@@ -84,7 +82,7 @@ def server_status_cmd() -> None:
     from miniautogen.cli.services.server_ops import server_status
 
     root, _config = require_project_config()
-    result = run_async(server_status, root)
+    result = server_status(root)
 
     status = result["status"]
     msg = result["message"]
@@ -106,5 +104,5 @@ def server_logs_cmd(lines: int) -> None:
     from miniautogen.cli.services.server_ops import server_logs
 
     root, _config = require_project_config()
-    output = run_async(server_logs, root, lines=lines)
+    output = server_logs(root, lines=lines)
     click.echo(output)

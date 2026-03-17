@@ -33,13 +33,14 @@ def _validate_engine(data: dict[str, Any]) -> None:
         EngineProfileConfig.model_validate(validatable)
     except ValidationError as exc:
         errors = "; ".join(
-            f"{e['loc']}: {e['msg']}" for e in exc.errors()
+            f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
+            for e in exc.errors()
         )
         msg = f"Engine validation failed: {errors}"
         raise ValueError(msg) from exc
 
 
-async def create_engine(
+def create_engine(
     project_root: Path,
     name: str,
     *,
@@ -63,7 +64,7 @@ async def create_engine(
 
     engines = data.setdefault("engine_profiles", {})
     if name in engines:
-        msg = f"Engine '{name}' already exists"
+        msg = f"Engine '{name}' already exists. Use 'miniautogen engine update {name}' to modify it."
         raise ValueError(msg)
 
     engine: dict[str, Any] = {
@@ -88,7 +89,7 @@ async def create_engine(
     return engine
 
 
-async def list_engines(
+def list_engines(
     project_root: Path,
 ) -> list[dict[str, Any]]:
     """List all engine profiles from project config."""
@@ -107,7 +108,7 @@ async def list_engines(
     return result
 
 
-async def show_engine(
+def show_engine(
     project_root: Path,
     name: str,
 ) -> dict[str, Any]:
@@ -116,14 +117,15 @@ async def show_engine(
     data = read_yaml(cfg_path)
     engines = data.get("engine_profiles", {})
     if name not in engines:
-        msg = f"Engine '{name}' not found"
+        available = ", ".join(engines) or "(none)"
+        msg = f"Engine '{name}' not found. Available: {available}"
         raise KeyError(msg)
     cfg = dict(engines[name])
     cfg["name"] = name
     return cfg
 
 
-async def update_engine(
+def update_engine(
     project_root: Path,
     name: str,
     *,
@@ -142,7 +144,8 @@ async def update_engine(
     data = read_yaml(cfg_path)
     engines = data.get("engine_profiles", {})
     if name not in engines:
-        msg = f"Engine '{name}' not found"
+        available = ", ".join(engines) or "(none)"
+        msg = f"Engine '{name}' not found. Available: {available}"
         raise KeyError(msg)
 
     before = dict(engines[name])
@@ -165,3 +168,59 @@ async def update_engine(
         )
 
     return result
+
+
+def delete_engine(
+    project_root: Path,
+    name: str,
+) -> dict[str, Any]:
+    """Delete an engine profile, checking for agent references first.
+
+    Returns info about the deletion. Raises ValueError if engine
+    is referenced by any agent config.
+    """
+    import yaml as _yaml
+
+    cfg_path = _config_path(project_root)
+    data = read_yaml(cfg_path)
+    engines = data.get("engine_profiles", {})
+    if name not in engines:
+        available = ", ".join(engines) or "(none)"
+        msg = f"Engine '{name}' not found. Available: {available}"
+        raise KeyError(msg)
+
+    # Check for agent references
+    agents_dir = project_root / "agents"
+    referencing: list[str] = []
+    if agents_dir.is_dir():
+        for yaml_file in agents_dir.glob("*.yaml"):
+            try:
+                agent_data = _yaml.safe_load(yaml_file.read_text())
+                if isinstance(agent_data, dict) and agent_data.get("engine_profile") == name:
+                    referencing.append(yaml_file.stem)
+            except _yaml.YAMLError:
+                pass
+
+    # Check defaults reference
+    defaults = data.get("defaults", {})
+    is_default = defaults.get("engine_profile") == name
+
+    if referencing:
+        msg = (
+            f"Cannot delete engine '{name}': referenced by agent(s): "
+            f"{', '.join(referencing)}. "
+            f"Update these agents first: miniautogen agent update <name> --engine <other>"
+        )
+        raise ValueError(msg)
+
+    if is_default:
+        msg = (
+            f"Cannot delete engine '{name}': it is the default engine profile. "
+            f"Change the default first in miniautogen.yaml."
+        )
+        raise ValueError(msg)
+
+    engine_data = dict(engines[name])
+    del engines[name]
+    write_yaml(cfg_path, data)
+    return {"deleted": name, "config": engine_data}

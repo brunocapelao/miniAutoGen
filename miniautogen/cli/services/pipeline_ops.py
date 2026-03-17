@@ -16,7 +16,7 @@ def _config_path(project_root: Path) -> Path:
     return project_root / "miniautogen.yaml"
 
 
-async def create_pipeline(
+def create_pipeline(
     project_root: Path,
     name: str,
     *,
@@ -36,7 +36,7 @@ async def create_pipeline(
     pipelines = data.setdefault("pipelines", {})
 
     if name in pipelines:
-        msg = f"Pipeline '{name}' already exists"
+        msg = f"Pipeline '{name}' already exists. Use 'miniautogen pipeline update {name}' to modify it."
         raise ValueError(msg)
 
     # Validate that referenced agents exist
@@ -96,7 +96,7 @@ async def create_pipeline(
     return pipeline
 
 
-async def list_pipelines(
+def list_pipelines(
     project_root: Path,
 ) -> list[dict[str, Any]]:
     """List all pipelines from project config."""
@@ -122,7 +122,7 @@ async def list_pipelines(
     return result
 
 
-async def show_pipeline(
+def show_pipeline(
     project_root: Path,
     name: str,
 ) -> dict[str, Any]:
@@ -131,7 +131,8 @@ async def show_pipeline(
     data = read_yaml(cfg_path)
     pipelines = data.get("pipelines", {})
     if name not in pipelines:
-        msg = f"Pipeline '{name}' not found"
+        available = ", ".join(pipelines) or "(none)"
+        msg = f"Pipeline '{name}' not found. Available: {available}"
         raise KeyError(msg)
     cfg = pipelines[name]
     if isinstance(cfg, dict):
@@ -142,7 +143,7 @@ async def show_pipeline(
     return result
 
 
-async def update_pipeline(
+def update_pipeline(
     project_root: Path,
     name: str,
     *,
@@ -160,7 +161,8 @@ async def update_pipeline(
     data = read_yaml(cfg_path)
     pipelines = data.get("pipelines", {})
     if name not in pipelines:
-        msg = f"Pipeline '{name}' not found"
+        available = ", ".join(pipelines) or "(none)"
+        msg = f"Pipeline '{name}' not found. Available: {available}"
         raise KeyError(msg)
 
     raw_cfg = pipelines[name]

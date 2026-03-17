@@ -10,12 +10,13 @@ from __future__ import annotations
 import click
 
 from miniautogen.cli.config import require_project_config
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import (
     echo_error,
+    echo_info,
     echo_json,
     echo_success,
     echo_table,
+    echo_warning,
 )
 
 
@@ -47,7 +48,7 @@ def agent_create(
 
     # Interactive wizard for missing required fields
     if engine_profile is None:
-        engines = run_async(list_engines, root)
+        engines = list_engines(root)
         if not engines:
             echo_error(
                 "No engine profiles configured. "
@@ -90,9 +91,22 @@ def agent_create(
                 echo_error(f"Invalid max tokens: {raw_tokens}")
                 raise SystemExit(1)
 
+    # Confirmation summary
+    echo_info(f"\nAgent '{name}' will be created:")
+    echo_info(f"  role: {role}")
+    echo_info(f"  goal: {goal}")
+    echo_info(f"  engine: {engine_profile}")
+    if temperature is not None:
+        echo_info(f"  temperature: {temperature}")
+    if max_tokens is not None:
+        echo_info(f"  max_tokens: {max_tokens}")
+
+    if not click.confirm("\nConfirm?", default=True):
+        echo_warning("Cancelled.")
+        return
+
     try:
-        agent = run_async(
-            create_agent,
+        agent = create_agent(
             root,
             name,
             role=role,
@@ -119,7 +133,7 @@ def agent_list(output_format: str) -> None:
     from miniautogen.cli.services.agent_ops import list_agents
 
     root, _config = require_project_config()
-    agents = run_async(list_agents, root)
+    agents = list_agents(root)
 
     if output_format == "json":
         echo_json(agents)
@@ -148,7 +162,7 @@ def agent_show(name: str, output_format: str) -> None:
     root, _config = require_project_config()
 
     try:
-        agent = run_async(show_agent, root, name)
+        agent = show_agent(root, name)
     except KeyError as exc:
         echo_error(str(exc))
         raise SystemExit(1)
@@ -195,9 +209,7 @@ def agent_update(
         raise SystemExit(1)
 
     try:
-        result = run_async(
-            update_agent, root, name, dry_run=dry_run, **updates,
-        )
+        result = update_agent(root, name, dry_run=dry_run, **updates)
     except (KeyError, ValueError) as exc:
         echo_error(str(exc))
         raise SystemExit(1)
@@ -227,7 +239,7 @@ def agent_delete(name: str, skip_confirm: bool) -> None:
             return
 
     try:
-        result = run_async(delete_agent, root, name)
+        result = delete_agent(root, name)
         echo_success(f"Agent '{result['deleted']}' deleted.")
     except (KeyError, ValueError) as exc:
         echo_error(str(exc))

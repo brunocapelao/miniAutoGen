@@ -9,13 +9,13 @@ from __future__ import annotations
 import click
 
 from miniautogen.cli.config import require_project_config
-from miniautogen.cli.main import run_async
 from miniautogen.cli.output import (
     echo_error,
     echo_info,
     echo_json,
     echo_success,
     echo_table,
+    echo_warning,
 )
 
 _VALID_MODES = ("workflow", "deliberation", "loop", "composite")
@@ -78,7 +78,7 @@ def pipeline_create(
         if chain_pipelines:
             chain_list = [p.strip() for p in chain_pipelines.split(",")]
         else:
-            existing = run_async(list_pipelines, root)
+            existing = list_pipelines(root)
             if existing:
                 echo_info("Existing pipelines:")
                 for p in existing:
@@ -95,7 +95,7 @@ def pipeline_create(
         if participants:
             participant_list = [p.strip() for p in participants.split(",")]
         else:
-            agents = run_async(list_agents, root)
+            agents = list_agents(root)
             if agents:
                 echo_info("Available agents:")
                 for a in agents:
@@ -122,7 +122,7 @@ def pipeline_create(
         if participants:
             participant_list = [p.strip() for p in participants.split(",")]
         else:
-            agents = run_async(list_agents, root)
+            agents = list_agents(root)
             if agents:
                 echo_info("Available agents:")
                 for a in agents:
@@ -149,9 +149,26 @@ def pipeline_create(
             except ValueError:
                 pass
 
+    # Confirmation summary
+    echo_info(f"\nPipeline '{name}' will be created:")
+    echo_info(f"  mode: {mode}")
+    if participant_list:
+        echo_info(f"  participants: {', '.join(participant_list)}")
+    if leader:
+        echo_info(f"  leader: {leader}")
+    if max_rounds is not None:
+        echo_info(f"  max_rounds: {max_rounds}")
+    if chain_list:
+        echo_info(f"  chain: {', '.join(chain_list)}")
+    if target:
+        echo_info(f"  target: {target}")
+
+    if not click.confirm("\nConfirm?", default=True):
+        echo_warning("Cancelled.")
+        return
+
     try:
-        pipeline = run_async(
-            create_pipeline,
+        pipeline = create_pipeline(
             root,
             name,
             mode=mode,
@@ -179,7 +196,7 @@ def pipeline_list(output_format: str) -> None:
     from miniautogen.cli.services.pipeline_ops import list_pipelines
 
     root, _config = require_project_config()
-    pipelines = run_async(list_pipelines, root)
+    pipelines = list_pipelines(root)
 
     if output_format == "json":
         echo_json(pipelines)
@@ -212,7 +229,7 @@ def pipeline_show(name: str, output_format: str) -> None:
     root, _config = require_project_config()
 
     try:
-        pipeline = run_async(show_pipeline, root, name)
+        pipeline = show_pipeline(root, name)
     except KeyError as exc:
         echo_error(str(exc))
         raise SystemExit(1)
@@ -267,9 +284,7 @@ def pipeline_update(
         raise SystemExit(1)
 
     try:
-        result = run_async(
-            update_pipeline, root, name, dry_run=dry_run, **updates,
-        )
+        result = update_pipeline(root, name, dry_run=dry_run, **updates)
     except (KeyError, ValueError) as exc:
         echo_error(str(exc))
         raise SystemExit(1)
