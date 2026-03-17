@@ -1,135 +1,200 @@
-# Fluxos de Execução
+# Fluxos de execução
 
-## Visão geral
+Cada fluxo abaixo mapeia diretamente para código em `core/runtime/` e `cli/`.
 
-Os fluxos abaixo descrevem como os principais módulos colaboram no estado atual da solução.
+---
 
-## Fluxo 1: inicialização de uma conversa
+## Fluxo 1: execução de workflow
 
-1. A aplicação hospedeira instancia um `Chat`, opcionalmente informando um `ChatRepository`.
-2. A aplicação cria um ou mais `Agent` e associa pipelines quando necessário.
-3. Os agentes são registrados no `Chat` por `add_agent`.
-4. A aplicação define um pipeline administrativo e instancia um `ChatAdmin`.
-5. Mensagens iniciais podem ser semeadas no chat antes da execução.
+O `WorkflowRuntime` executa um `WorkflowPlan` de forma sequencial ou paralela.
 
-## Fluxo 2: execução de uma rodada do chat
+1. Valida que todos os `agent_id` do plano existem no registro.
+2. Emite `run_started`.
+3. Se `fan_out=False`, executa passos em sequência -- a saída de cada passo alimenta o próximo.
+4. Se `fan_out=True`, executa todos os passos em paralelo via `anyio.create_task_group()`, cada um recebendo o mesmo `input_payload`.
+5. Se `synthesis_agent` está definido, invoca-o com a lista de saídas coletadas.
+6. Emite `run_finished` ou `run_failed`.
 
 ```mermaid
 sequenceDiagram
     participant App as Aplicação
-    participant Admin as ChatAdmin
-    participant AP as Pipeline administrativo
-    participant Selector as NextAgentSelectorComponent
-    participant Reply as AgentReplyComponent
-    participant Agent as Agent selecionado
-    participant GP as Pipeline do agente
-    participant Chat as Chat
-    participant Repo as ChatRepository
+    participant WR as WorkflowRuntime
+    participant A1 as Agent 1
+    participant A2 as Agent 2
+    participant Syn as SynthesisAgent
 
-    App->>Admin: run()
-    Admin->>AP: run(state)
-    AP->>Selector: process(state)
-    Selector->>Chat: get_messages(limit=1)
-    Chat->>Repo: get_messages(limit=1)
-    Repo-->>Chat: última mensagem
-    Selector-->>AP: selected_agent
-    AP->>Reply: process(state)
-    Reply->>Agent: generate_reply(state)
-    Agent->>GP: run(state)
-    GP-->>Agent: state final com reply
-    Agent-->>Reply: texto da resposta
-    Reply->>Chat: add_message(sender_id, content)
-    Chat->>Repo: add_message(message)
-    AP-->>Admin: state atualizado
+    App->>WR: run(agents, context, plan)
+    alt sequencial
+        WR->>A1: process(input)
+        WR->>A2: process(output_1)
+    else fan-out
+        par
+            WR->>A1: process(input)
+        and
+            WR->>A2: process(input)
+        end
+    end
+    opt synthesis_agent
+        WR->>Syn: process(outputs)
+    end
+    WR-->>App: RunResult
 ```
 
-## Fluxo 3: construção de prompt para LLM
+---
 
-1. Um componente anterior ou o próprio pipeline prepara o contexto base.
-2. `Jinja2SingleTemplateComponent` consulta mensagens recentes do `Chat`.
-3. O componente converte as mensagens para uma estrutura simples com `sender_id`, `message` e `timestamp`.
-4. O template é renderizado com `chat`, `agent`, `messages` e `variables`.
-5. O resultado é salvo em `prompt` no estado.
-6. `LLMResponseComponent` consome `prompt` e solicita resposta ao cliente LLM configurado.
-7. A resposta gerada é gravada em `reply`.
+## Fluxo 2: deliberação multiagente
 
-## Fluxo 4: persistência de mensagens
+O `DeliberationRuntime` implementa um ciclo de múltiplas rodadas com revisão cruzada e consolidação por líder.
 
-### Repositório em memória
+1. Valida participantes e líder. Se `leader_agent` não está definido, o primeiro participante assume.
+2. Emite `deliberation_started`.
+3. Para cada rodada (até `max_rounds`):
+   - **Contribuição:** cada participante produz `ResearchOutput` via `contribute(topic)`.
+   - **Revisão cruzada:** cada participante revisa os demais via `review(target_id, contribution)`, gerando `PeerReview`. Helpers `summarize_peer_reviews()` e `build_follow_up_tasks()` agregam resultados.
+   - **Consolidação:** o líder invoca `consolidate()` e produz `DeliberationState` com fatos aceitos, conflitos, gaps e decisão de suficiência.
+   - **Suficiência:** se `is_sufficient == True`, encerra. Senão, frentes rejeitadas voltam para a próxima rodada.
+4. O líder produz `FinalDocument` via `produce_final_document()`, renderizado por `render_final_document_markdown()`.
+5. Emite `deliberation_finished`.
 
-1. `Chat.add_message` cria um objeto `Message`.
-2. O objeto é enviado para `InMemoryChatRepository.add_message`.
-3. O repositório atribui um `id` incremental quando necessário.
-4. A mensagem é armazenada na lista interna e também anexada a `context.messages`.
+```mermaid
+sequenceDiagram
+    participant DR as DeliberationRuntime
+    participant P1 as Participante 1
+    participant P2 as Participante 2
+    participant Leader as Líder
 
-### Repositório SQL assíncrono
+    loop Rodada N
+        DR->>P1: contribute(topic)
+        DR->>P2: contribute(topic)
+        DR->>P1: review(P2, output)
+        DR->>P2: review(P1, output)
+        DR->>DR: summarize + follow_ups
+        DR->>Leader: consolidate()
+        Leader-->>DR: DeliberationState
+        alt suficiente
+            DR->>DR: encerra ciclo
+        end
+    end
+    DR->>Leader: produce_final_document()
+    Leader-->>DR: FinalDocument
+```
 
-1. `Chat.add_message` cria um objeto `Message`.
-2. O objeto é enviado para `SQLAlchemyAsyncRepository.add_message`.
-3. A mensagem é convertida em `DBMessage`.
-4. O registro é persistido na tabela `messages`.
-5. Consultas posteriores retornam objetos `Message` reconstruídos a partir do banco.
+---
 
-## Fluxo 5: encerramento da conversa
+## Fluxo 3: agentic loop com contenção
 
-O encerramento hoje depende de duas condições:
+O `AgenticLoopRuntime` implementa um loop conversacional dirigido por roteador com mecanismos de contenção.
 
-- `ChatAdmin` atingir `max_rounds`;
-- `TerminateChatComponent` encontrar a palavra `TERMINATE` na última mensagem e chamar `chat_admin.stop()`.
+1. Valida `router_agent` e `participants` no registro.
+2. Emite `agentic_loop_started`. Inicializa `Conversation` com `initial_message` opcional.
+3. Para cada turno (até `max_turns`, dentro de `fail_after(timeout_seconds)`):
+   - `should_stop_loop(state, policy)` avalia condições de parada antecipada.
+   - Router invoca `route(history)` e retorna `RouterDecision` com `next_agent` e `terminate`.
+   - Emite `router_decision`. Se `terminate == True`, encerra.
+   - `detect_stagnation()` verifica padrões repetitivos. Se detectado, emite `stagnation_detected` e encerra.
+   - Agente selecionado invoca `reply(last_message, context)`. Mensagem adicionada a `Conversation`.
+   - Emite `agent_replied`. Atualiza `AgenticLoopState`.
+4. Emite `agentic_loop_stopped` com razão (`ROUTER_TERMINATED`, `STAGNATION`, `MAX_TURNS`, `TIMEOUT`) e número de turnos.
 
-## Fluxo 6: pesquisa deliberativa multiagente
+```mermaid
+sequenceDiagram
+    participant ALR as AgenticLoopRuntime
+    participant Router as RouterAgent
+    participant Agent as Agente
+    participant Conv as Conversation
 
-O fluxo deliberativo adiciona uma camada de colaboração estruturada sobre o runtime oficial.
+    loop Turno N (com timeout)
+        ALR->>ALR: should_stop_loop()
+        ALR->>Router: route(history)
+        Router-->>ALR: RouterDecision
+        alt terminate
+            ALR->>ALR: encerra (ROUTER_TERMINATED)
+        else stagnation
+            ALR->>ALR: encerra (STAGNATION)
+        else continuar
+            ALR->>Agent: reply(last_message)
+            Agent-->>ALR: resposta
+            ALR->>Conv: add_message()
+        end
+    end
+```
 
-1. O `Lead Researcher` produz o plano inicial da investigação.
-2. Especialistas executam a primeira rodada e retornam `ResearchOutput` com:
-   - fatos
-   - evidências
-   - inferências
-   - incertezas
-   - próximos testes
-3. Cada especialista revisa a saída de outro especialista via `PeerReview`.
-4. O runtime agrega essas revisões com `summarize_peer_reviews` e gera follow-ups com `build_follow_up_tasks`.
-5. O líder consolida:
-   - fatos aceitos
-   - conflitos abertos
-   - gaps pendentes
-   - suficiência da rodada
-   - razões de rejeição
-6. Só as frentes reprovadas ou incompletas voltam para a rodada seguinte.
-7. O `Documentation Agent` gera um `FinalDocument` orientado a decisão.
-8. O documento final é renderizado por `render_final_document_markdown`.
+---
 
-Esse desenho melhora três coisas ao mesmo tempo:
-- qualidade do raciocínio, porque obriga separação entre fato e inferência;
-- colaboração, porque inclui revisão cruzada antes da decisão do líder;
-- qualidade do artefato final, porque o documento passa a carregar trilha decisória explícita.
+## Fluxo 4: composição de modos
 
-## Fluxo 7: agentic loop com contenção sistêmica
+O `CompositeRuntime` encadeia modos de coordenação em sequência, permitindo combinações como workflow, depois deliberação, depois workflow.
 
-O modo agentic reintroduz conversa livre como capability controlada do runtime.
+1. Para cada `CompositionStep`:
+   - Aplica `input_mapper(result, context)` se definido, ou `RunContext.with_previous_result()` para injetar a saída anterior como `input_payload`.
+   - Executa `step.mode.run(agents, context, plan)`.
+   - Aplica `output_mapper(result)` se definido.
+   - Se status é `FAILED`, interrompe imediatamente (fail-fast).
+2. Retorna o `RunResult` do último passo.
 
-1. Um roteador emite `RouterDecision` com:
-   - resumo do estado atual;
-   - informação faltante;
-   - próximo agente;
-   - sinal de término;
-   - risco de estagnação.
-2. O agente selecionado produz sua resposta.
-3. A mensagem é persistida no `MessageStore`.
-4. `ConversationPolicy` avalia:
-   - `max_turns`
-   - `timeout_seconds`
-   - `budget_cap`
-   - estagnação
-5. O loop continua ou termina de forma controlada.
+---
 
-Esse modo não substitui o runtime novo. Ele roda dentro dele.
+## Fluxo 5: execução pelo microkernel
+
+O `PipelineRunner` é o executor central. Todos os modos delegam emissão de eventos e persistência a ele.
+
+1. Gera `run_id` e `correlation_id`. Persiste no `RunStore` com status `started`. Emite `run_started`.
+2. **Gate de aprovação (opcional):** emite `approval_requested`, aguarda decisão. Se `denied`, emite `approval_denied`, persiste `cancelled` e lança `RuntimeError`. Se aprovado, emite `approval_granted`.
+3. **Execução:** envolve com `RetryPolicy` se configurada. Aplica `anyio.fail_after()` se timeout definido. Executa `pipeline.run(state)`.
+4. **Erros:** `TimeoutError` persiste `timed_out` e emite `run_timed_out`. Outras exceções persistem `failed` e emitem `run_failed`. Ambos relançam a exceção.
+5. **Sucesso:** persiste `finished`, salva checkpoint no `CheckpointStore` e emite `run_finished`.
+
+```mermaid
+sequenceDiagram
+    participant Caller as Chamador
+    participant PR as PipelineRunner
+    participant Gate as ApprovalGate
+    participant Pipe as Pipeline
+    participant RS as RunStore
+
+    Caller->>PR: run_pipeline(pipeline, state)
+    PR->>RS: save_run(started)
+    opt ApprovalGate
+        PR->>Gate: request_approval()
+        alt denied
+            Gate-->>PR: denied
+            PR-->>Caller: RuntimeError
+        else granted
+            Gate-->>PR: granted
+        end
+    end
+    PR->>Pipe: run(state)
+    alt sucesso
+        PR->>RS: save_run(finished)
+        PR-->>Caller: result
+    else timeout
+        PR->>RS: save_run(timed_out)
+    else erro
+        PR->>RS: save_run(failed)
+    end
+```
+
+---
+
+## Fluxo 6: operações CLI
+
+A CLI oferece quatro comandos que cobrem o ciclo de vida de um projeto.
+
+- **init** -- Gera a estrutura inicial com `miniautogen.yml` e diretório de templates. Aceita `--example`.
+- **check** -- Valida configuração: existência do YAML, resolução de agentes, integridade dos pipelines.
+- **run** -- Executa um pipeline nomeado de forma headless, delegando ao `PipelineRunner`.
+- **sessions** -- `list` exibe execuções com filtros. `clean` remove execuções antigas por idade.
+
+```
+init [--example] -> check -> run <pipeline> -> sessions list|clean
+```
+
+---
 
 ## Pontos de extensão
 
-O desenho atual favorece extensão em três locais principais:
-
-- novos componentes de pipeline, implementando `PipelineComponent`;
-- novas implementações de `ChatRepository`;
-- novos clientes aderentes ao contrato `LLMClientInterface`.
+- **Novos modos de coordenação.** Implemente o protocolo `CoordinationMode` (`async def run(agents, context, plan) -> RunResult`).
+- **Novos tipos de agente.** Implemente os protocolos do modo alvo: `process()` para workflows, `contribute()`/`review()`/`consolidate()` para deliberação, `route()`/`reply()` para agentic loop.
+- **Novos backends de persistência.** Implemente `RunStore` ou `CheckpointStore`.
+- **Novos backend drivers.** Estenda o ABC `AgentDriver` para novos provedores.
+- **Novas policies.** Implemente `ExecutionPolicy`, `RetryPolicy` ou `ApprovalGate`.

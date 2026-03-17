@@ -2,99 +2,182 @@
 
 ## Visão geral
 
-Como o MiniAutoGen é uma biblioteca, seus containers são melhor entendidos como agrupamentos lógicos de responsabilidade dentro do mesmo pacote Python.
+Como o MiniAutoGen é uma biblioteca, seus containers são agrupamentos lógicos de responsabilidade dentro do mesmo pacote Python. A arquitetura segue o padrão microkernel com camadas concêntricas que protegem o domínio central das integrações de infraestrutura.
 
 ## Diagrama de containers
 
 ```mermaid
 flowchart TB
-    App["Aplicação hospedeira\nscripts, notebooks, serviços"] --> Core["Core de Conversação\nchat + estado"]
-    App --> Orch["Orquestração\nchatadmin"]
-    App --> Agents["Runtime de Agentes\nagent"]
-    App --> Pipeline["Motor de Pipeline\npipeline + components"]
-    App --> Storage["Camada de Persistência\nstorage"]
-    App --> LLM["Gateway de LLM\nllms"]
+    App["Aplicação Hospedeira"] --> API["API Pública\nminiautogen/api.py\n54 tipos exportados"]
 
-    Orch --> Core
-    Orch --> Pipeline
-    Agents --> Pipeline
-    Pipeline --> Core
-    Core --> Storage
-    Pipeline --> LLM
+    API --> Contracts["Core de Contratos\ncore/contracts/"]
+    API --> Kernel["Microkernel de Execução\ncore/runtime/"]
+    API --> Coord["Modos de Coordenação\ncore/runtime/"]
+
+    Kernel --> Policies["Policies\npolicies/"]
+    Kernel --> Events["Eventos\ncore/events/"]
+    Kernel --> Stores["Persistência\nstores/"]
+
+    Coord --> Adapters["Adapters\nadapters/"]
+    Coord --> Backends["Backend Drivers\nbackends/"]
+
+    Kernel --> Observability["Observabilidade\nobservability/"]
+    App --> CLIContainer["CLI\ncli/"]
+    CLIContainer --> Kernel
 ```
 
 ## Containers
 
 ### Aplicação hospedeira
 
-Não faz parte do pacote principal, mas é onde a biblioteca ganha vida. Instancia objetos, monta pipelines e inicia o fluxo assíncrono.
+Não faz parte do pacote. É a aplicação Python que consome o MiniAutoGen como dependência. Instancia objetos, configura planos de coordenação, registra agentes e backends, e inicia a execução assíncrona.
 
-### Core de Conversação
+---
 
-Representado principalmente por `miniautogen.chat.chat` e `miniautogen.schemas`.
+### API pública
 
-Responsabilidades:
+**Módulo:** `miniautogen/api.py`
 
-- manter a lista de agentes de uma conversa;
-- adicionar e recuperar mensagens por meio de `ChatRepository`;
-- manter um `ChatState` local com contexto e mensagens;
-- servir como ponto de acesso compartilhado para componentes do pipeline.
+Ponto de entrada único para consumidores externos. Exporta 54 tipos organizados em categorias: contratos do core, protocolos de agentes, runtimes, pipeline, policies, eventos, observabilidade, stores e backend drivers. Toda importação externa deve partir deste módulo.
 
-### Orquestração
+---
 
-Representada por `miniautogen.chat.chatadmin`.
+### Core de contratos
 
-Responsabilidades:
+**Diretório:** `core/contracts/`
 
-- iniciar e encerrar o loop de execução;
-- controlar rodadas com `max_rounds`;
-- montar o `ChatPipelineState` inicial da rodada;
-- executar o pipeline administrativo.
+Contém mais de 30 modelos Pydantic e definições de Protocol que formam o vocabulário tipado do sistema. Entidades centrais: Message, RunContext, RunResult, ExecutionEvent, AgentSpec. Define três protocolos de agente:
 
-### Runtime de Agentes
+- **WorkflowAgent:** expõe `process()` para execução sequencial de tarefas.
+- **DeliberationAgent:** expõe `contribute()` e `review()` para revisão em pares.
+- **ConversationalAgent:** expõe `reply()` e `route()` para turnos conversacionais.
 
-Representado por `miniautogen.agent.agent`.
+Planos de coordenação (WorkflowPlan, DeliberationPlan, AgenticLoopPlan) descrevem a estrutura de cada modo de execução.
 
-Responsabilidades:
+---
 
-- encapsular identidade e papel do agente;
-- vincular um pipeline ao agente;
-- delegar a geração de resposta ao pipeline associado;
-- expor construção a partir de JSON.
+### Microkernel de execução
 
-### Motor de Pipeline
+**Diretório:** `core/runtime/`
 
-Representado por `miniautogen.pipeline.pipeline` e `miniautogen.pipeline.components`.
+O PipelineRunner é o único executor oficial do sistema. Utiliza AnyIO para concorrência estruturada com suporte a cancelamento e timeouts. Responsabilidades:
 
-Responsabilidades:
+- Enforcement de timeout e propagação de cancelamento.
+- Emissão de eventos em cada transição do ciclo de vida.
+- Persistência de checkpoints para recuperação de sessão.
+- Gates de aprovação antes de ações críticas.
 
-- executar componentes em sequência;
-- transportar estado mutável entre componentes;
-- permitir extensão por composição;
-- implementar blocos prontos para entrada humana, seleção de agente, resposta, terminação, template e chamada LLM.
+---
 
-### Camada de Persistência
+### Modos de coordenação
 
-Representada por `miniautogen.storage`.
+**Diretório:** `core/runtime/`
 
-Responsabilidades:
+Quatro runtimes implementam o protocolo CoordinationMode:
 
-- abstrair o armazenamento de mensagens;
-- fornecer implementação em memória para testes e execuções simples;
-- fornecer implementação SQL assíncrona para persistência durável.
+- **WorkflowRuntime:** executa passos sequenciais ou paralelos com síntese opcional ao final.
+- **DeliberationRuntime:** coordena múltiplas rodadas de revisão por pares com consolidação por líder.
+- **AgenticLoopRuntime:** turnos conversacionais dirigidos por router, com deteção de estagnação.
+- **CompositeRuntime:** encadeia múltiplos modos em sequência, permitindo composições complexas.
 
-### Gateway de LLM
+---
 
-Representado por `miniautogen.llms.llm_client`.
+### Camada de policies
 
-Responsabilidades:
+**Diretório:** `policies/`
 
-- padronizar o contrato de chamada de modelos;
-- integrar OpenAI diretamente;
-- integrar qualquer backend suportado pelo LiteLLM.
+Oito policies operam lateralmente como preocupações transversais:
 
-## Observações de desenho
+| Policy | Responsabilidade |
+| --- | --- |
+| BudgetPolicy | Controle de orçamento por tokens ou custo |
+| ApprovalPolicy | Gates de aprovação humana ou automática |
+| RetryPolicy | Retentativas com backoff configurável |
+| TimeoutScope | Enforcement de limites temporais |
+| ValidationPolicy | Validação de entradas e saídas |
+| PermissionPolicy | Controle de permissões por agente ou ação |
+| ExecutionPolicy | Orquestração de múltiplas policies em sequência |
+| PolicyChain | Composição de policies com avaliação encadeada |
 
-- O fluxo da biblioteca é orientado a composição, não a herança profunda.
-- `ChatAdmin` herda de `Agent`, mas atua como coordenador da rodada e não como participante comum.
-- O pipeline é o principal mecanismo de extensão comportamental da solução.
+Policies observam eventos e reagem. Não reescrevem a semântica do domínio.
+
+---
+
+### Camada de adapters
+
+**Diretórios:** `adapters/`, `backends/`
+
+Integrações com sistemas externos, isoladas do domínio por protocolos tipados.
+
+**Provedores de LLM** (`adapters/llm/`):
+- OpenAICompatibleProvider: cliente genérico para qualquer endpoint compatível com a API OpenAI.
+- LiteLLMProvider: cliente via biblioteca LiteLLM.
+- OpenAIProvider: cliente direto para a API OpenAI.
+
+**Templates** (`adapters/templates/`):
+- Jinja2Renderer: renderização de prompts via Jinja2.
+
+**Backend Drivers** (`backends/`):
+- AgentDriver: classe abstrata base para drivers de backend.
+- AgentAPIDriver: implementação HTTP para endpoints OpenAI-compatible (Gemini CLI gateway, LiteLLM, vLLM, Ollama).
+- BackendResolver: instanciação de drivers a partir de configuração.
+
+---
+
+### Camada de persistência
+
+**Diretório:** `stores/`
+
+Três tipos de store com duas implementações cada:
+
+| Store | InMemory | SQLAlchemy |
+| --- | --- | --- |
+| MessageStore | Sim | Sim |
+| RunStore | Sim | Sim |
+| CheckpointStore | Sim | Sim |
+
+O domínio comunica exclusivamente com protocolos de store. Os detalhes de infraestrutura (SQL, serialization) ficam encapsulados nas implementações concretas. O backend SQLAlchemy suporta SQLite (via aiosqlite) e PostgreSQL.
+
+---
+
+### Observabilidade
+
+**Diretórios:** `observability/`, `core/events/`
+
+O sistema emite 42 tipos de evento distribuídos em 10 categorias:
+
+| Categoria | Quantidade | Exemplos |
+| --- | --- | --- |
+| Ciclo de vida da execução | 5 | run_started, run_finished, run_failed |
+| Componentes | 4 | component_started, component_finished |
+| Ferramentas | 3 | tool_invoked, tool_succeeded |
+| Armazenamento | 2 | checkpoint_saved, checkpoint_restored |
+| Adapters | 1 | adapter_failed |
+| Policies | 3 | policy_applied, budget_exceeded |
+| Loop agêntico | 5 | router_decision, stagnation_detected |
+| Deliberação | 4 | deliberation_started, deliberation_finished |
+| Backend drivers | 11 | backend_session_started, backend_turn_completed |
+| Aprovação | 4 | approval_requested, approval_granted |
+
+Cinco implementações de event sink: InMemory, Null, Composite, Filtered e Logging. O LoggingEventSink mapeia eventos para níveis do structlog.
+
+---
+
+### CLI
+
+**Diretório:** `cli/`
+
+Interface de linha de comando baseada em Click com quatro comandos:
+
+- **init:** gera scaffold de projeto multiagente com estrutura padrão.
+- **check:** valida configuração, dependências e contratos do projeto.
+- **run:** executa pipeline em modo headless.
+- **sessions:** lista e limpa sessões de execução persistidas.
+
+A ponte assíncrona é realizada via `run_async()` para compatibilidade com o loop AnyIO.
+
+---
+
+## Módulos legados
+
+Os diretórios `chat/`, `agent/` e `compat/` contêm a implementação original do sistema. Coexistem com a arquitetura atual e permanecem funcionais. O módulo `compat/` fornece shims para facilitar a transição entre as duas gerações da API.

@@ -2,54 +2,56 @@
 
 ## Visão geral
 
-O MiniAutoGen é uma biblioteca Python para construção de conversas multiagentes orientadas por pipelines assíncronos. Seu papel é oferecer blocos reutilizáveis para que uma aplicação hospede agentes, coordene turnos de conversa, persista mensagens e integre modelos de linguagem.
-
-O sistema não é uma aplicação final pronta. Ele funciona como um kit de composição usado por outra aplicação ou script Python.
+O MiniAutoGen é uma biblioteca Python para construção de sistemas de coordenação multiagente com pipelines assíncronos. Fornece blocos de construção tipados para hospedar agentes, coordenar colaboração através de modos estruturados (workflow, deliberação, loop agêntico), persistir estado e integrar modelos de linguagem. O MiniAutoGen não é uma aplicação pronta para uso final --- é um toolkit de composição consumido por outra aplicação Python.
 
 ## Responsabilidades do sistema
 
-- manter um conjunto de agentes participantes de uma conversa;
-- registrar e recuperar mensagens por meio de um repositório abstrato;
-- coordenar rodadas de execução com um administrador de chat;
-- delegar a geração de respostas para pipelines configuráveis;
-- integrar provedores de LLM para respostas automáticas.
+- Coordenar execução multiagente através de modos de coordenação tipados (workflow, deliberação, loop agêntico, composição).
+- Gerir o ciclo de vida de execução com eventos, policies e propagação de contexto.
+- Persistir conversas, metadados de execução e checkpoints de estado.
+- Integrar provedores de LLM através de adaptadores tipados por protocolo.
+- Disponibilizar CLI para scaffolding de projetos, validação, execução de pipelines e gestão de sessões.
 
 ## Atores e sistemas externos
 
 ### Desenvolvedor da aplicação
 
-É quem monta a solução usando os módulos do MiniAutoGen. Define agentes, pipelines, repositórios, clientes LLM e o ciclo de execução.
+Monta a solução usando os módulos do MiniAutoGen. Define agentes, planos de coordenação, backends, stores e o ciclo de execução assíncrono.
 
-### Usuário final ou operador
+### Operador
 
-Interage indiretamente com a solução construída sobre o MiniAutoGen. Em cenários com `UserResponseComponent`, pode fornecer entradas pelo terminal.
+Interage com o sistema via CLI (init, check, run, sessions) ou através de aplicações construídas sobre o MiniAutoGen.
 
-### Provedor de LLM
+### Provedores de LLM
 
-Sistema externo acessado pelos clientes em `miniautogen.llms.llm_client`. Pode ser OpenAI diretamente ou qualquer provedor suportado via LiteLLM.
+Sistemas externos acessados via endpoints HTTP compatíveis com a API OpenAI. Inclui OpenAI, Gemini CLI gateway, LiteLLM, vLLM e Ollama.
 
 ### Banco de dados
 
-Sistema externo opcional usado por `SQLAlchemyAsyncRepository` para persistir mensagens de forma assíncrona. No estado atual, o padrão é SQLite com `aiosqlite`, mas a implementação foi desenhada para aceitar outras URLs compatíveis com SQLAlchemy async.
+Sistema externo opcional utilizado pelos stores SQLAlchemy para persistência durável de mensagens, execuções e checkpoints. O padrão é SQLite via aiosqlite, mas qualquer URL compatível com SQLAlchemy async é aceita.
 
 ## Diagrama de contexto
 
 ```mermaid
 flowchart LR
-    Dev["Desenvolvedor da aplicação"] --> Mini["MiniAutoGen\nBiblioteca Python"]
-    User["Usuário final ou operador"] --> Dev
-    Mini --> LLM["Provedores de LLM\nOpenAI / LiteLLM"]
-    Mini --> DB["Banco de dados opcional\nSQLAlchemy async"]
+    Dev["Desenvolvedor"] --> Mini["MiniAutoGen\nBiblioteca Python"]
+    Ops["Operador"] --> CLI["CLI\n(init, check, run, sessions)"]
+    CLI --> Mini
+    Mini --> LLM["Provedores de LLM\nOpenAI-compatible"]
+    Mini --> DB["Banco de dados\nSQLAlchemy async"]
+    Mini --> MCP["Servidores MCP\n(opcional)"]
 ```
 
 ## Relações principais
 
 | Origem | Destino | Relação |
 | --- | --- | --- |
-| Desenvolvedor da aplicação | MiniAutoGen | Configura agentes, pipelines, repositórios e orquestra o uso da biblioteca |
-| MiniAutoGen | Provedores de LLM | Solicita respostas para prompts preparados no pipeline |
-| MiniAutoGen | Banco de dados opcional | Persiste e consulta histórico de mensagens |
+| Desenvolvedor | MiniAutoGen | Configura agentes, planos de coordenação, stores e backends |
+| Operador | CLI | Executa comandos de scaffolding, validação, execução e gestão de sessões |
+| MiniAutoGen | Provedores de LLM | Envia requisições via protocolo OpenAI-compatible para geração de respostas |
+| MiniAutoGen | Banco de dados | Persiste e consulta mensagens, metadados de execução e checkpoints |
+| MiniAutoGen | Servidores MCP | Integra ferramentas externas via protocolo MCP (opcional) |
 
 ## Limite do sistema
 
-O limite do sistema inclui somente os módulos do pacote `miniautogen` e seus contratos internos. Scripts de exemplo, testes e a aplicação hospedeira ficam fora do limite principal, embora ajudem a ilustrar seu uso.
+O limite do sistema inclui somente o pacote `miniautogen` e seus contratos internos. Scripts de exemplo, testes, CLI gateway e a aplicação hospedeira ficam fora do limite principal.

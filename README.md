@@ -1,53 +1,65 @@
 # MiniAutoGen
 
-MiniAutoGen é uma biblioteca leve para orquestração de conversas, pipelines e execução multiagente com arquitetura assíncrona, adapters finos e contratos tipados.
+Biblioteca Python de microkernel para orquestração de pipelines e coordenação multi-agente assíncrona.
 
-O repositório hoje está organizado em torno de três eixos:
-- arquitetura atual do framework
-- arquitetura alvo e decisões tecnológicas
-- integração operacional com Gemini CLI via gateway compatível com OpenAI
+O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies transversais para construir sistemas multi-agente. A arquitetura separa rigorosamente o núcleo dos adapters externos, permitindo trocar providers LLM, stores e backends sem alterar lógica de domínio. Todo o fluxo de execução é assíncrono via AnyIO.
+
+---
+
+## Modos de coordenação
+
+- **Workflow** -- execução sequencial de steps com agentes atribuídos
+- **Deliberation** -- ciclos de contribuição e revisão entre pares
+- **Agentic loop** -- loop conversacional com roteamento dinâmico
+- **Composite** -- composição de subruns heterogêneos num único run
+
+---
 
 ## Estado atual
 
-O núcleo atual do projeto é baseado em:
-- `PipelineRunner` como runtime oficial
-- contratos tipados em `miniautogen/core/contracts`
-- stores separados para mensagens, runs e checkpoints
-- adapters de LLM desacoplados do core
-- compatibilidade legada mantida apenas onde ainda necessário
+- `PipelineRunner` como runtime oficial com timeout, checkpoint e lifecycle de eventos
+- Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
+- 3 stores especializados (messages, runs, checkpoints) com backends InMemory e SQLAlchemy
+- 8 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
+- 42 tipos de evento para observabilidade via structlog
+- Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
+- CLI com comandos `init`, `check`, `run` e `sessions`
+
+---
 
 ## Gemini CLI
 
-O caminho suportado para usar Gemini CLI como motor LLM é:
+Caminho suportado para usar Gemini CLI como motor LLM:
+
 - `gemini_cli_gateway/` como gateway local compatível com `/v1/chat/completions`
-- `OpenAICompatibleProvider` como adapter HTTP do MiniAutoGen
+- `OpenAICompatibleProvider` como adapter HTTP
 
-Guia rápido:
-- [Gemini CLI Gateway](docs/pt/guides/gemini-cli-gateway.md)
+Guia: [Gemini CLI Gateway](docs/pt/guides/gemini-cli-gateway.md)
 
-## Backend Drivers
+---
 
-O MiniAutoGen suporta uma camada unificada de drivers para agentes externos:
-- `AgentDriver` — interface abstrata para qualquer backend
-- `AgentAPIDriver` — driver HTTP para endpoints OpenAI-compatible (Gemini CLI gateway, LiteLLM, vLLM, Ollama)
-- `BackendResolver` — resolução config-driven de backends com factory registry
+## Backend drivers
 
-Guia rápido:
-- [Documentação de arquitetura](docs/architecture.md)
+Camada unificada de drivers para agentes externos:
 
-## Documentação principal
+- `AgentDriver` -- interface abstrata (start_session, send_turn, cancel_turn, close_session, capabilities)
+- `AgentAPIDriver` -- driver HTTP para endpoints OpenAI-compatible (Gemini CLI gateway, LiteLLM, vLLM, Ollama)
+- `BackendResolver` -- resolução config-driven com factory registry
+
+Documentação: [Arquitetura](docs/pt/architecture/README.md)
+
+---
+
+## Documentação
 
 - [Documentação em português](docs/pt/README.md)
 - [Arquitetura atual (C4)](docs/pt/architecture/README.md)
-- [Arquitetura alvo](docs/pt/target-architecture/README.md)
 - [Referência rápida dos módulos](docs/pt/quick-reference.md)
+
+---
 
 ## Exemplos executáveis
 
 - [Tutorial da nova arquitetura](output/jupyter-notebook/miniautogen-nova-arquitetura-tutorial.ipynb)
 - [Mini app com Gemini CLI](output/jupyter-notebook/miniautogen-mini-app-exemplo.ipynb)
-- [Agentic loop com backend drivers](output/jupyter-notebook/miniautogen-agentic-loop.ipynb)
-
-## Observação
-
-A documentação histórica antiga em inglês, os planos intermediários de execução e anotações superseded foram removidos para reduzir ruído. O repositório agora prioriza documentação viva e alinhada com o código atual.
+- [Agentic loop com debate](output/jupyter-notebook/miniautogen-agentic-loop-debate.ipynb)
