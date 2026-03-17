@@ -17,6 +17,14 @@ def test_execution_event_supports_canonical_fields() -> None:
     assert event.scope == "runner"
 
 
+def test_execution_event_allows_none_correlation_id() -> None:
+    event = ExecutionEvent(
+        type="run_started",
+        run_id="run-1",
+    )
+    assert event.correlation_id is None
+
+
 def test_execution_event_accepts_legacy_aliases() -> None:
     event = ExecutionEvent(
         event_type="run_started",

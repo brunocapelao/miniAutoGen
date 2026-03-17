@@ -28,6 +28,7 @@ from miniautogen.core.contracts.deliberation import (
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
+from miniautogen.core.events.types import EventType
 from miniautogen.core.runtime.deliberation import (
     build_follow_up_tasks,
     summarize_peer_reviews,
@@ -38,9 +39,9 @@ from miniautogen.observability import get_logger
 
 _SCOPE = "deliberation_runtime"
 
-_EVT_STARTED = "deliberation_started"
-_EVT_FINISHED = "deliberation_finished"
-_EVT_FAILED = "deliberation_failed"
+_EVT_STARTED = EventType.DELIBERATION_STARTED.value
+_EVT_FINISHED = EventType.DELIBERATION_FINISHED.value
+_EVT_FAILED = EventType.DELIBERATION_FAILED.value
 
 
 class DeliberationRuntime:

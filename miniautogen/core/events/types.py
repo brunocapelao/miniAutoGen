@@ -28,6 +28,12 @@ class EventType(str, Enum):
     AGENTIC_LOOP_STOPPED = "agentic_loop_stopped"
     STAGNATION_DETECTED = "stagnation_detected"
 
+    # Deliberation events
+    DELIBERATION_STARTED = "deliberation_started"
+    DELIBERATION_ROUND_COMPLETED = "deliberation_round_completed"
+    DELIBERATION_FINISHED = "deliberation_finished"
+    DELIBERATION_FAILED = "deliberation_failed"
+
     # Backend driver events
     BACKEND_SESSION_STARTED = "backend_session_started"
     BACKEND_TURN_STARTED = "backend_turn_started"
@@ -50,10 +56,11 @@ AGENTIC_LOOP_EVENT_TYPES = {
     EventType.STAGNATION_DETECTED.value,
 }
 
-DELIBERATION_EVENT_TYPES = {
-    "deliberation_started",
-    "deliberation_finished",
-    "deliberation_failed",
+DELIBERATION_EVENT_TYPES: set[EventType] = {
+    EventType.DELIBERATION_STARTED,
+    EventType.DELIBERATION_ROUND_COMPLETED,
+    EventType.DELIBERATION_FINISHED,
+    EventType.DELIBERATION_FAILED,
 }
 
 BACKEND_EVENT_TYPES = {

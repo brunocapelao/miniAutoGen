@@ -17,7 +17,7 @@ class ExecutionEvent(BaseModel):
         serialization_alias="timestamp",
     )
     run_id: str | None = None
-    correlation_id: str
+    correlation_id: str | None = None
     scope: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 

@@ -47,6 +47,17 @@ from miniautogen.core.contracts.deliberation import (
 )
 from miniautogen.core.contracts.store import StoreProtocol
 from miniautogen.core.contracts.tool import ToolProtocol, ToolResult
+from miniautogen.core.events.event_sink import (
+    CompositeEventSink,
+    FilteredEventSink,
+    InMemoryEventSink,
+)
+from miniautogen.core.events.filters import (
+    CompositeFilter,
+    EventFilter,
+    RunFilter,
+    TypeFilter,
+)
 from miniautogen.core.runtime import (
     AgenticLoopRuntime,
     CompositeRuntime,
@@ -55,6 +66,7 @@ from miniautogen.core.runtime import (
     WorkflowRuntime,
 )
 from miniautogen.core.runtime.composite_runtime import CompositionStep
+from miniautogen.observability.event_logging import LoggingEventSink
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
 from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
@@ -103,6 +115,15 @@ __all__ = [
     # Policy enforcement
     "BudgetTracker",
     "BudgetExceededError",
+    # Events and observability
+    "CompositeEventSink",
+    "CompositeFilter",
+    "EventFilter",
+    "FilteredEventSink",
+    "InMemoryEventSink",
+    "LoggingEventSink",
+    "RunFilter",
+    "TypeFilter",
     # Backend driver abstraction
     "AgentDriver",
     "BackendCapabilities",
