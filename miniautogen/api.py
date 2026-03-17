@@ -14,12 +14,18 @@ from miniautogen.backends import (
     BackendResolver,
 )
 from miniautogen.core.contracts import (
+    AgentSpec,
+    EngineProfile,
     ExecutionEvent,
     LoopStopReason,
+    McpServerBinding,
+    MemoryProfile,
     Message,
     RunContext,
     RunResult,
     RunStatus,
+    SkillSpec,
+    ToolSpec,
 )
 from miniautogen.core.contracts.agent import (
     ConversationalAgent,
@@ -74,15 +80,21 @@ from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
 
 __all__ = [
     # Core contracts
+    "AgentSpec",
+    "EngineProfile",
     "ExecutionEvent",
     "LoopStopReason",
+    "McpServerBinding",
+    "MemoryProfile",
     "Message",
     "RunContext",
     "RunResult",
     "RunStatus",
+    "SkillSpec",
     "StoreProtocol",
     "ToolProtocol",
     "ToolResult",
+    "ToolSpec",
     "Conversation",
     # Agent protocols
     "WorkflowAgent",
