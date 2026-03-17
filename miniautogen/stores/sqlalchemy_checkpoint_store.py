@@ -59,3 +59,32 @@ class SQLAlchemyCheckpointStore(CheckpointStore):
             if db_checkpoint is None:
                 return None
             return cast(dict[str, Any], json.loads(db_checkpoint.payload_json))
+
+    async def list_checkpoints(
+        self,
+        run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        async with self.async_session() as session:
+            if run_id is not None:
+                stmt = select(DBCheckpoint).where(
+                    DBCheckpoint.run_id == run_id,
+                )
+            else:
+                stmt = select(DBCheckpoint)
+            result = await session.execute(stmt)
+            return [
+                cast(
+                    dict[str, Any],
+                    json.loads(cp.payload_json),
+                )
+                for cp in result.scalars().all()
+            ]
+
+    async def delete_checkpoint(self, run_id: str) -> bool:
+        async with self.async_session() as session:
+            async with session.begin():
+                db_cp = await session.get(DBCheckpoint, run_id)
+                if db_cp is None:
+                    return False
+                await session.delete(db_cp)
+                return True

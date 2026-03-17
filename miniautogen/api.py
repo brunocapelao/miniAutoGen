@@ -66,6 +66,7 @@ from miniautogen.core.runtime import (
     WorkflowRuntime,
 )
 from miniautogen.core.runtime.composite_runtime import CompositionStep
+from miniautogen.core.runtime.recovery import SessionRecovery
 from miniautogen.observability.event_logging import LoggingEventSink
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
@@ -124,6 +125,8 @@ __all__ = [
     "LoggingEventSink",
     "RunFilter",
     "TypeFilter",
+    # Recovery
+    "SessionRecovery",
     # Backend driver abstraction
     "AgentDriver",
     "BackendCapabilities",
