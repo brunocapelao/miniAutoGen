@@ -40,3 +40,7 @@ cli.add_command(init_command)
 from miniautogen.cli.commands.check import check_command  # noqa: E402
 
 cli.add_command(check_command)
+
+from miniautogen.cli.commands.run import run_command  # noqa: E402
+
+cli.add_command(run_command)

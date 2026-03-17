@@ -77,6 +77,8 @@ from miniautogen.observability.event_logging import LoggingEventSink
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
 from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
+from miniautogen.policies.execution import ExecutionPolicy
+from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 
 __all__ = [
     # Core contracts
@@ -143,4 +145,8 @@ __all__ = [
     "AgentDriver",
     "BackendCapabilities",
     "BackendResolver",
+    # Policies
+    "ExecutionPolicy",
+    # Stores
+    "InMemoryRunStore",
 ]
