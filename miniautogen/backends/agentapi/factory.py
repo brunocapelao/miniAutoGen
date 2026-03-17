@@ -37,4 +37,5 @@ def agentapi_factory(config: BackendConfig) -> AgentAPIDriver:
     return AgentAPIDriver(
         client=client,
         model=metadata.get("model"),
+        timeout_seconds=config.timeout_seconds,
     )

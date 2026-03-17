@@ -10,6 +10,9 @@ import uuid
 from typing import AsyncIterator
 
 from miniautogen.backends.agentapi.client import AgentAPIClient
+from miniautogen.observability.logging import get_logger
+
+logger = get_logger(__name__)
 from miniautogen.backends.agentapi.mapper import map_completion_response
 from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.errors import CancelNotSupportedError
@@ -38,9 +41,11 @@ class AgentAPIDriver(AgentDriver):
         self,
         client: AgentAPIClient,
         model: str | None = None,
+        timeout_seconds: float = 120.0,
     ) -> None:
         self._client = client
         self._model = model
+        self._timeout_seconds = timeout_seconds
         self._caps = BackendCapabilities(
             sessions=False,
             streaming=False,
@@ -57,6 +62,7 @@ class AgentAPIDriver(AgentDriver):
     ) -> StartSessionResponse:
         await self._client.health_check()
         session_id = f"sess_{uuid.uuid4().hex[:12]}"
+        logger.info("session_started", session_id=session_id, backend_id=request.backend_id)
         return StartSessionResponse(
             session_id=session_id,
             capabilities=self._caps,
@@ -66,18 +72,22 @@ class AgentAPIDriver(AgentDriver):
         self,
         request: SendTurnRequest,
     ) -> AsyncIterator[AgentEvent]:
+        import anyio
+
         turn_id = f"turn_{uuid.uuid4().hex[:12]}"
-        response_data = await self._client.chat_completion(
-            messages=request.messages,
-            model=self._model,
-        )
-        events = map_completion_response(
-            response_data,
-            session_id=request.session_id,
-            turn_id=turn_id,
-        )
-        for event in events:
-            yield event
+        logger.debug("send_turn", session_id=request.session_id, turn_id=turn_id)
+        with anyio.fail_after(self._timeout_seconds):
+            response_data = await self._client.chat_completion(
+                messages=request.messages,
+                model=self._model,
+            )
+            events = map_completion_response(
+                response_data,
+                session_id=request.session_id,
+                turn_id=turn_id,
+            )
+            for event in events:
+                yield event
 
     async def cancel_turn(
         self,

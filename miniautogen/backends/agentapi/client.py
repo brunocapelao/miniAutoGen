@@ -6,7 +6,6 @@ Uses httpx for async HTTP and tenacity for retry logic.
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 import httpx
@@ -19,6 +18,9 @@ from tenacity import (
 
 from miniautogen.backends.agentapi.mapper import extract_error_message
 from miniautogen.backends.errors import BackendUnavailableError, TurnExecutionError
+from miniautogen.observability.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class _RetryableServerError(Exception):
@@ -72,11 +74,14 @@ class AgentAPIClient:
             if resp.status_code >= 400:
                 msg = f"Health check failed: HTTP {resp.status_code}"
                 raise BackendUnavailableError(msg)
+            logger.info("health_check_passed", endpoint=self._health_endpoint)
             return True
         except httpx.ConnectError as exc:
+            logger.warning("health_check_failed", endpoint=self._health_endpoint, error=str(exc))
             msg = f"Backend unreachable: {exc}"
             raise BackendUnavailableError(msg) from exc
         except httpx.TimeoutException as exc:
+            logger.warning("health_check_timeout", endpoint=self._health_endpoint, error=str(exc))
             msg = f"Health check timed out: {exc}"
             raise BackendUnavailableError(msg) from exc
 
@@ -118,12 +123,15 @@ class AgentAPIClient:
                     return resp.json()
 
         except _RetryableServerError as exc:
+            logger.error("chat_completion_failed", attempts=self._max_retry_attempts, error=str(exc))
             msg = f"Server error after {self._max_retry_attempts} attempts: {exc}"
             raise TurnExecutionError(msg) from exc
         except httpx.ConnectError as exc:
+            logger.error("backend_unreachable", error=str(exc))
             msg = f"Backend unreachable: {exc}"
             raise BackendUnavailableError(msg) from exc
         except httpx.TimeoutException as exc:
+            logger.error("request_timeout", error=str(exc))
             msg = f"Request timed out: {exc}"
             raise TurnExecutionError(msg) from exc
 
