@@ -205,6 +205,8 @@ Modelo persistido:
 
 Arquivo: `miniautogen/llms/llm_client.py`
 
+> **Nota:** O `LLMClientInterface` é a interface legada. A nova arquitetura usa `LLMProviderProtocol` (em `miniautogen/adapters/llm/protocol.py`) e o `AgentAPIDriver` (em `miniautogen/backends/agentapi/`) para integração com LLMs externos.
+
 Responsabilidades:
 
 - definir contrato comum para clientes de modelo.

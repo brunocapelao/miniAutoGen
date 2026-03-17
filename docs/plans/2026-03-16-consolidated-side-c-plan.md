@@ -1,5 +1,7 @@
 # Plano Consolidado — Side C: Microkernel de Coordenação Multiagente
 
+> **Status:** Concluído. Ver commits recentes.
+
 > **Substitui todos os planos anteriores em `docs/plans/`.**
 > Alinhado com o Sumário Executivo do MiniAutoGen — versão 2026-03-16.
 > **v2** — revisado com ajustes de contrato, generalização do modo deliberativo e subfases.

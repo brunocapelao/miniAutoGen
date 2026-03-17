@@ -70,6 +70,17 @@ Chains multiple coordination modes in sequence. Each `CompositionStep` holds a m
 
 Key types: `CompositeRuntime`, `CompositionStep`, `SubrunRequest`
 
+## Backend Driver Abstraction
+
+The `backends/` package provides a unified interface for external agent backends:
+
+- **`AgentDriver` ABC** — 6 abstract methods: `start_session`, `send_turn`, `cancel_turn`, `list_artifacts`, `close_session`, `capabilities`
+- **`AgentAPIDriver`** — HTTP bridge for OpenAI-compatible endpoints (Gemini CLI gateway, LiteLLM, vLLM)
+- **`BackendResolver`** — Config-driven driver instantiation with factory registry
+- **`SessionManager`** — Session lifecycle state machine (7 states)
+
+Events follow a two-layer taxonomy: drivers emit unprefixed canonical events (`message_delta`, `turn_completed`), while the core event bus uses `BACKEND_`-prefixed `EventType` members.
+
 ## Agent Protocols
 
 Agents are defined as `typing.Protocol` classes with `@runtime_checkable`. No base class inheritance required.

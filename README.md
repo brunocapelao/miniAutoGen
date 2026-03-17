@@ -25,6 +25,16 @@ O caminho suportado para usar Gemini CLI como motor LLM é:
 Guia rápido:
 - [Gemini CLI Gateway](docs/pt/guides/gemini-cli-gateway.md)
 
+## Backend Drivers
+
+O MiniAutoGen suporta uma camada unificada de drivers para agentes externos:
+- `AgentDriver` — interface abstrata para qualquer backend
+- `AgentAPIDriver` — driver HTTP para endpoints OpenAI-compatible (Gemini CLI gateway, LiteLLM, vLLM, Ollama)
+- `BackendResolver` — resolução config-driven de backends com factory registry
+
+Guia rápido:
+- [Documentação de arquitetura](docs/architecture.md)
+
 ## Documentação principal
 
 - [Documentação em português](docs/pt/README.md)
@@ -36,6 +46,7 @@ Guia rápido:
 
 - [Tutorial da nova arquitetura](output/jupyter-notebook/miniautogen-nova-arquitetura-tutorial.ipynb)
 - [Mini app com Gemini CLI](output/jupyter-notebook/miniautogen-mini-app-exemplo.ipynb)
+- [Agentic loop com backend drivers](output/jupyter-notebook/miniautogen-agentic-loop.ipynb)
 
 ## Observação
 

@@ -66,3 +66,35 @@ Na prática:
 - `warm run`: reaproveita respostas válidas já persistidas no cache e reduz custo/instabilidade operacional.
 
 Esse cache não muda o contrato do framework. Ele existe apenas para estabilizar demos, notebooks e ciclos repetidos de pesquisa.
+
+## Integração via AgentAPIDriver (Recomendado)
+
+A forma preferencial de usar o Gemini CLI no MiniAutoGen é via `AgentAPIDriver`:
+
+```python
+from gemini_cli_gateway.app import app as gateway_app
+import httpx
+from miniautogen.backends.agentapi import AgentAPIClient, AgentAPIDriver
+from miniautogen.backends.models import SendTurnRequest, StartSessionRequest
+
+client = AgentAPIClient(
+    base_url="http://gemini-gateway",
+    transport=httpx.ASGITransport(app=gateway_app),
+    health_endpoint=None,
+    max_retry_attempts=3,
+)
+driver = AgentAPIDriver(client=client, model="gemini-2.5-flash")
+session = await driver.start_session(StartSessionRequest(backend_id="gemini"))
+
+async for event in driver.send_turn(
+    SendTurnRequest(session_id=session.session_id, messages=[...])
+):
+    if event.type == "message_completed":
+        print(event.payload["text"])
+```
+
+Este padrão substitui o uso direto do `OpenAICompatibleProvider` e oferece:
+- Sessões lógicas com state machine
+- Eventos canónicos (`turn_started`, `message_completed`, `turn_completed`)
+- Retry com tenacity e health check configurável
+- Integração com `BackendResolver` para configuração declarativa

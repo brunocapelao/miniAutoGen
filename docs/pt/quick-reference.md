@@ -102,6 +102,20 @@ Gateway local compatível com `/v1/chat/completions` para usar Gemini CLI sem ac
 
 Cache simples para notebooks e demos longas com Gemini CLI real. Permite reexecução mais estável sem esconder o motor real.
 
+### Backends (`miniautogen/backends/`)
+
+Camada unificada de drivers para agentes externos.
+
+| Módulo | Responsabilidade |
+|--------|-----------------|
+| `backends/driver.py` | `AgentDriver` ABC — interface unificada |
+| `backends/models.py` | Modelos de domínio (capabilities, requests, events, artifacts) |
+| `backends/errors.py` | Hierarquia de erros do driver layer |
+| `backends/sessions.py` | `SessionManager` — state machine de sessões |
+| `backends/config.py` | `BackendConfig` — configuração declarativa |
+| `backends/resolver.py` | `BackendResolver` — resolução config-driven |
+| `backends/agentapi/` | `AgentAPIDriver` — driver HTTP (OpenAI-compatible) |
+
 ## Onde aprofundar
 
 - [Arquitetura atual](architecture/README.md)
