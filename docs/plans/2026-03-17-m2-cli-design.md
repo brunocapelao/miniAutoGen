@@ -1,43 +1,49 @@
 # Milestone 2 — CLI Developer Product: Design Document
 
-**Status:** Approved
+**Status:** Approved (v2 — updated with Agent Architecture Spec)
 **Date:** 2026-03-17
 
 ## Goal
 
-Transform the SDK's raw power into an ergonomic developer experience. The CLI is a *consumer* of `miniautogen.api` — it standardizes how teams create, validate, and run MiniAutoGen projects.
+Transform the SDK's raw power into an ergonomic developer experience. The CLI is a *consumer* of `miniautogen.api` — it standardizes how teams create, validate, and run MiniAutoGen projects with multi-agent, skills, tools, and MCP support.
+
+## Reference
+
+Full agent architecture spec: `docs/plans/2026-03-17-agent-architecture-spec.md`
 
 ## Architecture Decisions
 
 ### D1: CLI inside main package
-The CLI lives at `miniautogen/cli/` within the existing package. Single install (`pip install miniautogen`), shared versioning. Can be extracted later if needed.
+The CLI lives at `miniautogen/cli/` within the existing package. Single install, shared versioning.
 
 ### D2: Click as command framework
-Click provides composable command groups, nested subcommands, and a mature plugin ecosystem. Async bridge via `anyio.run()` keeps commands sync on surface, async internally.
+Click provides composable command groups, nested subcommands. Async bridge via `anyio.run()`.
 
 ### D3: Dogfooding — import boundary
-`services/` (and all CLI code) may import:
-- stdlib
-- external dependencies (click, jinja2, pyyaml)
-- `miniautogen.api`
-
-**Prohibited:** any import from `miniautogen.core`, `miniautogen.stores`, `miniautogen.backends`, `miniautogen.policies`, or any other internal module. All SDK integration goes through `miniautogen.api`.
+CLI code may import: stdlib, external deps (click, jinja2, pyyaml), `miniautogen.api`.
+**Prohibited:** any import from internal modules (`core`, `stores`, `backends`, etc.).
 
 ### D4: YAML as CLI convention, not SDK constraint
-`miniautogen.yaml` is the declarative project config for the CLI. The SDK remains Python-first. The YAML convention does not limit programmatic SDK usage.
+`miniautogen.yaml` + `agents/*.yaml` + `skills/*/skill.yaml` + `tools/*.yaml` + `mcp/*.yaml` are declarative project conventions for the CLI. The SDK remains Python-first.
 
 ### D5: Separation of adapter and application logic
-`commands/` are CLI adapters (parse args, render output). `services/` contain testable application logic. Services never touch Click.
+`commands/` = CLI adapter. `services/` = testable application logic. Services never touch Click.
+
+### D6: Agent definition model
+Agents defined by `AgentSpec` (YAML), enriched by Skills, Tools, MCP bindings, bound to `EngineProfile`, resolved at runtime by `AgentResolver` into `ResolvedAgentProfile`.
+
+### D7: Capability vs execution separation
+`AgentSpec` defines what (role, skills, tools, MCP, permissions). `EngineProfile` defines how (provider, model, adapter). These are independent.
 
 ## Package Structure
 
 ```
 miniautogen/
-├── __main__.py                    # python -m miniautogen
+├── __main__.py
 ├── cli/
 │   ├── __init__.py
 │   ├── main.py                    # Click group + run_async helper
-│   ├── config.py                  # Project resolution + YAML loading + validation
+│   ├── config.py                  # Project resolution + YAML loading
 │   ├── errors.py                  # CLI error hierarchy + exit codes
 │   ├── output.py                  # Text/JSON output formatting
 │   ├── commands/
@@ -48,14 +54,17 @@ miniautogen/
 │   │   └── sessions.py            # miniautogen sessions [list|clean]
 │   ├── services/
 │   │   ├── __init__.py
-│   │   ├── init_project.py        # Scaffold logic (Jinja2 rendering)
-│   │   ├── check_project.py       # Static + environment validation
-│   │   ├── run_pipeline.py        # Pipeline execution via public SDK surface
-│   │   └── session_ops.py         # Store queries via public SDK surface
+│   │   ├── init_project.py        # Scaffold with agents/skills/tools/mcp
+│   │   ├── check_project.py       # Validate specs + environment
+│   │   ├── run_pipeline.py        # Pipeline execution via SDK
+│   │   └── session_ops.py         # Store queries via SDK
 │   └── templates/
 │       └── project/
 │           ├── miniautogen.yaml.j2
-│           ├── agents/__init__.py.j2
+│           ├── agents/researcher.yaml.j2
+│           ├── skills/example/SKILL.md.j2
+│           ├── skills/example/skill.yaml.j2
+│           ├── tools/web_search.yaml.j2
 │           ├── pipelines/main.py.j2
 │           └── .env.j2
 ```
@@ -64,60 +73,30 @@ miniautogen/
 
 | Layer | Role | Allowed Imports |
 |---|---|---|
-| `commands/` | CLI adapters: parse arguments, invoke services, map errors, render output | `services/`, `config`, `output`, `errors`, `click` |
-| `services/` | Application services for CLI use-cases: implement init, check, run, sessions on top of the public SDK surface | stdlib, `miniautogen.api` |
-| `config.py` | Project resolution and configuration: locate root, parse YAML, validate schema, resolve paths | stdlib, `pydantic`, `yaml` |
-| `output.py` | Presentation layer for terminal and structured output | stdlib, `click.echo` |
-| `errors.py` | CLI-specific exception hierarchy and exit code mapping | stdlib |
+| `commands/` | CLI adapters: parse args, invoke services, render output | `services/`, `config`, `output`, `errors`, `click` |
+| `services/` | Application services for CLI use-cases | stdlib, external deps, `miniautogen.api` |
+| `config.py` | Project resolution: find root, load YAML, validate, resolve paths | stdlib, `pydantic`, `yaml` |
+| `output.py` | Presentation layer for terminal/structured output | stdlib, `click.echo` |
+| `errors.py` | CLI exception hierarchy and exit code mapping | stdlib |
 
-## Commands
+## Project Structure Generated by `init`
 
-### `miniautogen init <name>`
-
-Creates a new project with canonical structure.
-
-- Generates `miniautogen.yaml` with sensible defaults
-- Creates example agent, pipeline, `.env`
-- Options: `--model`, `--provider`, `--no-examples`
-- Service: `init_project.py` uses Jinja2 to render templates
-
-### `miniautogen check`
-
-Validates project configuration and environment.
-
-**Static checks:**
-- Config file valid and parseable
-- Pipeline files/modules exist
-- Agent references resolve
-- Configuration shape correct
-
-**Environment checks:**
-- Required env vars present (API keys)
-- Provider configured and accessible
-- Database URL valid (if configured)
-
-Reports pass/fail per check. Exit code 0 = all pass, 1 = failures.
-
-### `miniautogen run <pipeline>`
-
-Executes a pipeline headlessly.
-
-- Resolves configured pipeline target
-- Loads through public SDK surface
-- Executes using public runtime API
-- Streams events to stdout via LoggingEventSink
-- Returns result as text or structured format
-- Options: `--timeout`, `--format text|json`, `--verbose`
-
-### `miniautogen sessions list|clean`
-
-Manages local session/run data.
-
-- `list`: queries store for recent runs (status, timestamps)
-- `clean`: removes completed/failed/cancelled runs older than N days
-  - **Never deletes active runs**
-  - Requires `--older-than` or `--yes` for safety
-- Options: `--status`, `--limit`, `--older-than`, `--yes`
+```
+<project>/
+├── miniautogen.yaml              # Project config + engine profiles
+├── agents/
+│   └── researcher.yaml           # Example AgentSpec
+├── skills/
+│   └── example/
+│       ├── SKILL.md              # Skill instructions
+│       └── skill.yaml            # Skill metadata
+├── tools/
+│   └── web_search.yaml           # Example ToolSpec
+├── mcp/                          # MCP bindings (empty initially)
+├── pipelines/
+│   └── main.py                   # Example pipeline
+└── .env                          # Environment variables
+```
 
 ## Project Config Schema (`miniautogen.yaml`)
 
@@ -126,9 +105,15 @@ project:
   name: my-agent-team
   version: "0.1.0"
 
-provider:
-  default: litellm
-  model: gpt-4o-mini
+defaults:
+  engine_profile: default_api
+
+engine_profiles:
+  default_api:
+    kind: api
+    provider: litellm
+    model: gpt-4o-mini
+    temperature: 0.2
 
 pipelines:
   main:
@@ -138,29 +123,74 @@ database:
   url: sqlite+aiosqlite:///miniautogen.db
 ```
 
-Pipeline targets use Python import path notation (`module.path:callable`) for explicitness and Python-first alignment.
+## Config Models (Pydantic)
 
-Loaded into `ProjectConfig` Pydantic model by `config.py`.
+```python
+class EngineProfileConfig(BaseModel):
+    kind: Literal["api", "cli"]
+    provider: str
+    model: str | None = None
+    command: str | None = None
+    temperature: float = 0.2
 
-## Entry Points
-
-```toml
-# pyproject.toml
-[tool.poetry.scripts]
-miniautogen = "miniautogen.cli.main:cli"
+class ProjectConfig(BaseModel):
+    project: ProjectMeta            # name, version
+    defaults: DefaultsConfig        # engine_profile ref
+    engine_profiles: dict[str, EngineProfileConfig]
+    pipelines: dict[str, PipelineConfig]
+    database: DatabaseConfig | None = None
 ```
 
-Plus `miniautogen/__main__.py` for `python -m miniautogen` support.
+## Commands
+
+### `miniautogen init <name>`
+
+Creates project with canonical multi-agent structure.
+- Scaffolds: `agents/`, `skills/`, `tools/`, `mcp/`, `pipelines/`
+- Generates example agent, skill, tool, pipeline, `.env`
+- Options: `--model`, `--provider`, `--no-examples`
+
+### `miniautogen check`
+
+Validates project configuration, agent specs, and environment.
+
+**Static checks:**
+- `miniautogen.yaml` valid and parseable
+- Agent YAML files valid AgentSpec schema
+- Skill directories have SKILL.md
+- Tool YAML files valid ToolSpec schema
+- MCP bindings valid
+- Pipeline targets resolvable
+- Engine profiles referenced by agents exist
+
+**Environment checks:**
+- Required API keys present
+- Provider accessible
+- Database URL valid
+
+### `miniautogen run <pipeline>`
+
+Executes pipeline headlessly.
+- Resolves pipeline target (Python import path)
+- Executes via public runtime API
+- Streams events via LoggingEventSink
+- Options: `--timeout`, `--format text|json`, `--verbose`
+
+### `miniautogen sessions list|clean`
+
+Manages session/run data.
+- `list`: queries store (status, timestamps)
+- `clean`: removes completed/failed/cancelled, **never active**
+- Options: `--status`, `--limit`, `--older-than`, `--yes`
 
 ## Dependencies
 
-New dependency required: `click>=8.0` and `pyyaml>=6.0`.
-
-Already available: `jinja2>=3.1.0`, `pydantic>=2.5.0`, `anyio>=4.0.0`.
+New: `click>=8.0`, `pyyaml>=6.0`
+Existing: `jinja2>=3.1.0`, `pydantic>=2.5.0`, `anyio>=4.0.0`
 
 ## Testing Strategy
 
-- `tests/cli/` mirrors `miniautogen/cli/` structure
-- `services/` tested independently (no Click dependency)
-- `commands/` tested via Click's `CliRunner` (integration)
-- Import boundary enforced by architectural test: scan `cli/` imports, fail if any internal module found
+- `tests/cli/` mirrors structure
+- `services/` tested independently (no Click)
+- `commands/` tested via `CliRunner`
+- Import boundary enforced by architectural test

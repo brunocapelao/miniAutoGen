@@ -1,12 +1,12 @@
-# M2 Chunk 2: `check` Command Implementation Plan
+# Milestone 2 — Chunk 2: check Command
 
 > **For Agents:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
-**Goal:** Implement the `miniautogen check` command that validates project configuration and environment, reporting pass/fail per check with exit code semantics.
+**Goal:** Implement `miniautogen check` that validates multi-entity projects: agent specs, skill directories, tool specs, MCP bindings, pipeline targets, engine profile references, cross-references, and environment variables.
 
-**Architecture:** Two-layer design following D5 (separation of adapter and application logic). `services/check_project.py` contains all testable validation logic with zero Click dependency. `commands/check.py` is a thin Click adapter that loads config, delegates to the service, and renders output. The service imports only from stdlib and `miniautogen.api` (per D3 import boundary). Each check is a pure function returning a `CheckResult` dataclass, making the system easily extensible.
+**Architecture:** Two-layer design per D5. `services/check_project.py` contains all validation logic (Click-free). `commands/check.py` is a thin Click adapter. New `models.py` holds CLI-only Pydantic validation models for AgentSpec, SkillSpec, ToolSpec, McpBinding — these are NOT SDK contracts, they are YAML schema validators for the CLI layer only. Services import only stdlib + `miniautogen.cli.config` (for ProjectConfig) + `miniautogen.cli.models` (for validation models). No imports from `miniautogen.api` or internal modules.
 
-**Tech Stack:** Python 3.10+, Click 8.x, PyYAML 6.x, Pydantic v2, pytest 7.x, ruff (line-length=100)
+**Tech Stack:** Python 3.10+, Click 8+, PyYAML 6+, Pydantic v2, pytest 7+, ruff (line-length=100)
 
 **Global Prerequisites:**
 - Environment: macOS, Python 3.10 or 3.11
@@ -21,34 +21,381 @@ python --version        # Expected: Python 3.10.x or 3.11.x
 pytest --version        # Expected: pytest 7.x
 ruff --version          # Expected: ruff 0.15+
 git status              # Expected: clean working tree (untracked docs ok)
-python -c "from miniautogen.cli.main import cli; print('CLI group OK')"       # Expected: CLI group OK
-python -c "from miniautogen.cli.config import ProjectConfig, load_config, find_project_root; print('Config OK')"  # Expected: Config OK
-python -c "from miniautogen.cli.errors import CLIError; print('Errors OK')"   # Expected: Errors OK
-python -c "from miniautogen.cli.output import format_output; print('Output OK')"  # Expected: Output OK
+python -c "from miniautogen.cli.main import cli; print('CLI group OK')"
+python -c "from miniautogen.cli.config import ProjectConfig, load_config, find_project_root; print('Config OK')"
+python -c "from miniautogen.cli.errors import CLIError; print('Errors OK')"
+python -c "from miniautogen.cli.output import echo_table, echo_json; print('Output OK')"
+```
+
+**Chunk 1 models assumed available (from `miniautogen/cli/config.py`):**
+```python
+class ProjectMeta(BaseModel):
+    name: str
+    version: str = "0.1.0"
+
+class DefaultsConfig(BaseModel):
+    engine_profile: str
+
+class EngineProfileConfig(BaseModel):
+    kind: Literal["api", "cli"]
+    provider: str
+    model: str | None = None
+    command: str | None = None
+    temperature: float = 0.2
+
+class PipelineConfig(BaseModel):
+    target: str
+
+class DatabaseConfig(BaseModel):
+    url: str
+
+class ProjectConfig(BaseModel):
+    project: ProjectMeta
+    defaults: DefaultsConfig
+    engine_profiles: dict[str, EngineProfileConfig]
+    pipelines: dict[str, PipelineConfig]
+    database: DatabaseConfig | None = None
+
+def find_project_root(start: Path | None = None) -> Path | None: ...
+def load_config(path: Path) -> ProjectConfig: ...
 ```
 
 ---
 
-## Task 1: Create `CheckResult` dataclass and `check_project` skeleton
+## Task 1: Create CLI validation models (`miniautogen/cli/models.py`)
 
 **Files:**
-- Create: `miniautogen/cli/services/check_project.py`
-- Create: `tests/cli/services/__init__.py`
-- Create: `tests/cli/services/test_check_project.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/models.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_models.py`
 
 **Prerequisites:**
+- Chunk 1 complete (cli package exists)
+- `pydantic>=2.5.0` installed
+
+**Step 1: Write the failing test**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_models.py`:
+
+```python
+"""Tests for CLI validation models — AgentSpec, SkillSpec, ToolSpec, McpBinding."""
+
+from __future__ import annotations
+
+import pytest
+from pydantic import ValidationError
+
+
+class TestAgentSpecValidator:
+    def test_minimal_agent(self) -> None:
+        from miniautogen.cli.models import AgentSpecValidator
+
+        agent = AgentSpecValidator(
+            id="researcher",
+            version="1.0",
+            name="Researcher",
+            role="Research assistant",
+            goal="Find relevant information",
+        )
+        assert agent.id == "researcher"
+        assert agent.version == "1.0"
+        assert agent.name == "Researcher"
+        assert agent.role == "Research assistant"
+        assert agent.goal == "Find relevant information"
+        assert agent.skills == {}
+        assert agent.tool_access is None
+        assert agent.mcp_access is None
+        assert agent.engine_profile is None
+        assert agent.runtime is None
+        assert agent.permissions is None
+
+    def test_full_agent(self) -> None:
+        from miniautogen.cli.models import AgentSpecValidator
+
+        agent = AgentSpecValidator(
+            id="planner",
+            version="1.0",
+            name="Planner",
+            role="Planning agent",
+            goal="Create plans",
+            skills={
+                "deep-research": {"attached": ["plan_template"]},
+            },
+            tool_access={
+                "mode": "allowlist",
+                "allow": ["web_search", "file_read"],
+            },
+            mcp_access=["github"],
+            engine_profile="gemini_api",
+            runtime={"max_turns": 10},
+            permissions={"file_write": False},
+        )
+        assert agent.skills == {"deep-research": {"attached": ["plan_template"]}}
+        assert agent.tool_access["mode"] == "allowlist"
+        assert agent.tool_access["allow"] == ["web_search", "file_read"]
+        assert agent.mcp_access == ["github"]
+        assert agent.engine_profile == "gemini_api"
+        assert agent.runtime == {"max_turns": 10}
+        assert agent.permissions == {"file_write": False}
+
+    def test_missing_required_field_raises(self) -> None:
+        from miniautogen.cli.models import AgentSpecValidator
+
+        with pytest.raises(ValidationError) as exc_info:
+            AgentSpecValidator(
+                id="bad",
+                version="1.0",
+                name="Bad",
+                # missing: role, goal
+            )
+        errors = exc_info.value.errors()
+        field_names = {e["loc"][0] for e in errors}
+        assert "role" in field_names
+        assert "goal" in field_names
+
+
+class TestSkillSpecValidator:
+    def test_valid_skill(self) -> None:
+        from miniautogen.cli.models import SkillSpecValidator
+
+        skill = SkillSpecValidator(
+            id="deep-research",
+            version="1.0",
+            name="Deep Research",
+            description="Performs deep research on a topic",
+        )
+        assert skill.id == "deep-research"
+        assert skill.name == "Deep Research"
+
+    def test_missing_required_field_raises(self) -> None:
+        from miniautogen.cli.models import SkillSpecValidator
+
+        with pytest.raises(ValidationError):
+            SkillSpecValidator(id="bad", version="1.0")
+
+
+class TestToolSpecValidator:
+    def test_valid_tool(self) -> None:
+        from miniautogen.cli.models import ToolSpecValidator
+
+        tool = ToolSpecValidator(
+            name="web_search",
+            description="Search the web",
+            input_schema={
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+                "required": ["query"],
+            },
+            execution={"kind": "function", "target": "tools.search:run"},
+        )
+        assert tool.name == "web_search"
+        assert tool.input_schema["type"] == "object"
+        assert tool.execution["kind"] == "function"
+
+    def test_optional_policy(self) -> None:
+        from miniautogen.cli.models import ToolSpecValidator
+
+        tool = ToolSpecValidator(
+            name="read_file",
+            description="Read a file",
+            input_schema={"type": "object"},
+            execution={"kind": "function", "target": "tools.fs:read"},
+            policy={"max_calls": 10, "timeout": 30},
+        )
+        assert tool.policy == {"max_calls": 10, "timeout": 30}
+
+    def test_missing_required_field_raises(self) -> None:
+        from miniautogen.cli.models import ToolSpecValidator
+
+        with pytest.raises(ValidationError):
+            ToolSpecValidator(name="bad")
+
+
+class TestMcpBindingValidator:
+    def test_valid_binding(self) -> None:
+        from miniautogen.cli.models import McpBindingValidator
+
+        binding = McpBindingValidator(
+            id="github",
+            transport="stdio",
+            command="npx @modelcontextprotocol/server-github",
+            env={"GITHUB_TOKEN": "${GITHUB_TOKEN}"},
+            expose=["search_repos", "get_file"],
+        )
+        assert binding.id == "github"
+        assert binding.transport == "stdio"
+        assert binding.command is not None
+        assert binding.env == {"GITHUB_TOKEN": "${GITHUB_TOKEN}"}
+        assert binding.expose == ["search_repos", "get_file"]
+
+    def test_minimal_binding(self) -> None:
+        from miniautogen.cli.models import McpBindingValidator
+
+        binding = McpBindingValidator(
+            id="local-server",
+            transport="sse",
+        )
+        assert binding.id == "local-server"
+        assert binding.transport == "sse"
+        assert binding.command is None
+        assert binding.env is None
+        assert binding.expose is None
+        assert binding.policy is None
+
+    def test_missing_required_field_raises(self) -> None:
+        from miniautogen.cli.models import McpBindingValidator
+
+        with pytest.raises(ValidationError):
+            McpBindingValidator(id="bad")
+```
+
+**Step 2: Run the test to verify it fails**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_models.py -v --no-header 2>&1 | head -20
+```
+
+**Expected output:**
+```
+FAILED ... - ModuleNotFoundError: No module named 'miniautogen.cli.models'
+```
+
+**Step 3: Write minimal implementation**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/models.py`:
+
+```python
+"""CLI validation models for YAML entity schemas.
+
+These are VALIDATION-ONLY Pydantic models used by the ``check`` command
+to validate agent, skill, tool, and MCP binding YAML files.
+
+They are NOT SDK contracts — the SDK uses its own protocols and types.
+These models enforce the declarative YAML schema conventions for the CLI.
+
+Import boundary: only stdlib and pydantic allowed.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel
+
+
+class AgentSpecValidator(BaseModel):
+    """Validates an agent YAML file (``agents/*.yaml``)."""
+
+    id: str
+    version: str
+    name: str
+    role: str
+    goal: str
+    skills: dict[str, dict] = {}
+    tool_access: dict | None = None
+    mcp_access: list[str] | None = None
+    engine_profile: str | None = None
+    runtime: dict | None = None
+    permissions: dict | None = None
+
+
+class SkillSpecValidator(BaseModel):
+    """Validates a skill YAML file (``skills/*/skill.yaml``)."""
+
+    id: str
+    version: str
+    name: str
+    description: str
+
+
+class ToolSpecValidator(BaseModel):
+    """Validates a tool YAML file (``tools/*.yaml``)."""
+
+    name: str
+    description: str
+    input_schema: dict
+    execution: dict
+    policy: dict | None = None
+
+
+class McpBindingValidator(BaseModel):
+    """Validates an MCP binding YAML file (``mcp/*.yaml``)."""
+
+    id: str
+    transport: str
+    command: str | None = None
+    env: dict[str, str] | None = None
+    expose: list[str] | None = None
+    policy: dict | None = None
+```
+
+**Step 4: Run test to verify it passes**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_models.py -v --no-header 2>&1 | tail -20
+```
+
+**Expected output:**
+```
+tests/cli/test_models.py::TestAgentSpecValidator::test_minimal_agent PASSED
+tests/cli/test_models.py::TestAgentSpecValidator::test_full_agent PASSED
+tests/cli/test_models.py::TestAgentSpecValidator::test_missing_required_field_raises PASSED
+tests/cli/test_models.py::TestSkillSpecValidator::test_valid_skill PASSED
+tests/cli/test_models.py::TestSkillSpecValidator::test_missing_required_field_raises PASSED
+tests/cli/test_models.py::TestToolSpecValidator::test_valid_tool PASSED
+tests/cli/test_models.py::TestToolSpecValidator::test_optional_policy PASSED
+tests/cli/test_models.py::TestToolSpecValidator::test_missing_required_field_raises PASSED
+tests/cli/test_models.py::TestMcpBindingValidator::test_valid_binding PASSED
+tests/cli/test_models.py::TestMcpBindingValidator::test_minimal_binding PASSED
+tests/cli/test_models.py::TestMcpBindingValidator::test_missing_required_field_raises PASSED
+
+11 passed
+```
+
+**Step 5: Lint check**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/models.py tests/cli/test_models.py
+```
+
+**Expected output:** No issues.
+
+**Step 6: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/models.py tests/cli/test_models.py
+git commit -m "feat(cli): add CLI validation models for agent, skill, tool, MCP specs"
+```
+
+**If Task Fails:**
+1. **Pydantic import error:** Verify `pydantic>=2.5.0` is installed: `python -c "import pydantic; print(pydantic.__version__)"`.
+2. **Validation test unexpected:** Check that required fields in each model match the test data exactly.
+3. **Rollback:** `git checkout -- miniautogen/cli/models.py tests/cli/test_models.py`
+
+---
+
+## Task 2: Create `CheckResult` dataclass and `check_project` skeleton
+
+**Files:**
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
+
+**Prerequisites:**
+- Task 1 complete (models.py exists)
 - Directory must exist: `miniautogen/cli/services/` (created in Chunk 1)
 - File must exist: `miniautogen/cli/services/__init__.py` (created in Chunk 1)
 - File must exist: `miniautogen/cli/config.py` with `ProjectConfig` model
 
 **Step 1: Write the failing test**
 
-Create `tests/cli/services/__init__.py` (empty file for test package):
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py` (empty file for test package):
 
 ```python
 ```
 
-Create `tests/cli/services/test_check_project.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
 
 ```python
 """Tests for check_project service — CheckResult model and check_project signature."""
@@ -58,6 +405,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from miniautogen.cli.services.check_project import CheckResult, check_project
 
@@ -86,30 +434,37 @@ class TestCheckResult:
         assert result.category == "environment"
 
     def test_category_must_be_static_or_environment(self) -> None:
-        """CheckResult category is typed as Literal, so only static/environment are valid."""
         result = CheckResult(
             name="test", passed=True, message="ok", category="static"
         )
         assert result.category in ("static", "environment")
 
 
+def _write_minimal_config(tmp_path: Path) -> Path:
+    """Helper: write a minimal valid miniautogen.yaml and return its path."""
+    config_file = tmp_path / "miniautogen.yaml"
+    data = {
+        "project": {"name": "test-project", "version": "0.1.0"},
+        "defaults": {"engine_profile": "default_api"},
+        "engine_profiles": {
+            "default_api": {
+                "kind": "api",
+                "provider": "litellm",
+                "model": "gpt-4o-mini",
+            }
+        },
+        "pipelines": {
+            "main": {"target": "pipelines.main:build_pipeline"},
+        },
+    }
+    config_file.write_text(yaml.dump(data))
+    return config_file
+
+
 class TestCheckProjectSignature:
     @pytest.mark.anyio()
     async def test_returns_list_of_check_results(self, tmp_path: Path) -> None:
-        """check_project should return a list (possibly empty) of CheckResult."""
-        # Create minimal valid project structure
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test-project\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: pipelines.main:build_pipeline\n"
-        )
+        config_file = _write_minimal_config(tmp_path)
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -121,27 +476,31 @@ class TestCheckProjectSignature:
 
 **Step 2: Run the test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | head -20`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | head -20
+```
 
 **Expected output:**
 ```
 FAILED ... - ModuleNotFoundError: No module named 'miniautogen.cli.services.check_project'
 ```
 
-**If you see different error:** Verify Chunk 1 directories and `__init__.py` files exist.
-
 **Step 3: Write minimal implementation**
 
-Create `miniautogen/cli/services/check_project.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`:
 
 ```python
 """Project validation service — static and environment checks.
 
 This module contains the core logic for the ``miniautogen check`` command.
-It validates project configuration and environment without any CLI
+It validates project configuration, agent specs, skill directories,
+tool specs, MCP bindings, pipeline targets, engine profile references,
+cross-references, and environment variables — all without any CLI
 dependency (Click-free).
 
-Import boundary (D3): only stdlib and ``miniautogen.api`` allowed.
+Import boundary (D3): only stdlib, ``miniautogen.cli.config``, and
+``miniautogen.cli.models`` allowed.
 """
 
 from __future__ import annotations
@@ -165,7 +524,7 @@ class CheckResult:
 
 
 async def check_project(
-    config: "ProjectConfig",
+    config: ProjectConfig,
     project_root: Path,
 ) -> list[CheckResult]:
     """Run all static and environment checks against a project.
@@ -188,7 +547,10 @@ async def check_project(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -10`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -10
+```
 
 **Expected output:**
 ```
@@ -201,30 +563,30 @@ tests/cli/services/test_check_project.py::TestCheckProjectSignature::test_return
 **Step 5: Commit**
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add miniautogen/cli/services/check_project.py tests/cli/services/__init__.py tests/cli/services/test_check_project.py
 git commit -m "feat(cli): add CheckResult dataclass and check_project skeleton"
 ```
 
 **If Task Fails:**
-
-1. **Test won't run:** Verify `tests/cli/__init__.py` and `tests/cli/services/__init__.py` exist. Create them if missing.
+1. **Test won't run:** Verify `tests/cli/__init__.py` and `tests/cli/services/__init__.py` exist.
 2. **Import error on `load_config`:** Chunk 1 may not be complete. Verify `miniautogen/cli/config.py` exports `load_config` and `ProjectConfig`.
 3. **Can't recover:** Document what failed and return to human partner.
 
 ---
 
-## Task 2: Implement static check — config schema validation
+## Task 3: Implement static check — config schema validation
 
 **Files:**
-- Modify: `miniautogen/cli/services/check_project.py`
-- Modify: `tests/cli/services/test_check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
 
 **Prerequisites:**
-- Task 1 complete (CheckResult and skeleton exist)
+- Task 2 complete
 
 **Step 1: Write the failing test**
 
-Append to `tests/cli/services/test_check_project.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
 
 ```python
 class TestConfigSchemaCheck:
@@ -232,18 +594,7 @@ class TestConfigSchemaCheck:
 
     @pytest.mark.anyio()
     async def test_valid_config_passes(self, tmp_path: Path) -> None:
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test-project\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: pipelines.main:build_pipeline\n"
-        )
+        config_file = _write_minimal_config(tmp_path)
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -255,19 +606,8 @@ class TestConfigSchemaCheck:
 
     @pytest.mark.anyio()
     async def test_config_always_passes_when_loaded(self, tmp_path: Path) -> None:
-        """If load_config succeeded, schema check passes (Pydantic already validated)."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: minimal\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: foo:bar\n"
-        )
+        """If load_config succeeded, schema check passes (Pydantic validated)."""
+        config_file = _write_minimal_config(tmp_path)
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -278,19 +618,22 @@ class TestConfigSchemaCheck:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestConfigSchemaCheck -v --no-header 2>&1 | tail -10`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestConfigSchemaCheck -v --no-header 2>&1 | tail -10
+```
 
 **Expected output:**
 ```
-FAILED ... - StopIteration  (or assert len(schema_checks) == 1 → AssertionError)
+FAILED ... - assert len(schema_checks) == 1 (0 != 1)
 ```
 
 **Step 3: Write minimal implementation**
 
-Edit `miniautogen/cli/services/check_project.py` — add a helper function and wire it into `check_project`:
+Add to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py` — add helper before `check_project`:
 
 ```python
-def _check_config_schema(config: "ProjectConfig") -> CheckResult:
+def _check_config_schema(config: ProjectConfig) -> CheckResult:
     """Verify config schema is valid.
 
     Since ``load_config`` uses Pydantic validation, if we have a
@@ -304,27 +647,9 @@ def _check_config_schema(config: "ProjectConfig") -> CheckResult:
     )
 ```
 
-Update the `check_project` function body to:
+Update the `check_project` function body — replace `results: list[CheckResult] = []` section:
 
 ```python
-async def check_project(
-    config: "ProjectConfig",
-    project_root: Path,
-) -> list[CheckResult]:
-    """Run all static and environment checks against a project.
-
-    Parameters
-    ----------
-    config:
-        Parsed and validated ``ProjectConfig`` from ``miniautogen.yaml``.
-    project_root:
-        Absolute path to the project directory containing the config file.
-
-    Returns
-    -------
-    list[CheckResult]
-        One entry per check, ordered static-first then environment.
-    """
     results: list[CheckResult] = []
 
     # --- Static checks ---
@@ -335,176 +660,775 @@ async def check_project(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -10`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -10
+```
 
-**Expected output:**
-```
-PASSED tests/cli/services/test_check_project.py::TestConfigSchemaCheck::test_valid_config_passes
-PASSED tests/cli/services/test_check_project.py::TestConfigSchemaCheck::test_config_always_passes_when_loaded
-```
+**Expected output:** All tests PASSED.
 
 **Step 5: Commit**
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
 git commit -m "feat(cli): add config schema validation check"
 ```
 
 **If Task Fails:**
-
-1. **`load_config` raises error:** Verify the YAML content matches the `ProjectConfig` Pydantic model from Chunk 1.
-2. **Import error:** Ensure `miniautogen/cli/config.py` exists and exports `load_config`.
-3. **Can't recover:** `git checkout -- .` and revisit Chunk 1 config model.
+1. **`load_config` raises error:** Verify YAML content matches `ProjectConfig` model from Chunk 1.
+2. **Can't recover:** `git checkout -- .` and revisit Chunk 1 config model.
 
 ---
 
-## Task 3: Implement static check — pipeline targets resolve
+## Task 4: Implement static check — agent YAML validation
 
 **Files:**
-- Modify: `miniautogen/cli/services/check_project.py`
-- Modify: `tests/cli/services/test_check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
 
 **Prerequisites:**
-- Task 2 complete
-- Understanding of `ProjectConfig.pipelines` structure: a dict where each value has a `target` field in `module.path:callable` format
+- Task 3 complete
+- Task 1 complete (AgentSpecValidator in models.py)
 
 **Step 1: Write the failing test**
 
-Append to `tests/cli/services/test_check_project.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
 
 ```python
-class TestPipelineTargetCheck:
-    """Static check: pipeline targets resolve (importable or file exists)."""
+class TestAgentYamlCheck:
+    """Static check: agent YAML files in agents/ are valid AgentSpec."""
 
     @pytest.mark.anyio()
-    async def test_importable_target_passes(self, tmp_path: Path) -> None:
-        """A target pointing to an importable module:callable passes."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
+    async def test_valid_agent_passes(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research assistant",
+            "goal": "Find information",
+            "engine_profile": "default_api",
+        }
+        (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        target_checks = [r for r in results if r.name == "pipeline_target_main"]
+        agent_checks = [r for r in results if r.name == "agent_researcher"]
+        assert len(agent_checks) == 1
+        assert agent_checks[0].passed is True
+        assert agent_checks[0].category == "static"
+
+    @pytest.mark.anyio()
+    async def test_invalid_agent_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        # Missing required fields: role, goal
+        bad_data = {"id": "bad", "version": "1.0", "name": "Bad"}
+        (agents_dir / "bad.yaml").write_text(yaml.dump(bad_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        agent_checks = [r for r in results if r.name == "agent_bad"]
+        assert len(agent_checks) == 1
+        assert agent_checks[0].passed is False
+        assert "role" in agent_checks[0].message.lower()
+
+    @pytest.mark.anyio()
+    async def test_no_agents_dir_produces_no_checks(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        # No agents/ directory
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        agent_checks = [r for r in results if r.name.startswith("agent_")]
+        assert len(agent_checks) == 0
+
+    @pytest.mark.anyio()
+    async def test_multiple_agents_each_checked(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        for agent_id in ("alpha", "beta"):
+            data = {
+                "id": agent_id,
+                "version": "1.0",
+                "name": agent_id.title(),
+                "role": f"{agent_id} role",
+                "goal": f"{agent_id} goal",
+            }
+            (agents_dir / f"{agent_id}.yaml").write_text(yaml.dump(data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        agent_names = [r.name for r in results if r.name.startswith("agent_")]
+        assert "agent_alpha" in agent_names
+        assert "agent_beta" in agent_names
+
+    @pytest.mark.anyio()
+    async def test_unparseable_yaml_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "broken.yaml").write_text(": invalid: {{{")
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        agent_checks = [r for r in results if r.name == "agent_broken"]
+        assert len(agent_checks) == 1
+        assert agent_checks[0].passed is False
+```
+
+**Step 2: Run test to verify it fails**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestAgentYamlCheck::test_valid_agent_passes -v --no-header 2>&1 | tail -5
+```
+
+**Expected output:**
+```
+FAILED ... - assert len(agent_checks) == 1 (0 != 1)
+```
+
+**Step 3: Write minimal implementation**
+
+Add imports at the top of `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`:
+
+```python
+import yaml
+from pydantic import ValidationError
+
+from miniautogen.cli.models import (
+    AgentSpecValidator,
+    McpBindingValidator,
+    SkillSpecValidator,
+    ToolSpecValidator,
+)
+```
+
+Add helper function before `check_project`:
+
+```python
+def _check_agents(project_root: Path) -> list[CheckResult]:
+    """Validate all agent YAML files in ``agents/``."""
+    results: list[CheckResult] = []
+    agents_dir = project_root / "agents"
+    if not agents_dir.is_dir():
+        return results
+
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        agent_name = yaml_file.stem
+        try:
+            raw = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                results.append(CheckResult(
+                    name=f"agent_{agent_name}",
+                    passed=False,
+                    message=f"Agent '{agent_name}': expected YAML mapping, got {type(raw).__name__}",
+                    category="static",
+                ))
+                continue
+            AgentSpecValidator(**raw)
+            results.append(CheckResult(
+                name=f"agent_{agent_name}",
+                passed=True,
+                message=f"Agent '{agent_name}' schema is valid",
+                category="static",
+            ))
+        except yaml.YAMLError as exc:
+            results.append(CheckResult(
+                name=f"agent_{agent_name}",
+                passed=False,
+                message=f"Agent '{agent_name}': YAML parse error — {exc}",
+                category="static",
+            ))
+        except ValidationError as exc:
+            missing = [e["loc"][0] for e in exc.errors() if e["type"] == "missing"]
+            detail = f"missing fields: {', '.join(str(f) for f in missing)}" if missing else str(exc)
+            results.append(CheckResult(
+                name=f"agent_{agent_name}",
+                passed=False,
+                message=f"Agent '{agent_name}': invalid schema — {detail}",
+                category="static",
+            ))
+
+    return results
+```
+
+Update `check_project` — add after `_check_config_schema`:
+
+```python
+    results.extend(_check_agents(project_root))
+```
+
+**Step 4: Run test to verify it passes**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -15
+```
+
+**Expected output:** All tests PASSED.
+
+**Step 5: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
+git commit -m "feat(cli): add agent YAML validation check"
+```
+
+**If Task Fails:**
+1. **yaml import error:** `pyyaml` must be installed (Chunk 1 dependency).
+2. **ValidationError shape different:** Check `exc.errors()` returns list of dicts with `"loc"` and `"type"` keys.
+3. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
+
+---
+
+## Task 5: Implement static check — skill directory validation
+
+**Files:**
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
+
+**Prerequisites:**
+- Task 4 complete
+- SkillSpecValidator available in models.py
+
+**Step 1: Write the failing test**
+
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
+
+```python
+class TestSkillDirectoryCheck:
+    """Static check: skill directories have SKILL.md."""
+
+    @pytest.mark.anyio()
+    async def test_valid_skill_dir_passes(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        skill_dir = tmp_path / "skills" / "deep-research"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Deep Research\n")
+        skill_yaml = {
+            "id": "deep-research",
+            "version": "1.0",
+            "name": "Deep Research",
+            "description": "Performs deep research",
+        }
+        (skill_dir / "skill.yaml").write_text(yaml.dump(skill_yaml))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        skill_checks = [r for r in results if r.name == "skill_deep-research"]
+        assert len(skill_checks) == 1
+        assert skill_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_missing_skill_md_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        skill_dir = tmp_path / "skills" / "bad-skill"
+        skill_dir.mkdir(parents=True)
+        # No SKILL.md
+        skill_yaml = {
+            "id": "bad-skill",
+            "version": "1.0",
+            "name": "Bad",
+            "description": "Missing SKILL.md",
+        }
+        (skill_dir / "skill.yaml").write_text(yaml.dump(skill_yaml))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        skill_checks = [r for r in results if r.name == "skill_bad-skill"]
+        assert len(skill_checks) == 1
+        assert skill_checks[0].passed is False
+        assert "SKILL.md" in skill_checks[0].message
+
+    @pytest.mark.anyio()
+    async def test_missing_skill_yaml_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        skill_dir = tmp_path / "skills" / "no-yaml"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Skill\n")
+        # No skill.yaml
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        skill_checks = [r for r in results if r.name == "skill_no-yaml"]
+        assert len(skill_checks) == 1
+        assert skill_checks[0].passed is False
+        assert "skill.yaml" in skill_checks[0].message
+
+    @pytest.mark.anyio()
+    async def test_no_skills_dir_produces_no_checks(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        skill_checks = [r for r in results if r.name.startswith("skill_")]
+        assert len(skill_checks) == 0
+
+    @pytest.mark.anyio()
+    async def test_invalid_skill_yaml_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        skill_dir = tmp_path / "skills" / "bad-yaml"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Bad\n")
+        # Invalid skill.yaml (missing required fields)
+        (skill_dir / "skill.yaml").write_text(yaml.dump({"id": "bad-yaml"}))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        skill_checks = [r for r in results if r.name == "skill_bad-yaml"]
+        assert len(skill_checks) == 1
+        assert skill_checks[0].passed is False
+```
+
+**Step 2: Run test to verify it fails**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestSkillDirectoryCheck::test_valid_skill_dir_passes -v --no-header 2>&1 | tail -5
+```
+
+**Expected output:**
+```
+FAILED ... - assert len(skill_checks) == 1 (0 != 1)
+```
+
+**Step 3: Write minimal implementation**
+
+Add helper to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py` before `check_project`:
+
+```python
+def _check_skills(project_root: Path) -> list[CheckResult]:
+    """Validate skill directories in ``skills/``.
+
+    Each subdirectory of ``skills/`` must contain:
+    - ``SKILL.md`` — human-readable skill instructions
+    - ``skill.yaml`` — valid SkillSpecValidator schema
+    """
+    results: list[CheckResult] = []
+    skills_dir = project_root / "skills"
+    if not skills_dir.is_dir():
+        return results
+
+    for skill_path in sorted(skills_dir.iterdir()):
+        if not skill_path.is_dir():
+            continue
+        skill_name = skill_path.name
+        skill_md = skill_path / "SKILL.md"
+        skill_yaml_file = skill_path / "skill.yaml"
+
+        if not skill_md.is_file():
+            results.append(CheckResult(
+                name=f"skill_{skill_name}",
+                passed=False,
+                message=f"Skill '{skill_name}': missing SKILL.md",
+                category="static",
+            ))
+            continue
+
+        if not skill_yaml_file.is_file():
+            results.append(CheckResult(
+                name=f"skill_{skill_name}",
+                passed=False,
+                message=f"Skill '{skill_name}': missing skill.yaml",
+                category="static",
+            ))
+            continue
+
+        try:
+            raw = yaml.safe_load(
+                skill_yaml_file.read_text(encoding="utf-8")
+            )
+            if not isinstance(raw, dict):
+                results.append(CheckResult(
+                    name=f"skill_{skill_name}",
+                    passed=False,
+                    message=(
+                        f"Skill '{skill_name}': skill.yaml expected mapping, "
+                        f"got {type(raw).__name__}"
+                    ),
+                    category="static",
+                ))
+                continue
+            SkillSpecValidator(**raw)
+            results.append(CheckResult(
+                name=f"skill_{skill_name}",
+                passed=True,
+                message=f"Skill '{skill_name}' is valid",
+                category="static",
+            ))
+        except yaml.YAMLError as exc:
+            results.append(CheckResult(
+                name=f"skill_{skill_name}",
+                passed=False,
+                message=f"Skill '{skill_name}': YAML parse error — {exc}",
+                category="static",
+            ))
+        except ValidationError as exc:
+            missing = [
+                e["loc"][0] for e in exc.errors() if e["type"] == "missing"
+            ]
+            detail = (
+                f"missing fields: {', '.join(str(f) for f in missing)}"
+                if missing
+                else str(exc)
+            )
+            results.append(CheckResult(
+                name=f"skill_{skill_name}",
+                passed=False,
+                message=f"Skill '{skill_name}': invalid schema — {detail}",
+                category="static",
+            ))
+
+    return results
+```
+
+Update `check_project` — add after `_check_agents`:
+
+```python
+    results.extend(_check_skills(project_root))
+```
+
+**Step 4: Run test to verify it passes**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -20
+```
+
+**Expected output:** All tests PASSED.
+
+**Step 5: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
+git commit -m "feat(cli): add skill directory validation check"
+```
+
+**If Task Fails:**
+1. **Glob pattern issue:** Ensure `skills_dir.iterdir()` returns directories. Use `is_dir()` filter.
+2. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
+
+---
+
+## Task 6: Implement static check — tool YAML validation
+
+**Files:**
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
+
+**Prerequisites:**
+- Task 5 complete
+- ToolSpecValidator available in models.py
+
+**Step 1: Write the failing test**
+
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
+
+```python
+class TestToolYamlCheck:
+    """Static check: tool YAML files in tools/ are valid ToolSpec."""
+
+    @pytest.mark.anyio()
+    async def test_valid_tool_passes(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        tool_data = {
+            "name": "web_search",
+            "description": "Search the web",
+            "input_schema": {
+                "type": "object",
+                "properties": {"query": {"type": "string"}},
+            },
+            "execution": {"kind": "function", "target": "tools.search:run"},
+        }
+        (tools_dir / "web_search.yaml").write_text(yaml.dump(tool_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        tool_checks = [r for r in results if r.name == "tool_web_search"]
+        assert len(tool_checks) == 1
+        assert tool_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_invalid_tool_fails(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        # Missing required fields
+        (tools_dir / "bad.yaml").write_text(yaml.dump({"name": "bad"}))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        tool_checks = [r for r in results if r.name == "tool_bad"]
+        assert len(tool_checks) == 1
+        assert tool_checks[0].passed is False
+
+    @pytest.mark.anyio()
+    async def test_no_tools_dir_produces_no_checks(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        tool_checks = [r for r in results if r.name.startswith("tool_")]
+        assert len(tool_checks) == 0
+```
+
+**Step 2: Run test to verify it fails**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestToolYamlCheck::test_valid_tool_passes -v --no-header 2>&1 | tail -5
+```
+
+**Expected output:**
+```
+FAILED ... - assert len(tool_checks) == 1 (0 != 1)
+```
+
+**Step 3: Write minimal implementation**
+
+Add helper to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`:
+
+```python
+def _check_tools(project_root: Path) -> list[CheckResult]:
+    """Validate all tool YAML files in ``tools/``."""
+    results: list[CheckResult] = []
+    tools_dir = project_root / "tools"
+    if not tools_dir.is_dir():
+        return results
+
+    for yaml_file in sorted(tools_dir.glob("*.yaml")):
+        tool_name = yaml_file.stem
+        try:
+            raw = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                results.append(CheckResult(
+                    name=f"tool_{tool_name}",
+                    passed=False,
+                    message=(
+                        f"Tool '{tool_name}': expected YAML mapping, "
+                        f"got {type(raw).__name__}"
+                    ),
+                    category="static",
+                ))
+                continue
+            ToolSpecValidator(**raw)
+            results.append(CheckResult(
+                name=f"tool_{tool_name}",
+                passed=True,
+                message=f"Tool '{tool_name}' schema is valid",
+                category="static",
+            ))
+        except yaml.YAMLError as exc:
+            results.append(CheckResult(
+                name=f"tool_{tool_name}",
+                passed=False,
+                message=f"Tool '{tool_name}': YAML parse error — {exc}",
+                category="static",
+            ))
+        except ValidationError as exc:
+            missing = [
+                e["loc"][0] for e in exc.errors() if e["type"] == "missing"
+            ]
+            detail = (
+                f"missing fields: {', '.join(str(f) for f in missing)}"
+                if missing
+                else str(exc)
+            )
+            results.append(CheckResult(
+                name=f"tool_{tool_name}",
+                passed=False,
+                message=f"Tool '{tool_name}': invalid schema — {detail}",
+                category="static",
+            ))
+
+    return results
+```
+
+Update `check_project` — add after `_check_skills`:
+
+```python
+    results.extend(_check_tools(project_root))
+```
+
+**Step 4: Run test to verify it passes**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -20
+```
+
+**Expected output:** All tests PASSED.
+
+**Step 5: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
+git commit -m "feat(cli): add tool YAML validation check"
+```
+
+**If Task Fails:**
+1. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
+
+---
+
+## Task 7: Implement static check — pipeline targets resolve
+
+**Files:**
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
+
+**Prerequisites:**
+- Task 6 complete
+
+**Step 1: Write the failing test**
+
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
+
+```python
+class TestPipelineTargetCheck:
+    """Static check: pipeline targets resolve."""
+
+    @pytest.mark.anyio()
+    async def test_importable_target_passes(self, tmp_path: Path) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        # Override with importable target
+        data = yaml.safe_load(config_file.read_text())
+        data["pipelines"]["main"]["target"] = "os.path:join"
+        config_file.write_text(yaml.dump(data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        target_checks = [
+            r for r in results if r.name == "pipeline_target_main"
+        ]
         assert len(target_checks) == 1
         assert target_checks[0].passed is True
         assert target_checks[0].category == "static"
 
     @pytest.mark.anyio()
     async def test_nonexistent_module_fails(self, tmp_path: Path) -> None:
-        """A target with a non-importable module fails."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: nonexistent_module_xyz:build\n"
-        )
+        config_file = _write_minimal_config(tmp_path)
+        data = yaml.safe_load(config_file.read_text())
+        data["pipelines"]["main"]["target"] = "nonexistent_xyz_mod:build"
+        config_file.write_text(yaml.dump(data))
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        target_checks = [r for r in results if r.name == "pipeline_target_main"]
+        target_checks = [
+            r for r in results if r.name == "pipeline_target_main"
+        ]
         assert len(target_checks) == 1
         assert target_checks[0].passed is False
-        assert "nonexistent_module_xyz" in target_checks[0].message
+        assert "nonexistent_xyz_mod" in target_checks[0].message
 
     @pytest.mark.anyio()
     async def test_missing_callable_fails(self, tmp_path: Path) -> None:
-        """A target with a valid module but missing callable fails."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:nonexistent_func_xyz\n"
-        )
+        config_file = _write_minimal_config(tmp_path)
+        data = yaml.safe_load(config_file.read_text())
+        data["pipelines"]["main"]["target"] = "os.path:nonexistent_func_xyz"
+        config_file.write_text(yaml.dump(data))
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        target_checks = [r for r in results if r.name == "pipeline_target_main"]
+        target_checks = [
+            r for r in results if r.name == "pipeline_target_main"
+        ]
         assert len(target_checks) == 1
         assert target_checks[0].passed is False
         assert "nonexistent_func_xyz" in target_checks[0].message
 
     @pytest.mark.anyio()
     async def test_file_based_target_passes(self, tmp_path: Path) -> None:
-        """A target pointing to an existing local file passes."""
-        # Create the pipeline file
+        config_file = _write_minimal_config(tmp_path)
         pipelines_dir = tmp_path / "pipelines"
         pipelines_dir.mkdir()
-        (pipelines_dir / "main.py").write_text("def build_pipeline(): pass\n")
-
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: pipelines.main:build_pipeline\n"
+        (pipelines_dir / "main.py").write_text(
+            "def build_pipeline(): pass\n"
         )
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        target_checks = [r for r in results if r.name == "pipeline_target_main"]
+        target_checks = [
+            r for r in results if r.name == "pipeline_target_main"
+        ]
         assert len(target_checks) == 1
         assert target_checks[0].passed is True
 
     @pytest.mark.anyio()
     async def test_multiple_pipelines_checked(self, tmp_path: Path) -> None:
-        """Each pipeline in config gets its own check result."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-            "  secondary:\n"
-            "    target: os.path:exists\n"
-        )
+        config_file = _write_minimal_config(tmp_path)
+        data = yaml.safe_load(config_file.read_text())
+        data["pipelines"]["main"]["target"] = "os.path:join"
+        data["pipelines"]["secondary"] = {"target": "os.path:exists"}
+        config_file.write_text(yaml.dump(data))
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        target_names = [r.name for r in results if r.name.startswith("pipeline_target_")]
+        target_names = [
+            r.name for r in results
+            if r.name.startswith("pipeline_target_")
+        ]
         assert "pipeline_target_main" in target_names
         assert "pipeline_target_secondary" in target_names
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestPipelineTargetCheck -v --no-header 2>&1 | tail -15`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_importable_target_passes -v --no-header 2>&1 | tail -5
+```
 
 **Expected output:**
 ```
@@ -513,13 +1437,10 @@ FAILED ... - assert len(target_checks) == 1 (0 != 1)
 
 **Step 3: Write minimal implementation**
 
-Add to `miniautogen/cli/services/check_project.py` (new import at top and new helper):
-
-Add `import importlib` and `import sys` to the imports section:
+Add imports at the top of `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py` (if not already present):
 
 ```python
 import importlib
-import sys
 ```
 
 Add helper function:
@@ -544,7 +1465,10 @@ def _check_pipeline_target(
         return CheckResult(
             name=f"pipeline_target_{name}",
             passed=False,
-            message=f"Invalid target format '{target}' — expected 'module:callable'",
+            message=(
+                f"Invalid target format '{target}' — "
+                f"expected 'module:callable'"
+            ),
             category="static",
         )
 
@@ -576,12 +1500,12 @@ def _check_pipeline_target(
     relative_file = Path(module_path.replace(".", "/") + ".py")
     absolute_file = project_root / relative_file
     if absolute_file.is_file():
-        # File exists — we trust callable is there (full import
-        # would require sys.path manipulation which is side-effectful).
         return CheckResult(
             name=f"pipeline_target_{name}",
             passed=True,
-            message=f"Pipeline '{name}' target file exists: {relative_file}",
+            message=(
+                f"Pipeline '{name}' target file exists: {relative_file}"
+            ),
             category="static",
         )
 
@@ -596,144 +1520,249 @@ def _check_pipeline_target(
     )
 ```
 
-Update `check_project` to call the new helper — add after `_check_config_schema`:
+Update `check_project` — add after `_check_tools`:
 
 ```python
     # Pipeline target checks
     if config.pipelines:
         for pipeline_name, pipeline_cfg in config.pipelines.items():
             results.append(
-                _check_pipeline_target(pipeline_name, pipeline_cfg.target, project_root)
+                _check_pipeline_target(
+                    pipeline_name, pipeline_cfg.target, project_root
+                )
             )
 ```
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -15`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -20
+```
 
-**Expected output:**
-```
-PASSED tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_importable_target_passes
-PASSED tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_nonexistent_module_fails
-PASSED tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_missing_callable_fails
-PASSED tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_file_based_target_passes
-PASSED tests/cli/services/test_check_project.py::TestPipelineTargetCheck::test_multiple_pipelines_checked
-```
+**Expected output:** All tests PASSED.
 
 **Step 5: Commit**
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
 git commit -m "feat(cli): add pipeline target resolution check"
 ```
 
 **If Task Fails:**
-
-1. **`config.pipelines` attribute error:** The `ProjectConfig` model from Chunk 1 may use a different attribute name. Check the actual model and adjust `config.pipelines` and `pipeline_cfg.target` accordingly.
-2. **Import resolution not working:** Ensure the target format uses `:` as separator. Check that `os.path` is importable in the test environment.
-3. **Can't recover:** `git checkout -- .` and review the `ProjectConfig` Pydantic model.
+1. **`config.pipelines` attribute error:** Check actual `ProjectConfig` model from Chunk 1.
+2. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
 
 ---
 
-## Task 4: Implement static check — agent references resolve
+## Task 8: Implement static check — engine profile references
 
 **Files:**
-- Modify: `miniautogen/cli/services/check_project.py`
-- Modify: `tests/cli/services/test_check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
 
 **Prerequisites:**
-- Task 3 complete
-- Understanding: Agent references in config may not exist in current `ProjectConfig`. If `ProjectConfig` does not have an `agents` field, this check should be a no-op (return empty list). The design doc mentions "Agent references resolve" but the YAML schema shown does not include agents — so this check is forward-compatible.
+- Task 7 complete
+- Task 4 complete (agent YAML loading works)
 
 **Step 1: Write the failing test**
 
-Append to `tests/cli/services/test_check_project.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
 
 ```python
-class TestAgentReferenceCheck:
-    """Static check: agent references resolve."""
+class TestEngineProfileReferenceCheck:
+    """Static check: engine profiles referenced by agents exist in config."""
 
     @pytest.mark.anyio()
-    async def test_no_agents_configured_skips_check(self, tmp_path: Path) -> None:
-        """When config has no agents section, no agent checks are produced."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
+    async def test_valid_engine_profile_ref_passes(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "engine_profile": "default_api",  # exists in config
+        }
+        (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
         results = await check_project(config, tmp_path)
-        agent_checks = [r for r in results if r.name.startswith("agent_ref_")]
-        assert len(agent_checks) == 0
+        ref_checks = [
+            r for r in results
+            if r.name == "engine_profile_ref_researcher"
+        ]
+        assert len(ref_checks) == 1
+        assert ref_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_missing_engine_profile_ref_fails(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "engine_profile": "nonexistent_profile",
+        }
+        (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        ref_checks = [
+            r for r in results
+            if r.name == "engine_profile_ref_researcher"
+        ]
+        assert len(ref_checks) == 1
+        assert ref_checks[0].passed is False
+        assert "nonexistent_profile" in ref_checks[0].message
+
+    @pytest.mark.anyio()
+    async def test_agent_without_engine_profile_skips(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        agent_data = {
+            "id": "minimal",
+            "version": "1.0",
+            "name": "Minimal",
+            "role": "Helper",
+            "goal": "Help",
+            # No engine_profile — uses project default
+        }
+        (agents_dir / "minimal.yaml").write_text(yaml.dump(agent_data))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        ref_checks = [
+            r for r in results
+            if r.name == "engine_profile_ref_minimal"
+        ]
+        # No check produced when agent doesn't specify engine_profile
+        assert len(ref_checks) == 0
+
+    @pytest.mark.anyio()
+    async def test_default_engine_profile_check(
+        self, tmp_path: Path,
+    ) -> None:
+        """The defaults.engine_profile itself must exist in engine_profiles."""
+        config_file = _write_minimal_config(tmp_path)
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        default_checks = [
+            r for r in results if r.name == "default_engine_profile"
+        ]
+        assert len(default_checks) == 1
+        assert default_checks[0].passed is True
 ```
 
-**Step 2: Run test to verify it passes (this is a no-op check)**
+**Step 2: Run test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestAgentReferenceCheck -v --no-header 2>&1 | tail -5`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestEngineProfileReferenceCheck::test_valid_engine_profile_ref_passes -v --no-header 2>&1 | tail -5
+```
 
 **Expected output:**
 ```
-PASSED tests/cli/services/test_check_project.py::TestAgentReferenceCheck::test_no_agents_configured_skips_check
+FAILED ... - assert len(ref_checks) == 1 (0 != 1)
 ```
 
-This test should pass immediately because we produce no agent checks when there is no agents config. The check function is a placeholder for when the config schema adds agents.
+**Step 3: Write minimal implementation**
 
-**Step 3: Add the forward-compatible agent check helper**
-
-Add to `miniautogen/cli/services/check_project.py`:
+Add helpers to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`:
 
 ```python
-def _check_agent_references(
-    config: "ProjectConfig",
+def _check_default_engine_profile(config: ProjectConfig) -> CheckResult:
+    """Verify the default engine profile exists in engine_profiles."""
+    default_ref = config.defaults.engine_profile
+    available = set(config.engine_profiles.keys())
+    if default_ref in available:
+        return CheckResult(
+            name="default_engine_profile",
+            passed=True,
+            message=(
+                f"Default engine profile '{default_ref}' exists"
+            ),
+            category="static",
+        )
+    return CheckResult(
+        name="default_engine_profile",
+        passed=False,
+        message=(
+            f"Default engine profile '{default_ref}' not found in "
+            f"engine_profiles. Available: {', '.join(sorted(available))}"
+        ),
+        category="static",
+    )
+
+
+def _check_engine_profile_refs(
+    config: ProjectConfig,
     project_root: Path,
 ) -> list[CheckResult]:
-    """Verify agent references in config resolve.
-
-    Currently ``ProjectConfig`` may not have an ``agents`` field.
-    This check is forward-compatible — it silently returns an empty
-    list when no agents are configured.
-    """
+    """Verify engine profiles referenced by agents exist in config."""
     results: list[CheckResult] = []
-    agents = getattr(config, "agents", None)
-    if not agents:
+    agents_dir = project_root / "agents"
+    if not agents_dir.is_dir():
         return results
 
-    # If agents is a dict of name -> agent_cfg with a 'target' field,
-    # resolve similarly to pipeline targets.
-    if isinstance(agents, dict):
-        for agent_name, agent_cfg in agents.items():
-            target = getattr(agent_cfg, "target", None)
-            if target and ":" in target:
-                module_path, callable_name = target.rsplit(":", 1)
-                try:
-                    mod = importlib.import_module(module_path)
-                    found = hasattr(mod, callable_name)
-                except ImportError:
-                    # Check as file
-                    relative_file = Path(module_path.replace(".", "/") + ".py")
-                    found = (project_root / relative_file).is_file()
+    available_profiles = set(config.engine_profiles.keys())
 
-                results.append(
-                    CheckResult(
-                        name=f"agent_ref_{agent_name}",
-                        passed=found,
-                        message=(
-                            f"Agent '{agent_name}' resolves OK"
-                            if found
-                            else f"Cannot resolve agent '{agent_name}' target '{target}'"
-                        ),
-                        category="static",
-                    )
-                )
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        agent_name = yaml_file.stem
+        try:
+            raw = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                continue
+            engine_profile = raw.get("engine_profile")
+            if not engine_profile:
+                continue  # Agent uses project default
+            if engine_profile in available_profiles:
+                results.append(CheckResult(
+                    name=f"engine_profile_ref_{agent_name}",
+                    passed=True,
+                    message=(
+                        f"Agent '{agent_name}' engine profile "
+                        f"'{engine_profile}' exists"
+                    ),
+                    category="static",
+                ))
+            else:
+                results.append(CheckResult(
+                    name=f"engine_profile_ref_{agent_name}",
+                    passed=False,
+                    message=(
+                        f"Agent '{agent_name}' references engine profile "
+                        f"'{engine_profile}' which does not exist. "
+                        f"Available: "
+                        f"{', '.join(sorted(available_profiles))}"
+                    ),
+                    category="static",
+                ))
+        except yaml.YAMLError:
+            continue  # Already caught by _check_agents
 
     return results
 ```
@@ -741,268 +1770,434 @@ def _check_agent_references(
 Update `check_project` — add after pipeline target checks:
 
 ```python
-    # Agent reference checks
-    results.extend(_check_agent_references(config, project_root))
-```
-
-**Step 4: Run all tests to verify nothing broke**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -15`
-
-**Expected output:** All tests PASSED.
-
-**Step 5: Commit**
-
-```bash
-git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
-git commit -m "feat(cli): add forward-compatible agent reference check"
-```
-
-**If Task Fails:**
-
-1. **getattr on config fails:** This should not happen — `getattr` with default `None` is safe.
-2. **Can't recover:** `git checkout -- .` and retry.
-
----
-
-## Task 5: Implement environment check — required env vars
-
-**Files:**
-- Modify: `miniautogen/cli/services/check_project.py`
-- Modify: `tests/cli/services/test_check_project.py`
-
-**Prerequisites:**
-- Task 4 complete
-- Understanding: Provider config determines which env vars are needed. E.g., `litellm` provider may need `OPENAI_API_KEY` or similar. The check inspects `config.provider.default` and checks for common env var patterns.
-
-**Step 1: Write the failing test**
-
-Append to `tests/cli/services/test_check_project.py`:
-
-```python
-import os
-
-
-class TestEnvVarsCheck:
-    """Environment check: required env vars present."""
-
-    @pytest.mark.anyio()
-    async def test_no_provider_env_needed_passes(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When no specific env vars are required, check passes."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
-        from miniautogen.cli.config import load_config
-
-        config = load_config(config_file)
-        results = await check_project(config, tmp_path)
-        env_checks = [r for r in results if r.category == "environment"]
-        # At minimum there should be a provider env check
-        provider_checks = [r for r in env_checks if r.name == "provider_env"]
-        assert len(provider_checks) == 1
-
-    @pytest.mark.anyio()
-    async def test_missing_api_key_fails(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When provider needs an API key and it is missing, check fails."""
-        # Remove all common API key env vars
-        for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):
-            monkeypatch.delenv(key, raising=False)
-
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
-        from miniautogen.cli.config import load_config
-
-        config = load_config(config_file)
-        results = await check_project(config, tmp_path)
-        provider_check = next(r for r in results if r.name == "provider_env")
-        # LiteLLM with gpt-4o-mini needs OPENAI_API_KEY
-        assert provider_check.passed is False
-        assert "OPENAI_API_KEY" in provider_check.message
-
-    @pytest.mark.anyio()
-    async def test_present_api_key_passes(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """When the required API key is present, check passes."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-key-123")
-
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
-        from miniautogen.cli.config import load_config
-
-        config = load_config(config_file)
-        results = await check_project(config, tmp_path)
-        provider_check = next(r for r in results if r.name == "provider_env")
-        assert provider_check.passed is True
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestEnvVarsCheck -v --no-header 2>&1 | tail -10`
-
-**Expected output:**
-```
-FAILED ... - StopIteration (no provider_env check produced yet)
-```
-
-**Step 3: Write minimal implementation**
-
-Add to `miniautogen/cli/services/check_project.py`:
-
-```python
-import os
-
-# Map of model prefix patterns to required env vars.
-# LiteLLM routes by model name prefix.
-_MODEL_ENV_VARS: dict[str, list[str]] = {
-    "gpt-": ["OPENAI_API_KEY"],
-    "o1-": ["OPENAI_API_KEY"],
-    "o3-": ["OPENAI_API_KEY"],
-    "claude-": ["ANTHROPIC_API_KEY"],
-    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
-    "mistral": ["MISTRAL_API_KEY"],
-}
-
-
-def _check_provider_env(config: "ProjectConfig") -> CheckResult:
-    """Check that required environment variables for the configured provider exist."""
-    model = getattr(config.provider, "model", "") if config.provider else ""
-    if not model:
-        return CheckResult(
-            name="provider_env",
-            passed=True,
-            message="No model configured — skipping provider env check",
-            category="environment",
-        )
-
-    required_vars: list[str] = []
-    for prefix, env_vars in _MODEL_ENV_VARS.items():
-        if model.startswith(prefix):
-            required_vars = env_vars
-            break
-
-    if not required_vars:
-        return CheckResult(
-            name="provider_env",
-            passed=True,
-            message=f"No known env var requirements for model '{model}'",
-            category="environment",
-        )
-
-    # Check if ANY of the required vars is present
-    present = [v for v in required_vars if os.environ.get(v)]
-    if present:
-        return CheckResult(
-            name="provider_env",
-            passed=True,
-            message=f"Required env var(s) found: {', '.join(present)}",
-            category="environment",
-        )
-
-    return CheckResult(
-        name="provider_env",
-        passed=False,
-        message=(
-            f"Missing required env var(s) for model '{model}': "
-            f"{', '.join(required_vars)}"
-        ),
-        category="environment",
-    )
-```
-
-Update `check_project` — add after agent reference checks:
-
-```python
-    # --- Environment checks ---
-    results.append(_check_provider_env(config))
+    # Engine profile reference checks
+    results.append(_check_default_engine_profile(config))
+    results.extend(_check_engine_profile_refs(config, project_root))
 ```
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -15`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -25
+```
 
 **Expected output:** All tests PASSED.
 
 **Step 5: Commit**
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
-git commit -m "feat(cli): add provider env var check"
+git commit -m "feat(cli): add engine profile reference checks"
 ```
 
 **If Task Fails:**
-
-1. **`config.provider` is None or different shape:** Adapt to actual `ProjectConfig` model — use `getattr` for safety.
-2. **`monkeypatch.delenv` fails:** The var may already not exist. `raising=False` handles this.
-3. **Can't recover:** `git checkout -- .` and inspect `ProjectConfig.provider` model.
+1. **`config.engine_profiles` missing:** Check Chunk 1 `ProjectConfig` model.
+2. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
 
 ---
 
-## Task 6: Implement environment check — database URL valid
+## Task 9: Implement static check — cross-references (skills/tools referenced by agents)
 
 **Files:**
-- Modify: `miniautogen/cli/services/check_project.py`
-- Modify: `tests/cli/services/test_check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
 
 **Prerequisites:**
-- Task 5 complete
+- Task 8 complete
 
 **Step 1: Write the failing test**
 
-Append to `tests/cli/services/test_check_project.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
 
 ```python
-class TestDatabaseUrlCheck:
-    """Environment check: database URL valid (if configured)."""
+class TestCrossReferenceCheck:
+    """Static check: agents reference existing skills and tools."""
 
     @pytest.mark.anyio()
-    async def test_no_database_configured_skips(self, tmp_path: Path) -> None:
-        """When no database section in config, no db check produced."""
+    async def test_agent_refs_existing_skill_passes(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+
+        # Create skill
+        skill_dir = tmp_path / "skills" / "deep-research"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("# Deep Research\n")
+        (skill_dir / "skill.yaml").write_text(yaml.dump({
+            "id": "deep-research",
+            "version": "1.0",
+            "name": "Deep Research",
+            "description": "Research skill",
+        }))
+
+        # Create agent referencing the skill
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "researcher.yaml").write_text(yaml.dump({
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "skills": {"deep-research": {"attached": []}},
+        }))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        xref_checks = [
+            r for r in results
+            if r.name == "xref_researcher_skill_deep-research"
+        ]
+        assert len(xref_checks) == 1
+        assert xref_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_agent_refs_missing_skill_fails(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        # No skills/ directory
+
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "researcher.yaml").write_text(yaml.dump({
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "skills": {"nonexistent-skill": {"attached": []}},
+        }))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        xref_checks = [
+            r for r in results
+            if r.name == "xref_researcher_skill_nonexistent-skill"
+        ]
+        assert len(xref_checks) == 1
+        assert xref_checks[0].passed is False
+
+    @pytest.mark.anyio()
+    async def test_agent_refs_existing_tool_passes(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+
+        # Create tool
+        tools_dir = tmp_path / "tools"
+        tools_dir.mkdir()
+        (tools_dir / "web_search.yaml").write_text(yaml.dump({
+            "name": "web_search",
+            "description": "Search",
+            "input_schema": {"type": "object"},
+            "execution": {"kind": "function", "target": "t:run"},
+        }))
+
+        # Create agent referencing the tool
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "researcher.yaml").write_text(yaml.dump({
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "tool_access": {
+                "mode": "allowlist",
+                "allow": ["web_search"],
+            },
+        }))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        xref_checks = [
+            r for r in results
+            if r.name == "xref_researcher_tool_web_search"
+        ]
+        assert len(xref_checks) == 1
+        assert xref_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_agent_refs_missing_tool_fails(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        # No tools/ directory
+
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "researcher.yaml").write_text(yaml.dump({
+            "id": "researcher",
+            "version": "1.0",
+            "name": "Researcher",
+            "role": "Research",
+            "goal": "Find info",
+            "tool_access": {
+                "mode": "allowlist",
+                "allow": ["nonexistent_tool"],
+            },
+        }))
+
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        xref_checks = [
+            r for r in results
+            if r.name == "xref_researcher_tool_nonexistent_tool"
+        ]
+        assert len(xref_checks) == 1
+        assert xref_checks[0].passed is False
+
+    @pytest.mark.anyio()
+    async def test_no_agents_no_xref_checks(
+        self, tmp_path: Path,
+    ) -> None:
+        config_file = _write_minimal_config(tmp_path)
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        xref_checks = [
+            r for r in results if r.name.startswith("xref_")
+        ]
+        assert len(xref_checks) == 0
+```
+
+**Step 2: Run test to verify it fails**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestCrossReferenceCheck::test_agent_refs_existing_skill_passes -v --no-header 2>&1 | tail -5
+```
+
+**Expected output:**
+```
+FAILED ... - assert len(xref_checks) == 1 (0 != 1)
+```
+
+**Step 3: Write minimal implementation**
+
+Add helper to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`:
+
+```python
+def _check_cross_references(project_root: Path) -> list[CheckResult]:
+    """Verify agents reference existing skills and tools.
+
+    For each agent YAML:
+    - ``skills`` keys must match subdirectory names in ``skills/``
+    - ``tool_access.allow`` entries must match YAML file stems in ``tools/``
+    """
+    results: list[CheckResult] = []
+    agents_dir = project_root / "agents"
+    if not agents_dir.is_dir():
+        return results
+
+    # Discover available skills (directory names under skills/)
+    skills_dir = project_root / "skills"
+    available_skills: set[str] = set()
+    if skills_dir.is_dir():
+        available_skills = {
+            d.name for d in skills_dir.iterdir() if d.is_dir()
+        }
+
+    # Discover available tools (YAML file stems under tools/)
+    tools_dir = project_root / "tools"
+    available_tools: set[str] = set()
+    if tools_dir.is_dir():
+        available_tools = {
+            f.stem for f in tools_dir.glob("*.yaml")
+        }
+
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        agent_name = yaml_file.stem
+        try:
+            raw = yaml.safe_load(yaml_file.read_text(encoding="utf-8"))
+            if not isinstance(raw, dict):
+                continue
+        except yaml.YAMLError:
+            continue  # Already caught by _check_agents
+
+        # Check skill references
+        skills = raw.get("skills", {})
+        if isinstance(skills, dict):
+            for skill_ref in skills:
+                found = skill_ref in available_skills
+                results.append(CheckResult(
+                    name=f"xref_{agent_name}_skill_{skill_ref}",
+                    passed=found,
+                    message=(
+                        f"Agent '{agent_name}' skill '{skill_ref}' exists"
+                        if found
+                        else (
+                            f"Agent '{agent_name}' references skill "
+                            f"'{skill_ref}' which does not exist in skills/"
+                        )
+                    ),
+                    category="static",
+                ))
+
+        # Check tool references
+        tool_access = raw.get("tool_access", {})
+        if isinstance(tool_access, dict):
+            allow_list = tool_access.get("allow", [])
+            if isinstance(allow_list, list):
+                for tool_ref in allow_list:
+                    found = tool_ref in available_tools
+                    results.append(CheckResult(
+                        name=f"xref_{agent_name}_tool_{tool_ref}",
+                        passed=found,
+                        message=(
+                            f"Agent '{agent_name}' tool '{tool_ref}' exists"
+                            if found
+                            else (
+                                f"Agent '{agent_name}' references tool "
+                                f"'{tool_ref}' which does not exist "
+                                f"in tools/"
+                            )
+                        ),
+                        category="static",
+                    ))
+
+    return results
+```
+
+Update `check_project` — add after engine profile ref checks:
+
+```python
+    # Cross-reference checks (agents -> skills, agents -> tools)
+    results.extend(_check_cross_references(project_root))
+```
+
+**Step 4: Run test to verify it passes**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -30
+```
+
+**Expected output:** All tests PASSED.
+
+**Step 5: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
+git commit -m "feat(cli): add cross-reference checks for agent skill/tool refs"
+```
+
+**If Task Fails:**
+1. **YAML loading issue:** Ensure `yaml.safe_load` handles edge cases.
+2. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
+
+---
+
+## Task 10: Implement environment check — API keys based on engine profiles
+
+**Files:**
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`
+
+**Prerequisites:**
+- Task 9 complete
+
+**Step 1: Write the failing test**
+
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py`:
+
+```python
+import os
+
+
+class TestEnvironmentApiKeyCheck:
+    """Environment check: API keys present based on engine profiles."""
+
+    @pytest.mark.anyio()
+    async def test_openai_key_present_passes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
+        config_file = _write_minimal_config(tmp_path)
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        env_checks = [
+            r for r in results if r.name == "env_profile_default_api"
+        ]
+        assert len(env_checks) == 1
+        assert env_checks[0].passed is True
+        assert env_checks[0].category == "environment"
+
+    @pytest.mark.anyio()
+    async def test_missing_openai_key_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        for key in (
+            "OPENAI_API_KEY", "ANTHROPIC_API_KEY",
+            "GOOGLE_API_KEY", "GEMINI_API_KEY",
+        ):
+            monkeypatch.delenv(key, raising=False)
+        config_file = _write_minimal_config(tmp_path)
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        env_checks = [
+            r for r in results if r.name == "env_profile_default_api"
+        ]
+        assert len(env_checks) == 1
+        assert env_checks[0].passed is False
+        assert "OPENAI_API_KEY" in env_checks[0].message
+
+    @pytest.mark.anyio()
+    async def test_cli_profile_skips_api_key_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """CLI-kind engine profiles don't need API keys."""
+        for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+            monkeypatch.delenv(key, raising=False)
         config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-        )
+        data = {
+            "project": {"name": "test", "version": "0.1.0"},
+            "defaults": {"engine_profile": "gemini_cli"},
+            "engine_profiles": {
+                "gemini_cli": {
+                    "kind": "cli",
+                    "provider": "gemini",
+                    "command": "gemini",
+                }
+            },
+            "pipelines": {
+                "main": {"target": "os.path:join"},
+            },
+        }
+        config_file.write_text(yaml.dump(data))
+        from miniautogen.cli.config import load_config
+
+        config = load_config(config_file)
+        results = await check_project(config, tmp_path)
+        env_checks = [
+            r for r in results if r.name == "env_profile_gemini_cli"
+        ]
+        assert len(env_checks) == 1
+        assert env_checks[0].passed is True
+
+    @pytest.mark.anyio()
+    async def test_no_database_no_db_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        config_file = _write_minimal_config(tmp_path)
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -1011,22 +2206,25 @@ class TestDatabaseUrlCheck:
         assert len(db_checks) == 0
 
     @pytest.mark.anyio()
-    async def test_valid_sqlite_url_passes(self, tmp_path: Path) -> None:
-        """A valid sqlite URL passes the check."""
+    async def test_database_url_valid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-            "database:\n"
-            "  url: sqlite+aiosqlite:///miniautogen.db\n"
-        )
+        data = {
+            "project": {"name": "test", "version": "0.1.0"},
+            "defaults": {"engine_profile": "default_api"},
+            "engine_profiles": {
+                "default_api": {
+                    "kind": "api",
+                    "provider": "litellm",
+                    "model": "gpt-4o-mini",
+                }
+            },
+            "pipelines": {"main": {"target": "os.path:join"}},
+            "database": {"url": "sqlite+aiosqlite:///test.db"},
+        }
+        config_file.write_text(yaml.dump(data))
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -1036,47 +2234,25 @@ class TestDatabaseUrlCheck:
         assert db_checks[0].passed is True
 
     @pytest.mark.anyio()
-    async def test_empty_url_fails(self, tmp_path: Path) -> None:
-        """An empty database URL fails."""
+    async def test_database_url_empty_fails(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
         config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-            "database:\n"
-            "  url: ''\n"
-        )
-        from miniautogen.cli.config import load_config
-
-        config = load_config(config_file)
-        results = await check_project(config, tmp_path)
-        db_checks = [r for r in results if r.name == "database_url"]
-        assert len(db_checks) == 1
-        assert db_checks[0].passed is False
-
-    @pytest.mark.anyio()
-    async def test_malformed_url_fails(self, tmp_path: Path) -> None:
-        """A URL without a scheme fails validation."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: os.path:join\n"
-            "database:\n"
-            "  url: 'not-a-url'\n"
-        )
+        data = {
+            "project": {"name": "test", "version": "0.1.0"},
+            "defaults": {"engine_profile": "default_api"},
+            "engine_profiles": {
+                "default_api": {
+                    "kind": "api",
+                    "provider": "litellm",
+                    "model": "gpt-4o-mini",
+                }
+            },
+            "pipelines": {"main": {"target": "os.path:join"}},
+            "database": {"url": ""},
+        }
+        config_file.write_text(yaml.dump(data))
         from miniautogen.cli.config import load_config
 
         config = load_config(config_file)
@@ -1088,98 +2264,161 @@ class TestDatabaseUrlCheck:
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestDatabaseUrlCheck::test_valid_sqlite_url_passes -v --no-header 2>&1 | tail -5`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py::TestEnvironmentApiKeyCheck::test_openai_key_present_passes -v --no-header 2>&1 | tail -5
+```
 
 **Expected output:**
 ```
-FAILED ... - assert len(db_checks) == 1 (0 != 1)
+FAILED ... - assert len(env_checks) == 1 (0 != 1)
 ```
-
-**Note:** The `test_no_database_configured_skips` test may already pass since we produce no db checks yet. The other tests will fail.
 
 **Step 3: Write minimal implementation**
 
-Add to `miniautogen/cli/services/check_project.py`:
+Add to `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py`, add `import os` at top, then add helpers:
 
 ```python
-# Valid database URL scheme prefixes for SQLAlchemy
-_VALID_DB_SCHEMES = (
-    "sqlite",
-    "postgresql",
-    "mysql",
-    "mssql",
-    "oracle",
-)
+import os
+
+# Map of model prefix patterns to required env vars.
+_MODEL_ENV_VARS: dict[str, list[str]] = {
+    "gpt-": ["OPENAI_API_KEY"],
+    "o1-": ["OPENAI_API_KEY"],
+    "o3-": ["OPENAI_API_KEY"],
+    "claude-": ["ANTHROPIC_API_KEY"],
+    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "mistral": ["MISTRAL_API_KEY"],
+}
+
+# Map of provider names to required env vars (fallback when model unknown).
+_PROVIDER_ENV_VARS: dict[str, list[str]] = {
+    "openai": ["OPENAI_API_KEY"],
+    "litellm": ["OPENAI_API_KEY"],
+    "anthropic": ["ANTHROPIC_API_KEY"],
+    "gemini": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+    "mistral": ["MISTRAL_API_KEY"],
+}
 
 
-def _check_database_url(config: "ProjectConfig") -> CheckResult | None:
-    """Validate database URL if configured.
+def _check_environment(config: ProjectConfig) -> list[CheckResult]:
+    """Check required API keys and database URL."""
+    results: list[CheckResult] = []
 
-    Returns ``None`` when no database is configured (check skipped).
-    """
-    database = getattr(config, "database", None)
-    if database is None:
-        return None
+    # Check each engine profile for required env vars
+    for profile_name, profile in config.engine_profiles.items():
+        if profile.kind == "cli":
+            results.append(CheckResult(
+                name=f"env_profile_{profile_name}",
+                passed=True,
+                message=(
+                    f"Engine profile '{profile_name}' is CLI-based — "
+                    f"no API key needed"
+                ),
+                category="environment",
+            ))
+            continue
 
-    url = getattr(database, "url", None)
-    if not url:
-        return CheckResult(
-            name="database_url",
-            passed=False,
-            message="Database configured but URL is empty",
-            category="environment",
-        )
+        # Determine required env vars from model or provider
+        required_vars: list[str] = []
+        model = profile.model or ""
+        for prefix, env_vars in _MODEL_ENV_VARS.items():
+            if model.startswith(prefix):
+                required_vars = env_vars
+                break
 
-    # Basic validation: URL must contain a recognized scheme
-    has_scheme = any(url.startswith(scheme) for scheme in _VALID_DB_SCHEMES)
-    if not has_scheme:
-        return CheckResult(
-            name="database_url",
-            passed=False,
-            message=f"Database URL '{url}' does not start with a valid scheme",
-            category="environment",
-        )
+        if not required_vars:
+            provider = profile.provider or ""
+            required_vars = _PROVIDER_ENV_VARS.get(provider, [])
 
-    return CheckResult(
-        name="database_url",
-        passed=True,
-        message=f"Database URL is valid ({url.split(':')[0]} scheme)",
-        category="environment",
-    )
+        if not required_vars:
+            results.append(CheckResult(
+                name=f"env_profile_{profile_name}",
+                passed=True,
+                message=(
+                    f"Engine profile '{profile_name}': no known env var "
+                    f"requirements for provider '{profile.provider}'"
+                ),
+                category="environment",
+            ))
+            continue
+
+        present = [v for v in required_vars if os.environ.get(v)]
+        if present:
+            results.append(CheckResult(
+                name=f"env_profile_{profile_name}",
+                passed=True,
+                message=(
+                    f"Engine profile '{profile_name}': required env var(s) "
+                    f"found: {', '.join(present)}"
+                ),
+                category="environment",
+            ))
+        else:
+            results.append(CheckResult(
+                name=f"env_profile_{profile_name}",
+                passed=False,
+                message=(
+                    f"Engine profile '{profile_name}': missing required "
+                    f"env var(s) for model '{model}': "
+                    f"{', '.join(required_vars)}"
+                ),
+                category="environment",
+            ))
+
+    # Check database URL if configured
+    if config.database is not None:
+        url = config.database.url
+        if url and url.strip():
+            results.append(CheckResult(
+                name="database_url",
+                passed=True,
+                message=f"Database URL is set: {url[:30]}...",
+                category="environment",
+            ))
+        else:
+            results.append(CheckResult(
+                name="database_url",
+                passed=False,
+                message="Database URL is configured but empty",
+                category="environment",
+            ))
+
+    return results
 ```
 
-Update `check_project` — add after `_check_provider_env`:
+Update `check_project` — add after cross-reference checks:
 
 ```python
-    db_check = _check_database_url(config)
-    if db_check is not None:
-        results.append(db_check)
+    # --- Environment checks ---
+    results.extend(_check_environment(config))
 ```
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -20`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/services/test_check_project.py -v --no-header 2>&1 | tail -30
+```
 
 **Expected output:** All tests PASSED.
-
-**Note:** If `load_config` raises a Pydantic `ValidationError` for configs with `database` section (because `ProjectConfig` does not have a `database` field yet), wrap those tests in `pytest.raises(ValidationError)` or add the `database` field to `ProjectConfig` as optional. The adapter approach with `getattr` in the implementation handles both cases gracefully.
 
 **Step 5: Commit**
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py
-git commit -m "feat(cli): add database URL validation check"
+git commit -m "feat(cli): add environment checks for API keys and database URL"
 ```
 
 **If Task Fails:**
-
-1. **`load_config` rejects YAML with `database` section:** `ProjectConfig` may not have a `database` field. Add `database: DatabaseConfig | None = None` to the Pydantic model, or adjust tests to skip the database section in YAML.
-2. **Pydantic strict validation rejects unknown fields:** Check if `ProjectConfig` uses `model_config = ConfigDict(extra="forbid")`. If so, add the `database` field.
-3. **Can't recover:** `git checkout -- .` and review `ProjectConfig`.
+1. **`config.database` shape:** Check Chunk 1 `DatabaseConfig` model has `url` field.
+2. **monkeypatch issues:** `raising=False` should handle missing vars.
+3. **Rollback:** `git checkout -- miniautogen/cli/services/check_project.py tests/cli/services/test_check_project.py`
 
 ---
 
-## Task 7: Run Code Review (service layer)
+## Task 11: Run Code Review
 
 1. **Dispatch all 3 reviewers in parallel:**
    - REQUIRED SUB-SKILL: Use requesting-code-review
@@ -1208,270 +2447,188 @@ git commit -m "feat(cli): add database URL validation check"
 
 ---
 
-## Task 8: Create `commands/check.py` — Click command skeleton
+## Task 12: Create `commands/check.py` — Click command adapter
 
 **Files:**
-- Create: `miniautogen/cli/commands/check.py`
-- Create: `tests/cli/commands/__init__.py` (if not created in Chunk 1)
-- Create: `tests/cli/commands/test_check.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/check.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_check.py`
 
 **Prerequisites:**
-- Tasks 1-6 complete (service layer done)
-- Chunk 1 files exist: `miniautogen/cli/main.py` (with `cli` group and `run_async` helper), `miniautogen/cli/config.py`, `miniautogen/cli/output.py`, `miniautogen/cli/errors.py`
+- Task 10 complete (all checks implemented)
+- File must exist: `miniautogen/cli/main.py` with `cli` Click group and `run_async`
+- File must exist: `miniautogen/cli/config.py` with `find_project_root`, `load_config`
+- File must exist: `miniautogen/cli/output.py` with `echo_table`, `echo_json`, `echo_error`, `echo_success`
+- File must exist: `miniautogen/cli/errors.py` with `CLIError`, `ProjectNotFoundError`, `ConfigError`
 
 **Step 1: Write the failing test**
 
-Create `tests/cli/commands/__init__.py` (empty):
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py` (empty):
 
 ```python
 ```
 
-Create `tests/cli/commands/test_check.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_check.py`:
 
 ```python
-"""Tests for the ``miniautogen check`` CLI command."""
+"""Tests for the `miniautogen check` CLI command."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-import pytest
+import yaml
 from click.testing import CliRunner
 
 from miniautogen.cli.main import cli
 
 
-@pytest.fixture()
-def runner() -> CliRunner:
-    return CliRunner()
+def _scaffold_project(root: Path) -> None:
+    """Create a minimal valid project structure for testing."""
+    config_data = {
+        "project": {"name": "test-project", "version": "0.1.0"},
+        "defaults": {"engine_profile": "default_api"},
+        "engine_profiles": {
+            "default_api": {
+                "kind": "api",
+                "provider": "litellm",
+                "model": "gpt-4o-mini",
+            }
+        },
+        "pipelines": {
+            "main": {"target": "os.path:join"},
+        },
+    }
+    (root / "miniautogen.yaml").write_text(yaml.dump(config_data))
+
+    # Valid agent
+    agents_dir = root / "agents"
+    agents_dir.mkdir()
+    (agents_dir / "researcher.yaml").write_text(yaml.dump({
+        "id": "researcher",
+        "version": "1.0",
+        "name": "Researcher",
+        "role": "Research assistant",
+        "goal": "Find info",
+        "engine_profile": "default_api",
+        "skills": {"example": {"attached": []}},
+        "tool_access": {"mode": "allowlist", "allow": ["web_search"]},
+    }))
+
+    # Valid skill
+    skill_dir = root / "skills" / "example"
+    skill_dir.mkdir(parents=True)
+    (skill_dir / "SKILL.md").write_text("# Example\n")
+    (skill_dir / "skill.yaml").write_text(yaml.dump({
+        "id": "example",
+        "version": "1.0",
+        "name": "Example",
+        "description": "Example skill",
+    }))
+
+    # Valid tool
+    tools_dir = root / "tools"
+    tools_dir.mkdir()
+    (tools_dir / "web_search.yaml").write_text(yaml.dump({
+        "name": "web_search",
+        "description": "Search the web",
+        "input_schema": {"type": "object"},
+        "execution": {"kind": "function", "target": "t:run"},
+    }))
+
+    # Pipeline file
+    pipelines_dir = root / "pipelines"
+    pipelines_dir.mkdir()
+    (pipelines_dir / "main.py").write_text("def build_pipeline(): pass\n")
 
 
-@pytest.fixture()
-def valid_project(tmp_path: Path) -> Path:
-    """Create a minimal valid project structure."""
-    config_file = tmp_path / "miniautogen.yaml"
-    config_file.write_text(
-        "project:\n"
-        "  name: test-project\n"
-        "  version: '0.1.0'\n"
-        "provider:\n"
-        "  default: litellm\n"
-        "  model: gpt-4o-mini\n"
-        "pipelines:\n"
-        "  main:\n"
-        "    target: os.path:join\n"
-    )
-    return tmp_path
-
-
-class TestCheckCommand:
-    def test_check_command_exists(self, runner: CliRunner) -> None:
-        """The check command is registered with the CLI group."""
-        result = runner.invoke(cli, ["check", "--help"])
-        assert result.exit_code == 0
-        assert "check" in result.output.lower()
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py::TestCheckCommand::test_check_command_exists -v --no-header 2>&1 | tail -10`
-
-**Expected output:**
-```
-FAILED ... - (either ImportError or "No such command 'check'")
-```
-
-**Step 3: Write minimal implementation**
-
-Create `miniautogen/cli/commands/check.py`:
-
-```python
-"""``miniautogen check`` command — validate project configuration and environment."""
-
-from __future__ import annotations
-
-import click
-
-
-@click.command("check")
-def check() -> None:
-    """Validate project configuration and environment."""
-    click.echo("check: not yet implemented")
-```
-
-Register the command in `miniautogen/cli/main.py` — add the import and registration. Locate the section where `init` command is registered and add `check` similarly:
-
-Add import:
-```python
-from miniautogen.cli.commands.check import check
-```
-
-Add registration (after `cli.add_command(init)` or equivalent pattern):
-```python
-cli.add_command(check)
-```
-
-**Step 4: Run test to verify it passes**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py::TestCheckCommand::test_check_command_exists -v --no-header 2>&1 | tail -5`
-
-**Expected output:**
-```
-PASSED tests/cli/commands/test_check.py::TestCheckCommand::test_check_command_exists
-```
-
-**Step 5: Commit**
-
-```bash
-git add miniautogen/cli/commands/check.py miniautogen/cli/main.py tests/cli/commands/__init__.py tests/cli/commands/test_check.py
-git commit -m "feat(cli): register check command skeleton with CLI group"
-```
-
-**If Task Fails:**
-
-1. **Import error on `miniautogen.cli.main`:** Chunk 1 not complete. Verify main.py exists with a `cli` Click group.
-2. **Registration pattern different:** Check how `init` command is registered in `main.py` and follow the same pattern.
-3. **Can't recover:** Document what `main.py` looks like and return to human partner.
-
----
-
-## Task 9: Wire `check` command to service — text output
-
-**Files:**
-- Modify: `miniautogen/cli/commands/check.py`
-- Modify: `tests/cli/commands/test_check.py`
-
-**Prerequisites:**
-- Task 8 complete
-- Understanding of Chunk 1 helpers: `find_project_root()`, `load_config()`, `run_async()`, `format_output()`
-
-**Step 1: Write the failing test**
-
-Append to `tests/cli/commands/test_check.py`:
-
-```python
-class TestCheckCommandExecution:
-    def test_all_checks_pass_exit_0(
-        self,
-        runner: CliRunner,
-        valid_project: Path,
-        monkeypatch: pytest.MonkeyPatch,
+class TestCheckCommandText:
+    def test_all_checks_pass(
+        self, tmp_path: Path, monkeypatch: None,
     ) -> None:
-        """When all checks pass, exit code is 0."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
-        monkeypatch.chdir(valid_project)
-        result = runner.invoke(cli, ["check"])
-        assert result.exit_code == 0, f"Output: {result.output}"
-        assert "pass" in result.output.lower() or "PASS" in result.output
+        import os
 
-    def test_failing_check_exit_1(
-        self,
-        runner: CliRunner,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """When any check fails, exit code is 1."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: nonexistent_module_xyz:build\n"
+        os.environ["OPENAI_API_KEY"] = "sk-test-123"
+        _scaffold_project(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["check"], catch_exceptions=False,
+            env={"OPENAI_API_KEY": "sk-test-123"},
         )
-        monkeypatch.chdir(tmp_path)
-        # Also remove API key to cause env check failure
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        result = runner.invoke(cli, ["check"])
-        assert result.exit_code == 1, f"Output: {result.output}"
-        assert "fail" in result.output.lower() or "FAIL" in result.output
+        assert result.exit_code == 0, result.output
 
-    def test_output_contains_check_names(
-        self,
-        runner: CliRunner,
-        valid_project: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Output shows individual check names."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
-        monkeypatch.chdir(valid_project)
+    def test_exit_code_1_on_failure(self, tmp_path: Path) -> None:
+        _scaffold_project(tmp_path)
+        # Break an agent reference
+        agents_dir = tmp_path / "agents"
+        (agents_dir / "broken.yaml").write_text("not: valid: agent")
+
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["check"],
+            env={"OPENAI_API_KEY": "sk-test-123"},
+        )
+        assert result.exit_code == 1
+
+    def test_no_project_found_error(self, tmp_path: Path) -> None:
+        runner = CliRunner()
         result = runner.invoke(cli, ["check"])
-        assert "config_schema" in result.output
-        assert "pipeline_target_main" in result.output
+        assert result.exit_code != 0
+        assert "project" in result.output.lower() or result.exit_code == 66
+
+
+class TestCheckCommandJson:
+    def test_json_format_output(self, tmp_path: Path) -> None:
+        _scaffold_project(tmp_path)
+        runner = CliRunner()
+        result = runner.invoke(
+            cli, ["check", "--format", "json"],
+            env={"OPENAI_API_KEY": "sk-test-123"},
+        )
+        assert result.exit_code == 0, result.output
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        for item in data:
+            assert "name" in item
+            assert "passed" in item
+            assert "message" in item
+            assert "category" in item
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Run the test to verify it fails**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py::TestCheckCommandExecution -v --no-header 2>&1 | tail -10`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py -v --no-header 2>&1 | head -20
+```
 
 **Expected output:**
 ```
-FAILED ... - AssertionError (output just says "not yet implemented")
+FAILED ... - (command not registered or import error)
 ```
 
-**Step 3: Write full implementation**
+**Step 3: Write the check command**
 
-Replace the contents of `miniautogen/cli/commands/check.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/check.py`:
 
 ```python
-"""``miniautogen check`` command — validate project configuration and environment."""
+"""``miniautogen check`` — validate project configuration and environment."""
 
 from __future__ import annotations
 
 import json
 import sys
+from dataclasses import asdict
+from pathlib import Path
 
 import click
 
 from miniautogen.cli.config import find_project_root, load_config
+from miniautogen.cli.errors import ConfigError, ProjectNotFoundError
 from miniautogen.cli.main import run_async
-from miniautogen.cli.services.check_project import CheckResult, check_project
-
-
-def _render_text(results: list[CheckResult]) -> str:
-    """Render check results as a human-readable table."""
-    lines: list[str] = []
-    lines.append("")
-    lines.append("  Check Results")
-    lines.append("  " + "-" * 60)
-
-    for r in results:
-        status = "PASS" if r.passed else "FAIL"
-        icon = "+" if r.passed else "x"
-        lines.append(f"  [{icon}] {status}  {r.name:<30s}  {r.message}")
-
-    lines.append("  " + "-" * 60)
-
-    passed = sum(1 for r in results if r.passed)
-    failed = sum(1 for r in results if not r.passed)
-    lines.append(f"  {passed} passed, {failed} failed")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _render_json(results: list[CheckResult]) -> str:
-    """Render check results as JSON."""
-    data = {
-        "checks": [
-            {
-                "name": r.name,
-                "passed": r.passed,
-                "message": r.message,
-                "category": r.category,
-            }
-            for r in results
-        ],
-        "summary": {
-            "total": len(results),
-            "passed": sum(1 for r in results if r.passed),
-            "failed": sum(1 for r in results if not r.passed),
-        },
-    }
-    return json.dumps(data, indent=2)
+from miniautogen.cli.output import echo_error, echo_success, echo_table
+from miniautogen.cli.services.check_project import check_project
 
 
 @click.command("check")
@@ -1480,244 +2637,153 @@ def _render_json(results: list[CheckResult]) -> str:
     "output_format",
     type=click.Choice(["text", "json"]),
     default="text",
-    help="Output format.",
+    help="Output format (text table or JSON).",
 )
-def check(output_format: str) -> None:
-    """Validate project configuration and environment."""
-    try:
-        project_root = find_project_root()
-    except Exception as exc:
-        click.echo(f"Error: {exc}", err=True)
-        sys.exit(1)
+@run_async
+async def check(output_format: str) -> None:
+    """Validate project configuration, specs, and environment."""
+    project_root = find_project_root(Path.cwd())
+    if project_root is None:
+        raise ProjectNotFoundError(
+            "No miniautogen.yaml found in current directory or parents. "
+            "Run 'miniautogen init <name>' to create a project."
+        )
 
     config_path = project_root / "miniautogen.yaml"
     try:
         config = load_config(config_path)
     except Exception as exc:
-        click.echo(f"Error loading config: {exc}", err=True)
-        sys.exit(1)
+        raise ConfigError(f"Failed to load config: {exc}") from exc
 
-    results = run_async(check_project(config, project_root))
+    results = await check_project(config, project_root)
 
     if output_format == "json":
-        click.echo(_render_json(results))
+        click.echo(json.dumps(
+            [asdict(r) for r in results],
+            indent=2,
+        ))
     else:
-        click.echo(_render_text(results))
+        # Text table output
+        rows = []
+        for r in results:
+            status = click.style("PASS", fg="green") if r.passed else click.style("FAIL", fg="red")
+            rows.append([status, r.category, r.name, r.message])
 
-    all_passed = all(r.passed for r in results)
-    sys.exit(0 if all_passed else 1)
+        if rows:
+            echo_table(
+                headers=["Status", "Category", "Check", "Message"],
+                rows=rows,
+            )
+        else:
+            click.echo("No checks to run.")
+
+        passed = sum(1 for r in results if r.passed)
+        failed = sum(1 for r in results if not r.passed)
+        total = len(results)
+        click.echo("")
+        if failed == 0:
+            echo_success(f"All {total} checks passed")
+        else:
+            echo_error(f"{failed}/{total} checks failed")
+
+    if any(not r.passed for r in results):
+        sys.exit(1)
 ```
 
-**Step 4: Run test to verify it passes**
+**Step 4: Register the command with the CLI group**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py -v --no-header 2>&1 | tail -15`
-
-**Expected output:**
-```
-PASSED tests/cli/commands/test_check.py::TestCheckCommand::test_check_command_exists
-PASSED tests/cli/commands/test_check.py::TestCheckCommandExecution::test_all_checks_pass_exit_0
-PASSED tests/cli/commands/test_check.py::TestCheckCommandExecution::test_failing_check_exit_1
-PASSED tests/cli/commands/test_check.py::TestCheckCommandExecution::test_output_contains_check_names
-```
-
-**Step 5: Commit**
-
-```bash
-git add miniautogen/cli/commands/check.py tests/cli/commands/test_check.py
-git commit -m "feat(cli): wire check command to service with text rendering"
-```
-
-**If Task Fails:**
-
-1. **`find_project_root` not found:** Check exact name in `miniautogen/cli/config.py`. It may be named differently.
-2. **`run_async` not found in main.py:** Check the exact location. It may be in a separate `_utils.py` or directly in `main.py`.
-3. **`sys.exit(1)` causes CliRunner issues:** CliRunner catches SystemExit. Check `result.exit_code` instead of looking at exceptions.
-4. **`monkeypatch.chdir` not recognized:** Ensure `monkeypatch` is typed as `pytest.MonkeyPatch`.
-5. **Can't recover:** `git checkout -- miniautogen/cli/commands/check.py` and re-read Chunk 1 helpers.
-
----
-
-## Task 10: Add JSON output format test
-
-**Files:**
-- Modify: `tests/cli/commands/test_check.py`
-
-**Prerequisites:**
-- Task 9 complete
-
-**Step 1: Write the test**
-
-Append to `tests/cli/commands/test_check.py`:
+Modify `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py` — add at the bottom of the file, after the `cli` function:
 
 ```python
-import json as json_module
+from miniautogen.cli.commands.check import check  # noqa: E402
 
-
-class TestCheckJsonOutput:
-    def test_json_format_valid(
-        self,
-        runner: CliRunner,
-        valid_project: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """--format json produces valid JSON with expected structure."""
-        monkeypatch.setenv("OPENAI_API_KEY", "sk-test-123")
-        monkeypatch.chdir(valid_project)
-        result = runner.invoke(cli, ["check", "--format", "json"])
-        assert result.exit_code == 0, f"Output: {result.output}"
-
-        data = json_module.loads(result.output)
-        assert "checks" in data
-        assert "summary" in data
-        assert isinstance(data["checks"], list)
-        assert data["summary"]["total"] > 0
-        assert data["summary"]["failed"] == 0
-
-    def test_json_format_with_failures(
-        self,
-        runner: CliRunner,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """JSON output includes failure details."""
-        config_file = tmp_path / "miniautogen.yaml"
-        config_file.write_text(
-            "project:\n"
-            "  name: test\n"
-            "  version: '0.1.0'\n"
-            "provider:\n"
-            "  default: litellm\n"
-            "  model: gpt-4o-mini\n"
-            "pipelines:\n"
-            "  main:\n"
-            "    target: nonexistent_xyz:build\n"
-        )
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-        result = runner.invoke(cli, ["check", "--format", "json"])
-        assert result.exit_code == 1
-
-        data = json_module.loads(result.output)
-        assert data["summary"]["failed"] > 0
-        failed = [c for c in data["checks"] if not c["passed"]]
-        assert len(failed) > 0
-        for check_item in data["checks"]:
-            assert "name" in check_item
-            assert "passed" in check_item
-            assert "message" in check_item
-            assert "category" in check_item
+cli.add_command(check)
 ```
 
-**Step 2: Run test to verify it passes**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py::TestCheckJsonOutput -v --no-header 2>&1 | tail -10`
-
-**Expected output:**
-```
-PASSED tests/cli/commands/test_check.py::TestCheckJsonOutput::test_json_format_valid
-PASSED tests/cli/commands/test_check.py::TestCheckJsonOutput::test_json_format_with_failures
-```
-
-**Step 3: Commit**
-
-```bash
-git add tests/cli/commands/test_check.py
-git commit -m "test(cli): add JSON output format tests for check command"
-```
-
-**If Task Fails:**
-
-1. **JSON parse error:** The text rendering may be mixed with JSON. Ensure `_render_json` is called exclusively when `--format json`.
-2. **Exit code wrong:** The JSON rendering works but exit code logic may need adjustment.
-3. **Can't recover:** Check `result.output` manually.
-
----
-
-## Task 11: Add edge case tests
-
-**Files:**
-- Modify: `tests/cli/commands/test_check.py`
-
-**Prerequisites:**
-- Task 10 complete
-
-**Step 1: Write edge case tests**
-
-Append to `tests/cli/commands/test_check.py`:
+**Important:** If Chunk 1 already registered other commands (like `init`) at the bottom of `main.py`, add the `check` import next to them. The pattern should be:
 
 ```python
-class TestCheckEdgeCases:
-    def test_no_config_file_exits_with_error(
-        self,
-        runner: CliRunner,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        """Running check without a miniautogen.yaml shows error."""
-        monkeypatch.chdir(tmp_path)
-        result = runner.invoke(cli, ["check"])
-        assert result.exit_code != 0
-        assert "error" in result.output.lower()
+# Register commands
+from miniautogen.cli.commands.init import init  # noqa: E402
+from miniautogen.cli.commands.check import check  # noqa: E402
 
-    def test_check_help_text(self, runner: CliRunner) -> None:
-        """Check --help shows format option."""
-        result = runner.invoke(cli, ["check", "--help"])
-        assert result.exit_code == 0
-        assert "--format" in result.output
-        assert "text" in result.output
-        assert "json" in result.output
+cli.add_command(init)
+cli.add_command(check)
 ```
 
-**Step 2: Run test to verify it passes**
+**Step 5: Run tests to verify they pass**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py::TestCheckEdgeCases -v --no-header 2>&1 | tail -10`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/commands/test_check.py -v --no-header 2>&1 | tail -15
+```
 
 **Expected output:**
 ```
-PASSED tests/cli/commands/test_check.py::TestCheckEdgeCases::test_no_config_file_exits_with_error
-PASSED tests/cli/commands/test_check.py::TestCheckEdgeCases::test_check_help_text
+tests/cli/commands/test_check.py::TestCheckCommandText::test_all_checks_pass PASSED
+tests/cli/commands/test_check.py::TestCheckCommandText::test_exit_code_1_on_failure PASSED
+tests/cli/commands/test_check.py::TestCheckCommandText::test_no_project_found_error PASSED
+tests/cli/commands/test_check.py::TestCheckCommandJson::test_json_format_output PASSED
 ```
 
-**Step 3: Commit**
+**Step 6: Verify CLI integration**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen check --help
+```
+
+**Expected output:**
+```
+Usage: python -m miniautogen check [OPTIONS]
+
+  Validate project configuration, specs, and environment.
+
+Options:
+  --format [text|json]  Output format (text table or JSON).
+  --help                Show this message and exit.
+```
+
+**Step 7: Lint check**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/commands/check.py tests/cli/commands/test_check.py
+```
+
+**Expected output:** No issues.
+
+**Step 8: Commit**
 
 ```bash
-git add tests/cli/commands/test_check.py
-git commit -m "test(cli): add edge case tests for check command"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/commands/check.py miniautogen/cli/main.py tests/cli/commands/__init__.py tests/cli/commands/test_check.py
+git commit -m "feat(cli): add 'miniautogen check' command with text/json output"
 ```
 
 **If Task Fails:**
-
-1. **`find_project_root` raises unexpected exception:** The error handling in the check command may need adjustment based on the actual exception type from Chunk 1.
-2. **Can't recover:** Inspect `find_project_root` behavior when no config exists.
-
----
-
-## Task 12: Run Code Review (full check command)
-
-1. **Dispatch all 3 reviewers in parallel:**
-   - REQUIRED SUB-SKILL: Use requesting-code-review
-   - All reviewers run simultaneously (code-reviewer, business-logic-reviewer, security-reviewer)
-   - Wait for all to complete
-
-2. **Handle findings by severity (MANDATORY):**
-
-**Critical/High/Medium Issues:**
-- Fix immediately (do NOT add TODO comments for these severities)
-- Re-run all 3 reviewers in parallel after fixes
-- Repeat until zero Critical/High/Medium issues remain
-
-**Low Issues:**
-- Add `TODO(review):` comments in code at the relevant location
-- Format: `TODO(review): [Issue description] (reported by [reviewer] on [date], severity: Low)`
-
-**Cosmetic/Nitpick Issues:**
-- Add `FIXME(nitpick):` comments in code at the relevant location
-- Format: `FIXME(nitpick): [Issue description] (reported by [reviewer] on [date], severity: Cosmetic)`
-
-3. **Proceed only when:**
-   - Zero Critical/High/Medium issues remain
-   - All Low issues have TODO(review): comments added
-   - All Cosmetic issues have FIXME(nitpick): comments added
+1. **CliRunner can't find project:** The `CliRunner` runs in a temporary environment. The tests use `_scaffold_project` which writes to `tmp_path`, but the `check` command uses `Path.cwd()` to find the project root. You may need to monkeypatch `Path.cwd()` or set `MINIAUTOGEN_PROJECT_ROOT` env var. If so, update `find_project_root` to also check an env var, or monkeypatch in tests:
+   ```python
+   monkeypatch.chdir(tmp_path)
+   ```
+   Add `monkeypatch` parameter to test methods and call `monkeypatch.chdir(tmp_path)` before `runner.invoke`.
+2. **`run_async` not working:** Verify the decorator from Chunk 1 bridges async to sync correctly. If `anyio.from_thread.run` fails, try `anyio.run`:
+   ```python
+   def run_async(func):
+       @functools.wraps(func)
+       def wrapper(*args, **kwargs):
+           return anyio.from_thread.run(func, *args, **kwargs)
+       return wrapper
+   ```
+   If that does not work, use:
+   ```python
+   def run_async(func):
+       @functools.wraps(func)
+       def wrapper(*args, **kwargs):
+           return anyio.run(func, *args, **kwargs)
+       return wrapper
+   ```
+3. **Rollback:** `git checkout -- miniautogen/cli/commands/check.py miniautogen/cli/main.py tests/cli/commands/`
 
 ---
 
@@ -1727,86 +2793,118 @@ git commit -m "test(cli): add edge case tests for check command"
 - No new files
 
 **Prerequisites:**
-- All previous tasks complete
+- Task 12 complete
 
 **Step 1: Run all check-related tests**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/ -v --no-header 2>&1 | tail -25`
-
-**Expected output:** All tests PASSED. Zero failures.
-
-**Step 2: Run ruff lint**
-
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/services/check_project.py miniautogen/cli/commands/check.py 2>&1`
-
-**Expected output:**
-```
-All checks passed!
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/ -v --no-header 2>&1 | tail -40
 ```
 
-**If lint errors:** Fix them (typically import ordering, line length). Re-run.
+**Expected output:** All tests PASSED.
 
-**Step 3: Run ruff format check**
+**Step 2: Run ruff on all new files**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && ruff format --check miniautogen/cli/services/check_project.py miniautogen/cli/commands/check.py 2>&1`
-
-**Expected output:**
-```
-2 files already formatted.
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/models.py miniautogen/cli/services/check_project.py miniautogen/cli/commands/check.py tests/cli/test_models.py tests/cli/services/test_check_project.py tests/cli/commands/test_check.py
 ```
 
-**If formatting needed:** Run `ruff format miniautogen/cli/services/check_project.py miniautogen/cli/commands/check.py` and commit.
+**Expected output:** No issues (or fix any reported issues).
 
-**Step 4: Run the full existing test suite to check for regressions**
+**Step 3: Run full project test suite to verify no regressions**
 
-Run: `cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest --no-header -q 2>&1 | tail -5`
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest --co -q 2>&1 | tail -3
+```
 
-**Expected output:** All tests pass, no regressions.
+**Expected output:** Test count should be >= previous count (500+).
 
-**Step 5: Commit any lint fixes**
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest --timeout=120 -x -q 2>&1 | tail -10
+```
+
+**Expected output:** All tests pass.
+
+**Step 4: Fix any regressions**
+
+If tests fail:
+- Read the error messages carefully
+- Fix the issue in the appropriate file
+- Re-run the failing test to verify the fix
+- Re-run the full suite
+
+**Step 5: Commit any fixes**
 
 ```bash
-git add -A
-git commit -m "style(cli): fix lint and formatting for check command"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add -u
+git commit -m "fix(cli): resolve lint/test issues in check command"
 ```
 
-(Only commit if there were changes. If everything was clean, skip.)
-
 **If Task Fails:**
-
-1. **Lint errors on line length:** Ensure lines are under 100 chars (ruff config).
-2. **Import order:** ruff auto-fixes with `ruff check --fix`.
-3. **Regressions in existing tests:** Investigate — the check command should not affect existing code. If it does, there is a side effect to investigate.
+1. **Existing tests break:** Check if new imports in `main.py` cause circular imports. Move command registration to a lazy pattern if needed.
+2. **Rollback:** `git stash` and investigate.
 
 ---
 
-## Summary of Files Created/Modified
+## Task 14: Run Code Review (Final)
 
-**Created:**
-- `miniautogen/cli/services/check_project.py` — Service layer with all checks
-- `miniautogen/cli/commands/check.py` — Click command adapter
-- `tests/cli/services/__init__.py` — Test package init
-- `tests/cli/services/test_check_project.py` — Service tests
-- `tests/cli/commands/__init__.py` — Test package init (if not from Chunk 1)
-- `tests/cli/commands/test_check.py` — Command integration tests
+1. **Dispatch all 3 reviewers in parallel:**
+   - REQUIRED SUB-SKILL: Use requesting-code-review
+   - All reviewers run simultaneously (code-reviewer, business-logic-reviewer, security-reviewer)
+   - Wait for all to complete
 
-**Modified:**
-- `miniautogen/cli/main.py` — Register check command with CLI group
+2. **Handle findings by severity (MANDATORY):**
 
-## Dependency Graph
+**Critical/High/Medium Issues:**
+- Fix immediately (do NOT add TODO comments for these severities)
+- Re-run all 3 reviewers in parallel after fixes
+- Repeat until zero Critical/High/Medium issues remain
 
-```
-Task 1 (CheckResult + skeleton)
-  └── Task 2 (config schema check)
-        └── Task 3 (pipeline targets check)
-              └── Task 4 (agent references check)
-                    └── Task 5 (env vars check)
-                          └── Task 6 (database URL check)
-                                └── Task 7 (Code Review - services)
-                                      └── Task 8 (Click command skeleton)
-                                            └── Task 9 (Wire command to service)
-                                                  └── Task 10 (JSON output tests)
-                                                        └── Task 11 (Edge case tests)
-                                                              └── Task 12 (Code Review - full)
-                                                                    └── Task 13 (Full suite + lint)
-```
+**Low Issues:**
+- Add `TODO(review):` comments in code at the relevant location
+
+**Cosmetic/Nitpick Issues:**
+- Add `FIXME(nitpick):` comments in code at the relevant location
+
+3. **Proceed only when:**
+   - Zero Critical/High/Medium issues remain
+   - All Low issues have TODO(review): comments added
+   - All Cosmetic issues have FIXME(nitpick): comments added
+
+---
+
+## Summary of files created/modified
+
+**New files:**
+- `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/models.py` — CLI validation models
+- `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/check_project.py` — Check service
+- `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/check.py` — Click command
+- `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_models.py` — Model tests
+- `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py` — Package init
+- `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_check_project.py` — Service tests
+- `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py` — Package init
+- `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_check.py` — Command tests
+
+**Modified files:**
+- `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py` — Register check command
+
+**Check coverage:**
+
+| Check | Type | Check Name Pattern |
+|-------|------|--------------------|
+| Config schema valid | static | `config_schema` |
+| Agent YAML valid | static | `agent_{name}` |
+| Skill dir valid | static | `skill_{name}` |
+| Tool YAML valid | static | `tool_{name}` |
+| Pipeline targets resolve | static | `pipeline_target_{name}` |
+| Default engine profile exists | static | `default_engine_profile` |
+| Agent engine profile refs | static | `engine_profile_ref_{agent}` |
+| Agent -> skill cross-ref | static | `xref_{agent}_skill_{skill}` |
+| Agent -> tool cross-ref | static | `xref_{agent}_tool_{tool}` |
+| API keys per engine profile | environment | `env_profile_{name}` |
+| Database URL valid | environment | `database_url` |

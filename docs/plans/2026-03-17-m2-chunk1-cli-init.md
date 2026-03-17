@@ -2,9 +2,9 @@
 
 > **For Agents:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
-**Goal:** Set up CLI infrastructure (main group, config, errors, output) and implement the first command (`miniautogen init <name>`) that scaffolds a new project.
+**Goal:** Set up CLI infrastructure (main group, config, errors, output) and implement `miniautogen init <name>` that scaffolds a multi-agent project with agents, skills, tools, mcp, and pipelines.
 
-**Architecture:** CLI as pure SDK consumer. `commands/` are Click adapters (parse args, render output). `services/` contain testable application logic that never touches Click. `config.py` handles YAML project resolution. All CLI code may only import from `miniautogen.api` and `miniautogen.cli.*` — never from internal modules. An architectural import boundary test enforces this automatically.
+**Architecture:** CLI as pure SDK consumer. `commands/` are Click adapters (parse args, render output). `services/` contain testable application logic that never touches Click. `config.py` handles YAML project resolution with Pydantic v2 models. All CLI code may only import from `miniautogen.api` and `miniautogen.cli.*` — never from internal modules (`core`, `stores`, `backends`, etc.). An architectural import boundary test enforces this.
 
 **Tech Stack:** Python 3.10+, Click 8+, PyYAML 6+, Jinja2 3.1+, Pydantic v2, AnyIO 4+, pytest 7+, ruff (line-length=100)
 
@@ -12,7 +12,7 @@
 - Environment: macOS, Python 3.10 or 3.11
 - Tools: `python --version`, `pytest --version`, `ruff --version`, `poetry --version`
 - State: Work from `main` branch, clean working tree
-- Existing: 542+ tests passing, `miniautogen/api.py` with 47 exports
+- Existing: `miniautogen/api.py` with public exports, 500+ tests passing
 
 **Verification before starting:**
 ```bash
@@ -33,279 +33,523 @@ pytest --co -q 2>&1 | tail -1  # Expected: "NNN tests collected"
 - Modify: `/Users/brunocapelao/Projects/miniAutoGen/pyproject.toml`
 
 **Prerequisites:**
-- Poetry installed and functional
+- File exists: `/Users/brunocapelao/Projects/miniAutoGen/pyproject.toml`
 
-**Step 1: Add dependencies and scripts entry**
+**Step 1: Add click and pyyaml to `[tool.poetry.dependencies]`**
 
-Open `/Users/brunocapelao/Projects/miniAutoGen/pyproject.toml` and make these changes:
-
-In the `[tool.poetry.dependencies]` section, add two lines after the existing `httpx` entry:
+Open `/Users/brunocapelao/Projects/miniAutoGen/pyproject.toml` and add two lines after the `httpx` dependency:
 
 ```toml
 click = ">=8.0"
 pyyaml = ">=6.0"
 ```
 
-After the `[tool.poetry.group.dev.dependencies]` section (before `[tool.ruff]`), add:
+The `[tool.poetry.dependencies]` section should now contain (showing last 3 lines + new):
+
+```toml
+httpx = ">=0.28.0"
+click = ">=8.0"
+pyyaml = ">=6.0"
+```
+
+**Step 2: Add poetry scripts entry point**
+
+Add this new section after `[tool.poetry.group.dev.dependencies]` and before `[tool.ruff]`:
 
 ```toml
 [tool.poetry.scripts]
 miniautogen = "miniautogen.cli.main:cli"
 ```
 
-The full `[tool.poetry.dependencies]` section should read:
-
-```toml
-[tool.poetry.dependencies]
-python = ">3.10, <3.12"
-openai = ">=1.3.9"
-python-dotenv = "1.0.0"
-sqlalchemy = ">=2.0.23"
-litellm = ">=1.16.12"
-pydantic = ">=2.5.0"
-aiosqlite = ">=0.19.0"
-anyio = ">=4.0.0"
-jinja2 = ">=3.1.0"
-structlog = ">=24.0.0"
-tenacity = ">=8.2.0"
-fastapi = ">=0.115.0"
-uvicorn = ">=0.32.0"
-httpx = ">=0.28.0"
-click = ">=8.0"
-pyyaml = ">=6.0"
-```
-
-**Step 2: Lock and install**
+**Step 3: Install dependencies**
 
 Run:
 ```bash
 cd /Users/brunocapelao/Projects/miniAutoGen && poetry lock --no-update && poetry install
 ```
 
-**Expected output:** No errors. Lock file updated, packages installed.
+**Expected output:** Lock file updated, packages installed without errors.
 
-**Step 3: Verify imports**
+**Step 4: Verify imports**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && python -c "import click; import yaml; print('ok')"
+cd /Users/brunocapelao/Projects/miniAutoGen && python -c "import click; import yaml; print('click', click.__version__); print('pyyaml OK')"
 ```
 
 **Expected output:**
 ```
-ok
+click 8.x.x
+pyyaml OK
 ```
-
-**Step 4: Verify existing tests still pass**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest --co -q 2>&1 | tail -1
-```
-
-**Expected output:** `NNN tests collected` (same count as before, no errors)
 
 **Step 5: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add pyproject.toml poetry.lock && git commit -m "chore: add click and pyyaml dependencies, add CLI scripts entry"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add pyproject.toml poetry.lock
+git commit -m "feat(cli): add click and pyyaml dependencies + CLI entry point"
 ```
 
 **If Task Fails:**
-1. **poetry lock fails:** Check for version conflicts. Try `poetry lock` (without `--no-update`) to resolve.
-2. **Import fails:** Run `poetry install` again, verify virtual environment is active.
-3. **Can't recover:** `git checkout -- pyproject.toml poetry.lock` and start over.
+1. `poetry lock` fails: Check version constraints are valid. Try `poetry lock` without `--no-update`.
+2. Import fails: Run `poetry install` again, check virtualenv is active.
+3. Rollback: `git checkout -- pyproject.toml`
 
 ---
 
-## Task 2: Create CLI foundation — __main__.py and cli package skeleton
+## Task 2: Create CLI foundation — main.py, __main__.py, and package __init__.py files
 
 **Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/__main__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/__init__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/__main__.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/__init__.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/__init__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/__init__.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_main.py`
 
 **Prerequisites:**
 - Task 1 complete (click installed)
-- Directory `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/` exists
 
 **Step 1: Create directory structure**
 
 Run:
 ```bash
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/tests/cli
+cd /Users/brunocapelao/Projects/miniAutoGen
+mkdir -p miniautogen/cli/commands miniautogen/cli/services miniautogen/cli/templates/project/agents miniautogen/cli/templates/project/skills/example miniautogen/cli/templates/project/tools miniautogen/cli/templates/project/pipelines tests/cli
 ```
 
-**Step 2: Create __main__.py**
+**Expected output:** No output (directories created silently).
 
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/__main__.py`:
+**Step 2: Create `miniautogen/cli/__init__.py`**
 
 ```python
-"""Support ``python -m miniautogen``."""
-
-from miniautogen.cli.main import cli
-
-cli()
+"""MiniAutoGen CLI — developer-facing command-line interface."""
 ```
 
-**Step 3: Create cli/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/__init__.py`:
+**Step 3: Create `miniautogen/cli/commands/__init__.py`**
 
 ```python
-"""MiniAutoGen CLI — developer experience layer on top of the public SDK."""
+"""CLI command adapters."""
 ```
 
-**Step 4: Create cli/main.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py`:
+**Step 4: Create `miniautogen/cli/services/__init__.py`**
 
 ```python
-"""CLI entry point and async bridge.
-
-This module defines the top-level Click group and a helper to bridge
-synchronous Click commands to asynchronous service functions via AnyIO.
-"""
-
-from __future__ import annotations
-
-import functools
-from typing import Any, Callable, TypeVar
-
-import anyio
-import click
-
-F = TypeVar("F", bound=Callable[..., Any])
-
-_VERSION = "0.1.0"
-
-
-def run_async(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Run an async function synchronously using AnyIO.
-
-    Used by Click commands to call async service functions::
-
-        result = run_async(scaffold_project, name="demo", model="gpt-4o-mini")
-    """
-    return anyio.from_thread.run(func, *args, **kwargs) if False else anyio.run(
-        functools.partial(func, *args, **kwargs),
-    )
-
-
-def _get_version() -> str:
-    """Return package version from metadata, falling back to hardcoded value."""
-    try:
-        from importlib.metadata import version
-
-        return version("miniautogen")
-    except Exception:
-        return _VERSION
-
-
-@click.group()
-@click.version_option(version=_get_version(), prog_name="miniautogen")
-def cli() -> None:
-    """MiniAutoGen — multi-agent orchestration framework."""
+"""CLI application services — testable logic, no Click dependency."""
 ```
 
-**Step 5: Create tests/cli/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/__init__.py`:
+**Step 5: Create `tests/cli/__init__.py`**
 
 ```python
 ```
 
 (Empty file.)
 
-**Step 6: Write the tests**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_main.py`:
+**Step 6: Create `miniautogen/cli/main.py`**
 
 ```python
-"""Tests for CLI entry point and version flag."""
+"""Click group and async bridge for the MiniAutoGen CLI."""
 
 from __future__ import annotations
 
-from click.testing import CliRunner
+import functools
+from typing import Any
 
-from miniautogen.cli.main import cli, run_async
-
-
-def test_cli_version_flag() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--version"])
-
-    assert result.exit_code == 0
-    assert "miniautogen" in result.output
-    assert "0.1.0" in result.output or "version" in result.output.lower()
+import anyio
+import click
 
 
-def test_cli_help_flag() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["--help"])
+def run_async(func):  # noqa: ANN001, ANN201
+    """Decorator that bridges an async Click command to sync Click entry."""
 
-    assert result.exit_code == 0
-    assert "multi-agent orchestration" in result.output.lower()
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        return anyio.from_thread.run(func, *args, **kwargs)
 
-
-def test_cli_no_args_shows_help() -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, [])
-
-    assert result.exit_code == 0
-    assert "Usage" in result.output or "usage" in result.output.lower()
+    return wrapper
 
 
-async def _async_add(a: int, b: int) -> int:
-    return a + b
-
-
-def test_run_async_executes_coroutine() -> None:
-    result = run_async(_async_add, 2, 3)
-    assert result == 5
+@click.group()
+@click.version_option(package_name="miniautogen")
+def cli() -> None:
+    """MiniAutoGen — Multi-agent orchestration framework."""
 ```
 
-**Step 7: Run the tests**
+**Step 7: Create `miniautogen/__main__.py`**
+
+```python
+"""Allow `python -m miniautogen` to launch the CLI."""
+
+from miniautogen.cli.main import cli
+
+cli()
+```
+
+**Step 8: Verify CLI loads**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_main.py -v
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help
 ```
 
 **Expected output:**
 ```
-tests/cli/test_main.py::test_cli_version_flag PASSED
-tests/cli/test_main.py::test_cli_help_flag PASSED
-tests/cli/test_main.py::test_cli_no_args_shows_help PASSED
-tests/cli/test_main.py::test_run_async_executes_coroutine PASSED
+Usage: python -m miniautogen [OPTIONS] COMMAND [ARGS]...
+
+  MiniAutoGen — Multi-agent orchestration framework.
+
+Options:
+  --version  Show the version number and exit.
+  --help     Show this message and exit.
 ```
 
-**Step 8: Run ruff**
+**Step 9: Verify `--version`**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/ miniautogen/__main__.py tests/cli/ --fix
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --version
 ```
 
-**Expected output:** No errors, or only auto-fixed formatting issues.
+**Expected output:**
+```
+python -m miniautogen, version 0.1.0
+```
 
-**Step 9: Commit**
+**Step 10: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/__main__.py miniautogen/cli/__init__.py miniautogen/cli/main.py tests/cli/__init__.py tests/cli/test_main.py && git commit -m "feat: add CLI foundation with Click group and async bridge"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/__main__.py miniautogen/cli/ tests/cli/__init__.py
+git commit -m "feat(cli): create CLI foundation with Click group and async bridge"
 ```
 
 **If Task Fails:**
-1. **Import error on click:** Verify Task 1 completed. Run `poetry install`.
-2. **run_async test hangs:** Ensure AnyIO 4+ is installed. Check `anyio.run` is called correctly.
-3. **Can't recover:** `git checkout -- .` and revisit.
+1. Import error on `anyio`: Verify `poetry install` was run (anyio is an existing dependency).
+2. `--version` shows wrong version: Check `pyproject.toml` has `version = "0.1.0"`.
+3. Rollback: `git checkout -- miniautogen/ tests/`
 
 ---
 
-## Task 3: Create CLI error hierarchy
+## Task 3: Create config.py with full ProjectConfig Pydantic model
+
+**Files:**
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/config.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_config.py`
+
+**Prerequisites:**
+- Task 2 complete (cli package exists)
+- `pydantic>=2.5.0` installed (existing dependency)
+- `pyyaml>=6.0` installed (Task 1)
+
+**Step 1: Write failing tests for ProjectConfig**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_config.py`:
+
+```python
+"""Tests for CLI config loading and ProjectConfig model."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+import yaml
+
+
+class TestEngineProfileConfig:
+    def test_api_profile(self) -> None:
+        from miniautogen.cli.config import EngineProfileConfig
+
+        profile = EngineProfileConfig(
+            kind="api",
+            provider="litellm",
+            model="gpt-4o-mini",
+            temperature=0.2,
+        )
+        assert profile.kind == "api"
+        assert profile.provider == "litellm"
+        assert profile.model == "gpt-4o-mini"
+        assert profile.temperature == 0.2
+        assert profile.command is None
+
+    def test_cli_profile(self) -> None:
+        from miniautogen.cli.config import EngineProfileConfig
+
+        profile = EngineProfileConfig(
+            kind="cli",
+            provider="gemini",
+            command="gemini",
+        )
+        assert profile.kind == "cli"
+        assert profile.command == "gemini"
+        assert profile.model is None
+
+    def test_default_temperature(self) -> None:
+        from miniautogen.cli.config import EngineProfileConfig
+
+        profile = EngineProfileConfig(kind="api", provider="litellm")
+        assert profile.temperature == 0.2
+
+
+class TestProjectConfig:
+    def test_full_config(self) -> None:
+        from miniautogen.cli.config import ProjectConfig
+
+        data = {
+            "project": {"name": "test-project", "version": "0.1.0"},
+            "defaults": {"engine_profile": "default_api"},
+            "engine_profiles": {
+                "default_api": {
+                    "kind": "api",
+                    "provider": "litellm",
+                    "model": "gpt-4o-mini",
+                    "temperature": 0.2,
+                }
+            },
+            "pipelines": {"main": {"target": "pipelines.main:build_pipeline"}},
+            "database": {"url": "sqlite+aiosqlite:///miniautogen.db"},
+        }
+        config = ProjectConfig(**data)
+        assert config.project.name == "test-project"
+        assert config.project.version == "0.1.0"
+        assert config.defaults.engine_profile == "default_api"
+        assert config.engine_profiles["default_api"].kind == "api"
+        assert config.pipelines["main"].target == "pipelines.main:build_pipeline"
+        assert config.database is not None
+        assert config.database.url == "sqlite+aiosqlite:///miniautogen.db"
+
+    def test_config_without_database(self) -> None:
+        from miniautogen.cli.config import ProjectConfig
+
+        data = {
+            "project": {"name": "test-project", "version": "0.1.0"},
+            "defaults": {"engine_profile": "default_api"},
+            "engine_profiles": {
+                "default_api": {"kind": "api", "provider": "litellm"}
+            },
+            "pipelines": {"main": {"target": "pipelines.main:build_pipeline"}},
+        }
+        config = ProjectConfig(**data)
+        assert config.database is None
+
+
+class TestFindProjectRoot:
+    def test_finds_root_with_yaml(self, tmp_path: Path) -> None:
+        from miniautogen.cli.config import find_project_root
+
+        (tmp_path / "miniautogen.yaml").write_text("project:\n  name: test\n")
+        sub = tmp_path / "a" / "b"
+        sub.mkdir(parents=True)
+        found = find_project_root(sub)
+        assert found == tmp_path
+
+    def test_returns_none_when_not_found(self, tmp_path: Path) -> None:
+        from miniautogen.cli.config import find_project_root
+
+        found = find_project_root(tmp_path)
+        assert found is None
+
+
+class TestLoadConfig:
+    def test_loads_yaml_into_model(self, tmp_path: Path) -> None:
+        from miniautogen.cli.config import load_config
+
+        yaml_content = {
+            "project": {"name": "loaded-project", "version": "1.0.0"},
+            "defaults": {"engine_profile": "default_api"},
+            "engine_profiles": {
+                "default_api": {
+                    "kind": "api",
+                    "provider": "litellm",
+                    "model": "gpt-4o-mini",
+                }
+            },
+            "pipelines": {"main": {"target": "pipelines.main:build_pipeline"}},
+            "database": {"url": "sqlite+aiosqlite:///test.db"},
+        }
+        config_file = tmp_path / "miniautogen.yaml"
+        config_file.write_text(yaml.dump(yaml_content))
+        config = load_config(config_file)
+        assert config.project.name == "loaded-project"
+        assert config.engine_profiles["default_api"].provider == "litellm"
+
+    def test_raises_on_missing_file(self, tmp_path: Path) -> None:
+        from miniautogen.cli.config import load_config
+
+        with pytest.raises(FileNotFoundError):
+            load_config(tmp_path / "nonexistent.yaml")
+
+    def test_raises_on_invalid_yaml(self, tmp_path: Path) -> None:
+        from miniautogen.cli.config import load_config
+
+        config_file = tmp_path / "miniautogen.yaml"
+        config_file.write_text(": invalid: yaml: {{{")
+        with pytest.raises(Exception):
+            load_config(config_file)
+```
+
+**Step 2: Run tests to verify they fail**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_config.py -v 2>&1 | head -30
+```
+
+**Expected output:** All tests FAIL with `ImportError` or `ModuleNotFoundError` — the config module does not exist yet.
+
+**Step 3: Implement config.py**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/config.py`:
+
+```python
+"""Project configuration resolution and Pydantic models.
+
+Responsible for:
+- Finding the project root (walks up to find miniautogen.yaml)
+- Loading and validating miniautogen.yaml into typed Pydantic models
+- Providing EngineProfileConfig, DefaultsConfig, PipelineConfig,
+  DatabaseConfig, and the root ProjectConfig
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Literal
+
+import yaml
+from pydantic import BaseModel
+
+CONFIG_FILENAME = "miniautogen.yaml"
+
+
+class ProjectMeta(BaseModel):
+    """Project-level metadata."""
+
+    name: str
+    version: str = "0.1.0"
+
+
+class DefaultsConfig(BaseModel):
+    """Project-wide defaults."""
+
+    engine_profile: str
+
+
+class EngineProfileConfig(BaseModel):
+    """Engine profile — defines how an agent runs."""
+
+    kind: Literal["api", "cli"]
+    provider: str
+    model: str | None = None
+    command: str | None = None
+    temperature: float = 0.2
+
+
+class PipelineConfig(BaseModel):
+    """Pipeline reference — a Python import path target."""
+
+    target: str
+
+
+class DatabaseConfig(BaseModel):
+    """Database connection configuration."""
+
+    url: str
+
+
+class ProjectConfig(BaseModel):
+    """Root project configuration parsed from miniautogen.yaml."""
+
+    project: ProjectMeta
+    defaults: DefaultsConfig
+    engine_profiles: dict[str, EngineProfileConfig]
+    pipelines: dict[str, PipelineConfig]
+    database: DatabaseConfig | None = None
+
+
+def find_project_root(start: Path | None = None) -> Path | None:
+    """Walk up from *start* looking for miniautogen.yaml.
+
+    Returns the directory containing the config file, or None.
+    """
+    current = (start or Path.cwd()).resolve()
+    for directory in [current, *current.parents]:
+        if (directory / CONFIG_FILENAME).is_file():
+            return directory
+    return None
+
+
+def load_config(path: Path) -> ProjectConfig:
+    """Load and validate a miniautogen.yaml file.
+
+    Args:
+        path: Exact path to the YAML config file.
+
+    Returns:
+        A validated ProjectConfig instance.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        yaml.YAMLError: If YAML parsing fails.
+        pydantic.ValidationError: If the data does not match the schema.
+    """
+    if not path.is_file():
+        msg = f"Config file not found: {path}"
+        raise FileNotFoundError(msg)
+    text = path.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    return ProjectConfig(**data)
+```
+
+**Step 4: Run tests to verify they pass**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_config.py -v
+```
+
+**Expected output:**
+```
+tests/cli/test_config.py::TestEngineProfileConfig::test_api_profile PASSED
+tests/cli/test_config.py::TestEngineProfileConfig::test_cli_profile PASSED
+tests/cli/test_config.py::TestEngineProfileConfig::test_default_temperature PASSED
+tests/cli/test_config.py::TestProjectConfig::test_full_config PASSED
+tests/cli/test_config.py::TestProjectConfig::test_config_without_database PASSED
+tests/cli/test_config.py::TestFindProjectRoot::test_finds_root_with_yaml PASSED
+tests/cli/test_config.py::TestFindProjectRoot::test_returns_none_when_not_found PASSED
+tests/cli/test_config.py::TestLoadConfig::test_loads_yaml_into_model PASSED
+tests/cli/test_config.py::TestLoadConfig::test_raises_on_missing_file PASSED
+tests/cli/test_config.py::TestLoadConfig::test_raises_on_invalid_yaml PASSED
+
+10 passed
+```
+
+**Step 5: Lint check**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/config.py tests/cli/test_config.py
+```
+
+**Expected output:** `All checks passed!` (or no output = no issues)
+
+**Step 6: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/config.py tests/cli/test_config.py
+git commit -m "feat(cli): add ProjectConfig model with YAML loading and project root discovery"
+```
+
+**If Task Fails:**
+1. Pydantic validation error in tests: Check field names match exactly (`engine_profile`, not `engine-profile`).
+2. YAML parse error: Ensure `yaml.safe_load` is used, not `yaml.load`.
+3. Rollback: `git checkout -- miniautogen/cli/config.py tests/cli/test_config.py`
+
+---
+
+## Task 4: Create errors.py — CLI error hierarchy and exit codes
 
 **Files:**
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/errors.py`
@@ -314,7 +558,7 @@ cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/__main__.py m
 **Prerequisites:**
 - Task 2 complete (cli package exists)
 
-**Step 1: Write the failing test**
+**Step 1: Write failing tests**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_errors.py`:
 
@@ -323,118 +567,92 @@ Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_errors.py`:
 
 from __future__ import annotations
 
-import click
-import pytest
 
-from miniautogen.cli.errors import (
-    CLIError,
-    ConfigurationError,
-    PipelineNotFoundError,
-    ProjectNotFoundError,
-    ValidationError,
-)
+class TestCLIErrorHierarchy:
+    def test_base_error(self) -> None:
+        from miniautogen.cli.errors import CLIError
 
+        err = CLIError("something went wrong")
+        assert str(err) == "something went wrong"
+        assert err.exit_code == 1
 
-def test_cli_error_is_click_exception() -> None:
-    err = CLIError("something failed")
-    assert isinstance(err, click.ClickException)
+    def test_config_error(self) -> None:
+        from miniautogen.cli.errors import ConfigError
 
+        err = ConfigError("bad config")
+        assert isinstance(err, Exception)
+        assert err.exit_code == 78
 
-def test_cli_error_default_exit_code() -> None:
-    err = CLIError("fail")
-    assert err.exit_code == 1
+    def test_project_not_found_error(self) -> None:
+        from miniautogen.cli.errors import ProjectNotFoundError
 
+        err = ProjectNotFoundError("no project here")
+        assert err.exit_code == 66
 
-def test_cli_error_custom_exit_code() -> None:
-    err = CLIError("fail", exit_code=42)
-    assert err.exit_code == 42
+    def test_scaffold_error(self) -> None:
+        from miniautogen.cli.errors import ScaffoldError
 
+        err = ScaffoldError("cannot create")
+        assert err.exit_code == 73
 
-def test_cli_error_message() -> None:
-    err = CLIError("bad input")
-    assert err.format_message() == "bad input"
+    def test_pipeline_error(self) -> None:
+        from miniautogen.cli.errors import PipelineError
 
-
-def test_project_not_found_error_exit_code() -> None:
-    err = ProjectNotFoundError()
-    assert err.exit_code == 2
-    assert "miniautogen.yaml" in err.format_message().lower()
+        err = PipelineError("pipeline failed")
+        assert err.exit_code == 70
 
 
-def test_project_not_found_error_custom_message() -> None:
-    err = ProjectNotFoundError("custom msg")
-    assert err.format_message() == "custom msg"
-    assert err.exit_code == 2
+class TestExitCodes:
+    def test_exit_code_constants(self) -> None:
+        from miniautogen.cli.errors import (
+            EX_CANTCREAT,
+            EX_CONFIG,
+            EX_NOINPUT,
+            EX_OK,
+            EX_SOFTWARE,
+            EX_USAGE,
+        )
 
-
-def test_configuration_error_exit_code() -> None:
-    err = ConfigurationError("bad yaml")
-    assert err.exit_code == 3
-
-
-def test_pipeline_not_found_error_exit_code() -> None:
-    err = PipelineNotFoundError("main")
-    assert err.exit_code == 4
-    assert "main" in err.format_message()
-
-
-def test_validation_error_exit_code() -> None:
-    err = ValidationError("field X missing")
-    assert err.exit_code == 5
-
-
-@pytest.mark.parametrize(
-    "cls,code",
-    [
-        (ProjectNotFoundError, 2),
-        (ConfigurationError, 3),
-        (PipelineNotFoundError, 4),
-        (ValidationError, 5),
-    ],
-)
-def test_all_errors_are_cli_errors(
-    cls: type[CLIError], code: int,
-) -> None:
-    err = cls("test")
-    assert isinstance(err, CLIError)
-    assert isinstance(err, click.ClickException)
-    assert err.exit_code == code
+        assert EX_OK == 0
+        assert EX_USAGE == 64
+        assert EX_NOINPUT == 66
+        assert EX_SOFTWARE == 70
+        assert EX_CANTCREAT == 73
+        assert EX_CONFIG == 78
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Run tests to verify they fail**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_errors.py -v 2>&1 | head -5
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_errors.py -v 2>&1 | head -20
 ```
 
-**Expected output:**
-```
-FAILED ... ModuleNotFoundError: No module named 'miniautogen.cli.errors'
-```
+**Expected output:** All tests FAIL with `ImportError`.
 
-**Step 3: Write the implementation**
+**Step 3: Implement errors.py**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/errors.py`:
 
 ```python
-"""CLI error hierarchy with stable exit codes.
+"""CLI error hierarchy and sysexits-compatible exit codes.
 
-Exit codes:
-    1 — Generic CLI error
-    2 — Project not found (no miniautogen.yaml)
-    3 — Configuration error (invalid YAML / schema)
-    4 — Pipeline not found
-    5 — Validation error
+Exit codes follow the BSD sysexits convention (see sysexits.h).
 """
 
 from __future__ import annotations
 
-import click
+# --- Exit code constants (BSD sysexits) ---
+EX_OK = 0
+EX_USAGE = 64
+EX_NOINPUT = 66
+EX_SOFTWARE = 70
+EX_CANTCREAT = 73
+EX_CONFIG = 78
 
 
-class CLIError(click.ClickException):
-    """Base CLI error with a configurable exit code."""
+class CLIError(Exception):
+    """Base exception for all CLI errors."""
 
     exit_code: int = 1
 
@@ -444,371 +662,64 @@ class CLIError(click.ClickException):
             self.exit_code = exit_code
 
 
+class ConfigError(CLIError):
+    """Invalid or unparseable project configuration."""
+
+    exit_code: int = EX_CONFIG
+
+
 class ProjectNotFoundError(CLIError):
-    """Raised when miniautogen.yaml cannot be found."""
+    """No miniautogen.yaml found in directory tree."""
 
-    exit_code: int = 2
-
-    def __init__(self, message: str | None = None) -> None:
-        super().__init__(
-            message or "No miniautogen.yaml found in current or parent directories.",
-        )
+    exit_code: int = EX_NOINPUT
 
 
-class ConfigurationError(CLIError):
-    """Raised when configuration is invalid or unparseable."""
+class ScaffoldError(CLIError):
+    """Failed to create project scaffold."""
 
-    exit_code: int = 3
-
-
-class PipelineNotFoundError(CLIError):
-    """Raised when a referenced pipeline cannot be resolved."""
-
-    exit_code: int = 4
+    exit_code: int = EX_CANTCREAT
 
 
-class ValidationError(CLIError):
-    """Raised when input or schema validation fails."""
+class PipelineError(CLIError):
+    """Pipeline execution failure."""
 
-    exit_code: int = 5
+    exit_code: int = EX_SOFTWARE
 ```
 
 **Step 4: Run tests to verify they pass**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_errors.py -v
-```
-
-**Expected output:** All tests PASSED (11 tests).
-
-**Step 5: Run ruff**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/errors.py tests/cli/test_errors.py --fix
-```
-
-**Step 6: Commit**
-
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/errors.py tests/cli/test_errors.py && git commit -m "feat: add CLI error hierarchy with stable exit codes"
-```
-
-**If Task Fails:**
-1. **exit_code not sticking on subclass:** The `exit_code` class attribute must be set as a class variable, not an instance attribute in the base. The pattern above handles this correctly because `click.ClickException.__init__` does not set `exit_code` — Click reads `self.exit_code` which falls back to the class variable.
-2. **Can't recover:** `git checkout -- .` and revisit.
-
----
-
-## Task 4: Create config.py — project resolution and YAML loading
-
-**Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/config.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_config.py`
-
-**Prerequisites:**
-- Task 1 complete (pyyaml installed)
-- Task 3 complete (errors module exists)
-
-**Step 1: Write the failing test**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_config.py`:
-
-```python
-"""Tests for project configuration resolution and loading."""
-
-from __future__ import annotations
-
-from pathlib import Path
-
-import pytest
-import yaml
-
-from miniautogen.cli.config import ProjectConfig, find_project_root, load_config
-
-
-# --- ProjectConfig model ---
-
-
-def test_project_config_minimal() -> None:
-    cfg = ProjectConfig(
-        project={"name": "demo", "version": "0.1.0"},
-        provider={"default": "litellm", "model": "gpt-4o-mini"},
-        pipelines={"main": {"target": "pipelines.main:build_pipeline"}},
-    )
-    assert cfg.project["name"] == "demo"
-    assert cfg.provider["model"] == "gpt-4o-mini"
-
-
-def test_project_config_with_database() -> None:
-    cfg = ProjectConfig(
-        project={"name": "demo", "version": "0.1.0"},
-        provider={"default": "litellm", "model": "gpt-4o-mini"},
-        pipelines={"main": {"target": "pipelines.main:build"}},
-        database={"url": "sqlite+aiosqlite:///test.db"},
-    )
-    assert cfg.database is not None
-    assert cfg.database["url"] == "sqlite+aiosqlite:///test.db"
-
-
-def test_project_config_database_defaults_to_none() -> None:
-    cfg = ProjectConfig(
-        project={"name": "demo", "version": "0.1.0"},
-        provider={"default": "litellm", "model": "gpt-4o-mini"},
-        pipelines={"main": {"target": "pipelines.main:build"}},
-    )
-    assert cfg.database is None
-
-
-def test_project_config_rejects_missing_project() -> None:
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError):
-        ProjectConfig(
-            provider={"default": "litellm", "model": "gpt-4o-mini"},
-            pipelines={"main": {"target": "x:y"}},
-        )  # type: ignore[call-arg]
-
-
-def test_project_config_rejects_missing_provider() -> None:
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError):
-        ProjectConfig(
-            project={"name": "demo", "version": "0.1.0"},
-            pipelines={"main": {"target": "x:y"}},
-        )  # type: ignore[call-arg]
-
-
-def test_project_config_rejects_missing_pipelines() -> None:
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError):
-        ProjectConfig(
-            project={"name": "demo", "version": "0.1.0"},
-            provider={"default": "litellm", "model": "gpt-4o-mini"},
-        )  # type: ignore[call-arg]
-
-
-# --- find_project_root ---
-
-
-def test_find_project_root_in_current_dir(tmp_path: Path) -> None:
-    (tmp_path / "miniautogen.yaml").write_text("project:\n  name: test\n")
-    result = find_project_root(tmp_path)
-    assert result == tmp_path
-
-
-def test_find_project_root_in_parent_dir(tmp_path: Path) -> None:
-    (tmp_path / "miniautogen.yaml").write_text("project:\n  name: test\n")
-    child = tmp_path / "subdir"
-    child.mkdir()
-    result = find_project_root(child)
-    assert result == tmp_path
-
-
-def test_find_project_root_returns_none_when_missing(tmp_path: Path) -> None:
-    result = find_project_root(tmp_path)
-    assert result is None
-
-
-def test_find_project_root_stops_at_filesystem_root(tmp_path: Path) -> None:
-    deep = tmp_path / "a" / "b" / "c" / "d"
-    deep.mkdir(parents=True)
-    result = find_project_root(deep)
-    assert result is None
-
-
-# --- load_config ---
-
-
-def test_load_config_happy_path(tmp_path: Path) -> None:
-    content = {
-        "project": {"name": "my-app", "version": "1.0.0"},
-        "provider": {"default": "litellm", "model": "gpt-4o-mini"},
-        "pipelines": {"main": {"target": "pipelines.main:build_pipeline"}},
-    }
-    config_path = tmp_path / "miniautogen.yaml"
-    config_path.write_text(yaml.dump(content))
-
-    cfg = load_config(config_path)
-    assert cfg.project["name"] == "my-app"
-    assert cfg.pipelines["main"]["target"] == "pipelines.main:build_pipeline"
-
-
-def test_load_config_with_database(tmp_path: Path) -> None:
-    content = {
-        "project": {"name": "my-app", "version": "1.0.0"},
-        "provider": {"default": "litellm", "model": "gpt-4o-mini"},
-        "pipelines": {"main": {"target": "pipelines.main:build"}},
-        "database": {"url": "sqlite+aiosqlite:///miniautogen.db"},
-    }
-    config_path = tmp_path / "miniautogen.yaml"
-    config_path.write_text(yaml.dump(content))
-
-    cfg = load_config(config_path)
-    assert cfg.database is not None
-    assert "sqlite" in cfg.database["url"]
-
-
-def test_load_config_file_not_found(tmp_path: Path) -> None:
-    from miniautogen.cli.errors import ConfigurationError
-
-    with pytest.raises(ConfigurationError, match="not found"):
-        load_config(tmp_path / "nonexistent.yaml")
-
-
-def test_load_config_invalid_yaml(tmp_path: Path) -> None:
-    from miniautogen.cli.errors import ConfigurationError
-
-    config_path = tmp_path / "miniautogen.yaml"
-    config_path.write_text("{{invalid yaml: [")
-
-    with pytest.raises(ConfigurationError, match="parse"):
-        load_config(config_path)
-
-
-def test_load_config_schema_validation_error(tmp_path: Path) -> None:
-    from miniautogen.cli.errors import ConfigurationError
-
-    config_path = tmp_path / "miniautogen.yaml"
-    config_path.write_text(yaml.dump({"project": {"name": "x"}}))
-
-    with pytest.raises(ConfigurationError, match="valid"):
-        load_config(config_path)
-```
-
-**Step 2: Run test to verify it fails**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_config.py -v 2>&1 | head -5
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_errors.py -v
 ```
 
 **Expected output:**
 ```
-FAILED ... ModuleNotFoundError: No module named 'miniautogen.cli.config'
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_base_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_config_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_project_not_found_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_scaffold_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_pipeline_error PASSED
+tests/cli/test_errors.py::TestExitCodes::test_exit_code_constants PASSED
+
+6 passed
 ```
 
-**Step 3: Write the implementation**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/config.py`:
-
-```python
-"""Project configuration resolution and YAML loading.
-
-Responsibilities:
-- Locate ``miniautogen.yaml`` by walking up from a start directory.
-- Parse and validate the YAML into a ``ProjectConfig`` Pydantic model.
-"""
-
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Any
-
-import yaml
-from pydantic import BaseModel
-
-from miniautogen.cli.errors import ConfigurationError
-
-CONFIG_FILENAME = "miniautogen.yaml"
-
-
-class ProjectConfig(BaseModel):
-    """Schema for ``miniautogen.yaml``."""
-
-    project: dict[str, Any]
-    provider: dict[str, Any]
-    pipelines: dict[str, dict[str, Any]]
-    database: dict[str, Any] | None = None
-
-
-def find_project_root(start: Path) -> Path | None:
-    """Walk up from *start* looking for ``miniautogen.yaml``.
-
-    Returns the directory containing the config file, or ``None``
-    if the filesystem root is reached without finding one.
-    """
-    current = start.resolve()
-    while True:
-        if (current / CONFIG_FILENAME).is_file():
-            return current
-        parent = current.parent
-        if parent == current:
-            # Reached filesystem root.
-            return None
-        current = parent
-
-
-def load_config(path: Path) -> ProjectConfig:
-    """Load and validate a ``miniautogen.yaml`` file.
-
-    Parameters
-    ----------
-    path:
-        Absolute path to the YAML file.
-
-    Returns
-    -------
-    ProjectConfig
-        Validated configuration model.
-
-    Raises
-    ------
-    ConfigurationError
-        If the file is not found, cannot be parsed, or fails validation.
-    """
-    if not path.is_file():
-        raise ConfigurationError(f"Configuration file not found: {path}")
-
-    try:
-        raw = yaml.safe_load(path.read_text())
-    except yaml.YAMLError as exc:
-        raise ConfigurationError(f"Failed to parse {path}: {exc}") from exc
-
-    if not isinstance(raw, dict):
-        raise ConfigurationError(f"Configuration file is not valid YAML mapping: {path}")
-
-    try:
-        return ProjectConfig.model_validate(raw)
-    except Exception as exc:
-        raise ConfigurationError(
-            f"Configuration is not valid: {exc}",
-        ) from exc
-```
-
-**Step 4: Run tests to verify they pass**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_config.py -v
-```
-
-**Expected output:** All tests PASSED (13 tests).
-
-**Step 5: Run ruff**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/config.py tests/cli/test_config.py --fix
-```
-
-**Step 6: Commit**
+**Step 5: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/config.py tests/cli/test_config.py && git commit -m "feat: add project config resolution and YAML loading"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/errors.py tests/cli/test_errors.py
+git commit -m "feat(cli): add CLI error hierarchy with BSD sysexits codes"
 ```
 
 **If Task Fails:**
-1. **YAML parse test not raising ConfigurationError:** Ensure the invalid YAML string actually causes `yaml.safe_load` to raise. The string `{{invalid yaml: [` should trigger a `yaml.YAMLError`.
-2. **Schema validation test not raising:** The incomplete config `{"project": {"name": "x"}}` is missing required fields `provider` and `pipelines`, which Pydantic will reject.
-3. **Can't recover:** `git checkout -- .` and revisit.
+1. Exit code mismatch: Verify class attribute `exit_code` is set as class-level, not only in `__init__`.
+2. Rollback: `git checkout -- miniautogen/cli/errors.py tests/cli/test_errors.py`
 
 ---
 
-## Task 5: Create output.py — presentation layer
+## Task 5: Create output.py — terminal output helpers
 
 **Files:**
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/output.py`
@@ -816,238 +727,305 @@ cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/config.py
 
 **Prerequisites:**
 - Task 2 complete (cli package exists)
+- `click>=8.0` installed (Task 1)
 
-**Step 1: Write the failing test**
+**Step 1: Write failing tests**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_output.py`:
 
 ```python
-"""Tests for CLI output formatting utilities."""
+"""Tests for CLI output helpers."""
 
 from __future__ import annotations
 
-import json
-
-from click.testing import CliRunner
-
-import click
-
-from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success, echo_table
+from unittest.mock import patch
 
 
-def _capture(func, *args, **kwargs) -> str:  # noqa: ANN001
-    """Run an echo function inside a Click command and capture output."""
+class TestOutputHelpers:
+    def test_echo_success(self) -> None:
+        from miniautogen.cli.output import echo_success
 
-    @click.command()
-    def _cmd() -> None:
-        func(*args, **kwargs)
+        with patch("click.echo") as mock_echo:
+            echo_success("done")
+            mock_echo.assert_called_once()
+            output = mock_echo.call_args[0][0]
+            assert "done" in output
 
-    runner = CliRunner()
-    result = runner.invoke(_cmd)
-    return result.output
+    def test_echo_error(self) -> None:
+        from miniautogen.cli.output import echo_error
 
+        with patch("click.echo") as mock_echo:
+            echo_error("fail")
+            mock_echo.assert_called_once()
+            call_kwargs = mock_echo.call_args
+            assert call_kwargs[1].get("err") is True
 
-def test_echo_success_contains_message() -> None:
-    output = _capture(echo_success, "All good")
-    assert "All good" in output
+    def test_echo_info(self) -> None:
+        from miniautogen.cli.output import echo_info
 
+        with patch("click.echo") as mock_echo:
+            echo_info("info message")
+            mock_echo.assert_called_once()
+            output = mock_echo.call_args[0][0]
+            assert "info message" in output
 
-def test_echo_error_contains_message() -> None:
-    output = _capture(echo_error, "Something broke")
-    assert "Something broke" in output
+    def test_echo_json(self) -> None:
+        import json
 
+        from miniautogen.cli.output import echo_json
 
-def test_echo_info_contains_message() -> None:
-    output = _capture(echo_info, "FYI")
-    assert "FYI" in output
+        with patch("click.echo") as mock_echo:
+            echo_json({"key": "value"})
+            mock_echo.assert_called_once()
+            output = mock_echo.call_args[0][0]
+            parsed = json.loads(output)
+            assert parsed == {"key": "value"}
 
+    def test_echo_table(self) -> None:
+        from miniautogen.cli.output import echo_table
 
-def test_echo_json_valid_json() -> None:
-    data = {"name": "demo", "version": "1.0"}
-    output = _capture(echo_json, data)
-    parsed = json.loads(output)
-    assert parsed == data
-
-
-def test_echo_json_is_indented() -> None:
-    data = {"key": "value"}
-    output = _capture(echo_json, data)
-    assert "  " in output  # indented
-
-
-def test_echo_table_renders_headers_and_rows() -> None:
-    headers = ["Name", "Status"]
-    rows = [["alpha", "ok"], ["beta", "fail"]]
-    output = _capture(echo_table, headers, rows)
-    assert "Name" in output
-    assert "Status" in output
-    assert "alpha" in output
-    assert "beta" in output
-    assert "ok" in output
-    assert "fail" in output
-
-
-def test_echo_table_aligns_columns() -> None:
-    headers = ["Col1", "Col2"]
-    rows = [["short", "x"], ["very long value", "y"]]
-    output = _capture(echo_table, headers, rows)
-    lines = [line for line in output.strip().split("\n") if line.strip()]
-    # All data lines should have consistent structure
-    assert len(lines) >= 3  # header + separator + 2 rows
-
-
-def test_echo_table_empty_rows() -> None:
-    headers = ["A", "B"]
-    output = _capture(echo_table, headers, [])
-    assert "A" in output
-    assert "B" in output
+        with patch("click.echo") as mock_echo:
+            echo_table(
+                headers=["Name", "Status"],
+                rows=[["alpha", "ok"], ["beta", "fail"]],
+            )
+            assert mock_echo.call_count >= 1
 ```
 
-**Step 2: Run test to verify it fails**
+**Step 2: Run tests to verify they fail**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_output.py -v 2>&1 | head -5
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_output.py -v 2>&1 | head -20
 ```
 
-**Expected output:**
-```
-FAILED ... ModuleNotFoundError: No module named 'miniautogen.cli.output'
-```
+**Expected output:** All tests FAIL with `ImportError`.
 
-**Step 3: Write the implementation**
+**Step 3: Implement output.py**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/output.py`:
 
 ```python
-"""Presentation layer for CLI terminal output.
+"""Terminal output helpers for the MiniAutoGen CLI.
 
-Provides coloured echoing and simple table rendering.
-All output goes through ``click.echo`` / ``click.secho`` so it
-integrates with Click's output capturing in tests.
+Provides colored output, JSON rendering, and basic table formatting.
+This module only depends on click.echo for actual I/O.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, Sequence
 
 import click
 
 
 def echo_success(message: str) -> None:
     """Print a green success message."""
-    click.secho(f"[OK] {message}", fg="green")
+    click.echo(click.style(f"[OK] {message}", fg="green"))
 
 
 def echo_error(message: str) -> None:
-    """Print a red error message."""
-    click.secho(f"[ERROR] {message}", fg="red")
+    """Print a red error message to stderr."""
+    click.echo(click.style(f"[ERROR] {message}", fg="red"), err=True)
 
 
 def echo_info(message: str) -> None:
-    """Print a blue informational message."""
-    click.secho(f"[INFO] {message}", fg="blue")
+    """Print a blue info message."""
+    click.echo(click.style(f"[INFO] {message}", fg="blue"))
 
 
-def echo_json(data: dict[str, Any]) -> None:
-    """Print *data* as indented JSON."""
+def echo_json(data: dict | list) -> None:
+    """Print data as formatted JSON."""
     click.echo(json.dumps(data, indent=2, default=str))
 
 
-def echo_table(
-    headers: Sequence[str],
-    rows: Sequence[Sequence[str]],
-) -> None:
-    """Render a simple aligned text table.
+def echo_table(headers: list[str], rows: list[list[str]]) -> None:
+    """Print a simple aligned table.
 
-    Example output::
-
-        Name     Status
-        ------   ------
-        alpha    ok
-        beta     fail
+    Args:
+        headers: Column header names.
+        rows: List of rows, each a list of string values.
     """
-    if not headers:
+    if not rows:
+        click.echo("(no data)")
         return
 
-    # Compute column widths from headers + data.
-    widths = [len(h) for h in headers]
+    col_widths = [len(h) for h in headers]
     for row in rows:
         for i, cell in enumerate(row):
-            if i < len(widths):
-                widths[i] = max(widths[i], len(str(cell)))
+            if i < len(col_widths):
+                col_widths[i] = max(col_widths[i], len(str(cell)))
 
-    def _format_row(cells: Sequence[str]) -> str:
-        parts = []
-        for i, cell in enumerate(cells):
-            w = widths[i] if i < len(widths) else 0
-            parts.append(str(cell).ljust(w))
-        return "  ".join(parts)
-
-    click.echo(_format_row(headers))
-    click.echo("  ".join("-" * w for w in widths))
+    header_line = "  ".join(
+        h.ljust(col_widths[i]) for i, h in enumerate(headers)
+    )
+    separator = "  ".join("-" * w for w in col_widths)
+    click.echo(header_line)
+    click.echo(separator)
     for row in rows:
-        click.echo(_format_row(row))
+        line = "  ".join(
+            str(cell).ljust(col_widths[i]) for i, cell in enumerate(row)
+        )
+        click.echo(line)
 ```
 
 **Step 4: Run tests to verify they pass**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_output.py -v
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_output.py -v
 ```
 
-**Expected output:** All tests PASSED (8 tests).
+**Expected output:**
+```
+tests/cli/test_output.py::TestOutputHelpers::test_echo_success PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_error PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_info PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_json PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_table PASSED
 
-**Step 5: Run ruff**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/output.py tests/cli/test_output.py --fix
+5 passed
 ```
 
-**Step 6: Commit**
+**Step 5: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/output.py tests/cli/test_output.py && git commit -m "feat: add CLI output formatting utilities"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/output.py tests/cli/test_output.py
+git commit -m "feat(cli): add terminal output helpers (success, error, info, json, table)"
 ```
 
 **If Task Fails:**
-1. **Colors cause test issues:** Click's `CliRunner` strips ANSI by default. If not, pass `color=False` to `CliRunner()`.
-2. **Can't recover:** `git checkout -- .` and revisit.
+1. Mock not capturing call: Verify `patch("click.echo")` path is correct.
+2. Rollback: `git checkout -- miniautogen/cli/output.py tests/cli/test_output.py`
 
 ---
 
-## Task 6: Create Jinja2 templates for project scaffolding
+## Task 6: Create ALL Jinja2 templates for project scaffolding
 
 **Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/__init__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/miniautogen.yaml.j2`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/agents/__init__.py.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/agents/researcher.yaml.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/SKILL.md.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/skill.yaml.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/tools/web_search.yaml.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/pipelines/main.py.j2`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/.env.j2`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_templates.py`
 
 **Prerequisites:**
-- Task 2 complete (cli package exists)
+- Task 2 complete (directory structure created)
+- `jinja2>=3.1.0` installed (existing dependency)
 
-**Step 1: Create directory structure**
+**Step 1: Write failing test for template rendering**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_templates.py`:
+
+```python
+"""Tests that all project templates render without errors."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import yaml
+from jinja2 import Environment, FileSystemLoader
+
+TEMPLATES_DIR = (
+    Path(__file__).resolve().parent.parent.parent
+    / "miniautogen"
+    / "cli"
+    / "templates"
+    / "project"
+)
+
+CONTEXT = {
+    "project_name": "test-project",
+    "model": "gpt-4o-mini",
+    "provider": "litellm",
+}
+
+
+class TestTemplateRendering:
+    def _render(self, template_path: str) -> str:
+        env = Environment(
+            loader=FileSystemLoader(str(TEMPLATES_DIR)),
+            keep_trailing_newline=True,
+        )
+        tmpl = env.get_template(template_path)
+        return tmpl.render(**CONTEXT)
+
+    def test_miniautogen_yaml_renders(self) -> None:
+        result = self._render("miniautogen.yaml.j2")
+        parsed = yaml.safe_load(result)
+        assert parsed["project"]["name"] == "test-project"
+        assert parsed["defaults"]["engine_profile"] == "default_api"
+        assert "default_api" in parsed["engine_profiles"]
+        assert parsed["engine_profiles"]["default_api"]["model"] == "gpt-4o-mini"
+        assert parsed["engine_profiles"]["default_api"]["provider"] == "litellm"
+        assert parsed["pipelines"]["main"]["target"] == "pipelines.main:build_pipeline"
+        assert "database" in parsed
+
+    def test_researcher_yaml_renders(self) -> None:
+        result = self._render("agents/researcher.yaml.j2")
+        parsed = yaml.safe_load(result)
+        assert parsed["id"] == "researcher"
+        assert "skills" in parsed
+        assert "tool_access" in parsed
+        assert parsed["engine_profile"] == "default_api"
+
+    def test_skill_yaml_renders(self) -> None:
+        result = self._render("skills/example/skill.yaml.j2")
+        parsed = yaml.safe_load(result)
+        assert parsed["id"] == "example"
+        assert parsed["name"] == "Example Skill"
+
+    def test_skill_md_renders(self) -> None:
+        result = self._render("skills/example/SKILL.md.j2")
+        assert "Example Skill" in result
+
+    def test_tool_yaml_renders(self) -> None:
+        result = self._render("tools/web_search.yaml.j2")
+        parsed = yaml.safe_load(result)
+        assert parsed["name"] == "web_search"
+        assert "input_schema" in parsed
+        assert "execution" in parsed
+        assert "policy" in parsed
+
+    def test_pipeline_main_renders(self) -> None:
+        result = self._render("pipelines/main.py.j2")
+        assert "build_pipeline" in result
+        assert "Pipeline" in result
+
+    def test_env_renders(self) -> None:
+        result = self._render(".env.j2")
+        assert "MINIAUTOGEN" in result or "DATABASE_URL" in result
+
+    def test_all_templates_exist(self) -> None:
+        expected = [
+            "miniautogen.yaml.j2",
+            "agents/researcher.yaml.j2",
+            "skills/example/SKILL.md.j2",
+            "skills/example/skill.yaml.j2",
+            "tools/web_search.yaml.j2",
+            "pipelines/main.py.j2",
+            ".env.j2",
+        ]
+        for tmpl in expected:
+            path = TEMPLATES_DIR / tmpl
+            assert path.is_file(), f"Template missing: {tmpl}"
+```
+
+**Step 2: Run tests to verify they fail**
 
 Run:
 ```bash
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/agents
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/pipelines
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_templates.py -v 2>&1 | head -20
 ```
 
-**Step 2: Create templates/__init__.py**
+**Expected output:** Tests FAIL because templates do not exist.
 
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/__init__.py`:
-
-```python
-"""Jinja2 templates for project scaffolding."""
-```
-
-**Step 3: Create miniautogen.yaml.j2**
+**Step 3: Create `miniautogen.yaml.j2`**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/miniautogen.yaml.j2`:
 
@@ -1056,9 +1034,15 @@ project:
   name: {{ project_name }}
   version: "0.1.0"
 
-provider:
-  default: {{ provider }}
-  model: {{ model }}
+defaults:
+  engine_profile: default_api
+
+engine_profiles:
+  default_api:
+    kind: api
+    provider: {{ provider }}
+    model: {{ model }}
+    temperature: 0.2
 
 pipelines:
   main:
@@ -1068,430 +1052,515 @@ database:
   url: sqlite+aiosqlite:///miniautogen.db
 ```
 
-**Step 4: Create agents/__init__.py.j2**
+**Step 4: Create `agents/researcher.yaml.j2`**
 
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/agents/__init__.py.j2`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/agents/researcher.yaml.j2`:
 
 ```
-"""Agents for {{ project_name }}."""
+id: researcher
+version: "1.0.0"
+name: Research Specialist
+role: Research Specialist
+goal: Investigate topics and produce structured syntheses.
+
+skills:
+  attached:
+    - example
+
+tool_access:
+  mode: allowlist
+  allow:
+    - web_search
+
+engine_profile: default_api
+
+runtime:
+  max_turns: 10
+  timeout_seconds: 300
 ```
 
-**Step 5: Create pipelines/main.py.j2**
+**Step 5: Create `skills/example/skill.yaml.j2`**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/skill.yaml.j2`:
+
+```
+id: example
+version: "1.0.0"
+name: Example Skill
+description: A starter skill template.
+```
+
+**Step 6: Create `skills/example/SKILL.md.j2`**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/skills/example/SKILL.md.j2`:
+
+```
+# Example Skill
+
+This is a starter skill template. Replace with your own instructions.
+```
+
+**Step 7: Create `tools/web_search.yaml.j2`**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/tools/web_search.yaml.j2`:
+
+```
+name: web_search
+description: Search the web for relevant information.
+
+input_schema:
+  type: object
+  properties:
+    query:
+      type: string
+  required:
+    - query
+
+execution:
+  kind: python
+  target: miniautogen.tools.web_search:execute
+
+policy:
+  approval: none
+  timeout_seconds: 30
+```
+
+**Step 8: Create `pipelines/main.py.j2`**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/pipelines/main.py.j2`:
 
 ```
 """Main pipeline for {{ project_name }}."""
 
-from miniautogen.api import Pipeline, PipelineComponent
+from miniautogen.api import Pipeline
 
 
 def build_pipeline() -> Pipeline:
     """Build and return the main pipeline.
 
-    This is the entry point referenced in miniautogen.yaml.
-    Customize this function to define your agent orchestration.
+    Customize this function to define your agent workflow.
     """
-    return Pipeline(name="{{ project_name }}-main", components=[])
+    pipeline = Pipeline(name="main")
+    # Add your pipeline components here:
+    # pipeline.add_component(...)
+    return pipeline
 ```
 
-**Step 6: Create .env.j2**
+**Step 9: Create `.env.j2`**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/templates/project/.env.j2`:
 
 ```
-# Environment variables for {{ project_name }}
-# Uncomment and set your API keys:
-
-# OPENAI_API_KEY=sk-...
-# ANTHROPIC_API_KEY=sk-ant-...
+# MiniAutoGen environment variables
+# See: https://github.com/your-org/miniautogen
 
 DATABASE_URL=sqlite+aiosqlite:///miniautogen.db
-MINIAUTOGEN_DEFAULT_PROVIDER={{ provider }}
-MINIAUTOGEN_DEFAULT_MODEL={{ model }}
+
+# Provider API keys (uncomment as needed)
+# OPENAI_API_KEY=sk-...
+# GEMINI_API_KEY=...
+# ANTHROPIC_API_KEY=...
+
+# MiniAutoGen settings
+# MINIAUTOGEN_DEFAULT_PROVIDER={{ provider }}
+# MINIAUTOGEN_DEFAULT_MODEL={{ model }}
+# MINIAUTOGEN_DEFAULT_TIMEOUT_SECONDS=30
 ```
 
-**Step 7: Verify templates are syntactically valid**
+**Step 10: Run tests to verify they pass**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && python -c "
-from jinja2 import Environment, FileSystemLoader
-env = Environment(loader=FileSystemLoader('miniautogen/cli/templates/project'))
-for name in ['miniautogen.yaml.j2', 'agents/__init__.py.j2', 'pipelines/main.py.j2', '.env.j2']:
-    t = env.get_template(name)
-    out = t.render(project_name='demo', provider='litellm', model='gpt-4o-mini')
-    assert len(out) > 0, f'Empty render for {name}'
-print('All templates render OK')
-"
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_templates.py -v
 ```
 
 **Expected output:**
 ```
-All templates render OK
+tests/cli/test_templates.py::TestTemplateRendering::test_miniautogen_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_researcher_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_skill_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_skill_md_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_tool_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_pipeline_main_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_env_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_all_templates_exist PASSED
+
+8 passed
 ```
 
-**Step 8: Commit**
+**Step 11: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/templates/ && git commit -m "feat: add Jinja2 templates for project scaffolding"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/templates/ tests/cli/test_templates.py
+git commit -m "feat(cli): add Jinja2 templates for multi-agent project scaffold"
 ```
 
 **If Task Fails:**
-1. **Jinja2 template syntax error:** Check for unmatched `{{` or `}}`. All template variables use `{{ variable_name }}` syntax.
-2. **FileSystemLoader path wrong:** Ensure the path is relative to cwd, or use absolute path.
-3. **Can't recover:** `git checkout -- .` and revisit.
+1. YAML parse error in rendered template: Check Jinja2 syntax — `{{ }}` must not conflict with YAML braces.
+2. Template not found: Verify directory structure matches expected paths.
+3. Rollback: `git checkout -- miniautogen/cli/templates/ tests/cli/test_templates.py`
 
 ---
 
-## Task 7: Create init_project service
+## Task 7: Create services/init_project.py — scaffold service
 
 **Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/__init__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/init_project.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_init_project.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_init_service.py`
 
 **Prerequisites:**
 - Task 6 complete (templates exist)
-- Jinja2 installed (already in deps)
+- Task 3 complete (config models exist)
+- Task 4 complete (errors exist)
 
-**Step 1: Create directories**
+**Step 1: Write failing tests for the init service**
 
-Run:
-```bash
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/tests/cli/services
-```
-
-**Step 2: Create services/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/__init__.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_init_service.py`:
 
 ```python
-"""CLI application services — testable logic independent of Click."""
-```
-
-**Step 3: Create tests/cli/services/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py`:
-
-```python
-```
-
-(Empty file.)
-
-**Step 4: Write the failing test**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_init_project.py`:
-
-```python
-"""Tests for project scaffolding service."""
+"""Tests for init_project service — scaffolds a new MiniAutoGen project."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
 
-from miniautogen.cli.services.init_project import scaffold_project
 
+class TestInitProject:
+    def test_creates_project_directory(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
 
-@pytest.mark.anyio
-async def test_scaffold_creates_directory_structure(tmp_path: Path) -> None:
-    result = await scaffold_project(
-        name="my-app",
-        model="gpt-4o-mini",
-        provider="litellm",
-        target_dir=tmp_path,
-        include_examples=True,
-    )
-
-    assert result == tmp_path / "my-app"
-    assert (result / "miniautogen.yaml").is_file()
-    assert (result / "agents" / "__init__.py").is_file()
-    assert (result / "pipelines" / "main.py").is_file()
-    assert (result / ".env").is_file()
-    assert (result / "tools").is_dir()
-
-
-@pytest.mark.anyio
-async def test_scaffold_yaml_content(tmp_path: Path) -> None:
-    result = await scaffold_project(
-        name="test-proj",
-        model="claude-3-haiku",
-        provider="anthropic",
-        target_dir=tmp_path,
-        include_examples=True,
-    )
-
-    content = yaml.safe_load((result / "miniautogen.yaml").read_text())
-    assert content["project"]["name"] == "test-proj"
-    assert content["provider"]["default"] == "anthropic"
-    assert content["provider"]["model"] == "claude-3-haiku"
-    assert "main" in content["pipelines"]
-
-
-@pytest.mark.anyio
-async def test_scaffold_env_content(tmp_path: Path) -> None:
-    result = await scaffold_project(
-        name="my-app",
-        model="gpt-4o-mini",
-        provider="litellm",
-        target_dir=tmp_path,
-        include_examples=True,
-    )
-
-    env_text = (result / ".env").read_text()
-    assert "litellm" in env_text
-    assert "gpt-4o-mini" in env_text
-
-
-@pytest.mark.anyio
-async def test_scaffold_pipeline_references_project(tmp_path: Path) -> None:
-    result = await scaffold_project(
-        name="cool-agents",
-        model="gpt-4o-mini",
-        provider="litellm",
-        target_dir=tmp_path,
-        include_examples=True,
-    )
-
-    pipeline_text = (result / "pipelines" / "main.py").read_text()
-    assert "cool-agents" in pipeline_text
-    assert "build_pipeline" in pipeline_text
-
-
-@pytest.mark.anyio
-async def test_scaffold_raises_on_existing_directory(tmp_path: Path) -> None:
-    (tmp_path / "existing").mkdir()
-
-    with pytest.raises(FileExistsError, match="already exists"):
-        await scaffold_project(
-            name="existing",
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
             model="gpt-4o-mini",
             provider="litellm",
-            target_dir=tmp_path,
-            include_examples=True,
         )
+        assert project_dir.is_dir()
 
+    def test_creates_miniautogen_yaml(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
 
-@pytest.mark.anyio
-async def test_scaffold_no_examples_still_creates_structure(tmp_path: Path) -> None:
-    result = await scaffold_project(
-        name="minimal",
-        model="gpt-4o-mini",
-        provider="litellm",
-        target_dir=tmp_path,
-        include_examples=False,
-    )
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        config_file = project_dir / "miniautogen.yaml"
+        assert config_file.is_file()
+        parsed = yaml.safe_load(config_file.read_text())
+        assert parsed["project"]["name"] == "my-project"
+        assert parsed["engine_profiles"]["default_api"]["model"] == "gpt-4o-mini"
 
-    assert (result / "miniautogen.yaml").is_file()
-    assert (result / "agents").is_dir()
-    assert (result / "pipelines").is_dir()
-    assert (result / "tools").is_dir()
-    assert (result / ".env").is_file()
+    def test_creates_agent_spec(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        agent_file = project_dir / "agents" / "researcher.yaml"
+        assert agent_file.is_file()
+        parsed = yaml.safe_load(agent_file.read_text())
+        assert parsed["id"] == "researcher"
+        assert parsed["engine_profile"] == "default_api"
+
+    def test_creates_skill_directory(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        skill_yaml = project_dir / "skills" / "example" / "skill.yaml"
+        skill_md = project_dir / "skills" / "example" / "SKILL.md"
+        assert skill_yaml.is_file()
+        assert skill_md.is_file()
+        parsed = yaml.safe_load(skill_yaml.read_text())
+        assert parsed["id"] == "example"
+
+    def test_creates_tool_spec(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        tool_file = project_dir / "tools" / "web_search.yaml"
+        assert tool_file.is_file()
+        parsed = yaml.safe_load(tool_file.read_text())
+        assert parsed["name"] == "web_search"
+
+    def test_creates_mcp_directory(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        mcp_dir = project_dir / "mcp"
+        assert mcp_dir.is_dir()
+
+    def test_creates_pipeline(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        pipeline_file = project_dir / "pipelines" / "main.py"
+        assert pipeline_file.is_file()
+        content = pipeline_file.read_text()
+        assert "build_pipeline" in content
+
+    def test_creates_env_file(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "my-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="my-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        env_file = project_dir / ".env"
+        assert env_file.is_file()
+
+    def test_raises_if_directory_exists(self, tmp_path: Path) -> None:
+        import pytest
+
+        from miniautogen.cli.errors import ScaffoldError
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "existing"
+        project_dir.mkdir()
+        (project_dir / "miniautogen.yaml").write_text("exists")
+
+        with pytest.raises(ScaffoldError, match="already exists"):
+            init_project(
+                target_dir=project_dir,
+                project_name="existing",
+                model="gpt-4o-mini",
+                provider="litellm",
+            )
+
+    def test_full_directory_structure(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "full-project"
+        init_project(
+            target_dir=project_dir,
+            project_name="full-project",
+            model="gpt-4o-mini",
+            provider="litellm",
+        )
+        expected_files = [
+            "miniautogen.yaml",
+            "agents/researcher.yaml",
+            "skills/example/skill.yaml",
+            "skills/example/SKILL.md",
+            "tools/web_search.yaml",
+            "pipelines/main.py",
+            ".env",
+        ]
+        expected_dirs = ["mcp"]
+        for f in expected_files:
+            assert (project_dir / f).is_file(), f"Missing file: {f}"
+        for d in expected_dirs:
+            assert (project_dir / d).is_dir(), f"Missing dir: {d}"
+
+    def test_custom_model_and_provider(self, tmp_path: Path) -> None:
+        from miniautogen.cli.services.init_project import init_project
+
+        project_dir = tmp_path / "custom"
+        init_project(
+            target_dir=project_dir,
+            project_name="custom",
+            model="claude-3-opus",
+            provider="anthropic",
+        )
+        config = yaml.safe_load(
+            (project_dir / "miniautogen.yaml").read_text()
+        )
+        assert config["engine_profiles"]["default_api"]["model"] == "claude-3-opus"
+        assert config["engine_profiles"]["default_api"]["provider"] == "anthropic"
 ```
 
-**Step 5: Run test to verify it fails**
+**Step 2: Run tests to verify they fail**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/services/test_init_project.py -v 2>&1 | head -5
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_init_service.py -v 2>&1 | head -20
 ```
 
-**Expected output:**
-```
-FAILED ... ModuleNotFoundError: No module named 'miniautogen.cli.services'
-```
+**Expected output:** All tests FAIL with `ImportError`.
 
-**Step 6: Write the implementation**
+**Step 3: Implement init_project service**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/init_project.py`:
 
 ```python
 """Project scaffolding service.
 
-Renders Jinja2 templates into a target directory to create a new
-MiniAutoGen project with canonical structure.
-
-This module does NOT import Click — it is a pure application service.
+Creates a new MiniAutoGen project directory with the canonical
+multi-agent structure: agents, skills, tools, mcp, pipelines.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from jinja2 import Environment, PackageLoader
+from jinja2 import Environment, FileSystemLoader
+
+from miniautogen.cli.errors import ScaffoldError
+
+_TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "templates" / "project"
+
+# Maps template path (relative to templates/project/) to output path
+# (relative to the project root).
+_TEMPLATE_MAP: list[tuple[str, str]] = [
+    ("miniautogen.yaml.j2", "miniautogen.yaml"),
+    ("agents/researcher.yaml.j2", "agents/researcher.yaml"),
+    ("skills/example/skill.yaml.j2", "skills/example/skill.yaml"),
+    ("skills/example/SKILL.md.j2", "skills/example/SKILL.md"),
+    ("tools/web_search.yaml.j2", "tools/web_search.yaml"),
+    ("pipelines/main.py.j2", "pipelines/main.py"),
+    (".env.j2", ".env"),
+]
+
+# Directories that are created but have no template files.
+_EMPTY_DIRS: list[str] = [
+    "mcp",
+]
 
 
-async def scaffold_project(
-    name: str,
-    model: str,
-    provider: str,
+def init_project(
+    *,
     target_dir: Path,
-    include_examples: bool = True,
+    project_name: str,
+    model: str = "gpt-4o-mini",
+    provider: str = "litellm",
 ) -> Path:
-    """Create a new MiniAutoGen project directory.
+    """Scaffold a new MiniAutoGen project.
 
-    Parameters
-    ----------
-    name:
-        Project name (used as directory name and in templates).
-    model:
-        Default LLM model identifier.
-    provider:
-        Default LLM provider name.
-    target_dir:
-        Parent directory where the project folder will be created.
-    include_examples:
-        Whether to include example agent/pipeline files.
+    Args:
+        target_dir: Directory to create (must not contain miniautogen.yaml).
+        project_name: Name for the project config.
+        model: Default LLM model name.
+        provider: Default LLM provider name.
 
-    Returns
-    -------
-    Path
-        Absolute path to the created project directory.
+    Returns:
+        The path to the created project directory.
 
-    Raises
-    ------
-    FileExistsError
-        If the target project directory already exists.
+    Raises:
+        ScaffoldError: If the target already contains a miniautogen.yaml.
     """
-    project_dir = target_dir / name
-    if project_dir.exists():
-        msg = f"Directory already exists: {project_dir}"
-        raise FileExistsError(msg)
+    if target_dir.exists() and (target_dir / "miniautogen.yaml").exists():
+        msg = f"Project already exists at {target_dir}"
+        raise ScaffoldError(msg)
 
-    project_dir.mkdir(parents=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
 
+    env = Environment(
+        loader=FileSystemLoader(str(_TEMPLATES_DIR)),
+        keep_trailing_newline=True,
+    )
     context = {
-        "project_name": name,
+        "project_name": project_name,
         "model": model,
         "provider": provider,
     }
 
-    env = Environment(
-        loader=PackageLoader("miniautogen.cli", "templates/project"),
-        keep_trailing_newline=True,
-    )
+    for template_path, output_path in _TEMPLATE_MAP:
+        out_file = target_dir / output_path
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        template = env.get_template(template_path)
+        rendered = template.render(**context)
+        out_file.write_text(rendered, encoding="utf-8")
 
-    # Render templates into project directory.
-    _render_template(env, "miniautogen.yaml.j2", project_dir / "miniautogen.yaml", context)
-    _render_template(env, ".env.j2", project_dir / ".env", context)
+    for empty_dir in _EMPTY_DIRS:
+        (target_dir / empty_dir).mkdir(parents=True, exist_ok=True)
 
-    # Create directories.
-    (project_dir / "agents").mkdir()
-    (project_dir / "pipelines").mkdir()
-    (project_dir / "tools").mkdir()
-
-    # Render agent and pipeline files.
-    _render_template(
-        env,
-        "agents/__init__.py.j2",
-        project_dir / "agents" / "__init__.py",
-        context,
-    )
-
-    if include_examples:
-        _render_template(
-            env,
-            "pipelines/main.py.j2",
-            project_dir / "pipelines" / "main.py",
-            context,
-        )
-    else:
-        # Create empty pipeline module even without examples.
-        (project_dir / "pipelines" / "__init__.py").write_text("")
-
-    return project_dir
-
-
-def _render_template(
-    env: Environment,
-    template_name: str,
-    output_path: Path,
-    context: dict[str, str],
-) -> None:
-    """Render a single Jinja2 template to a file."""
-    template = env.get_template(template_name)
-    output_path.write_text(template.render(**context))
+    return target_dir
 ```
 
-**Step 7: Run tests to verify they pass**
+**Step 4: Run tests to verify they pass**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/services/test_init_project.py -v
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_init_service.py -v
 ```
 
-**Expected output:** All tests PASSED (6 tests).
+**Expected output:**
+```
+tests/cli/test_init_service.py::TestInitProject::test_creates_project_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_miniautogen_yaml PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_agent_spec PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_skill_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_tool_spec PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_mcp_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_pipeline PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_env_file PASSED
+tests/cli/test_init_service.py::TestInitProject::test_raises_if_directory_exists PASSED
+tests/cli/test_init_service.py::TestInitProject::test_full_directory_structure PASSED
+tests/cli/test_init_service.py::TestInitProject::test_custom_model_and_provider PASSED
 
-**Step 8: Run ruff**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/services/ tests/cli/services/ --fix
+11 passed
 ```
 
-**Step 9: Commit**
+**Step 5: Commit**
 
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/services/__init__.py miniautogen/cli/services/init_project.py tests/cli/services/__init__.py tests/cli/services/test_init_project.py && git commit -m "feat: add project scaffolding service with Jinja2 templates"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/init_project.py tests/cli/test_init_service.py
+git commit -m "feat(cli): add init_project service with full multi-agent scaffold"
 ```
 
 **If Task Fails:**
-1. **PackageLoader cannot find templates:** Ensure `miniautogen/cli/templates/__init__.py` exists (Task 6). The `PackageLoader("miniautogen.cli", "templates/project")` expects the `miniautogen.cli` package to be importable and `templates/project/` to be a subdirectory of it.
-2. **anyio test marker not recognized:** Ensure `pytest-anyio` or `anyio[pytest]` is available. If using `pytest-asyncio`, change `@pytest.mark.anyio` to `@pytest.mark.asyncio` throughout this task's tests. Check your existing test configuration first.
-3. **Can't recover:** `git checkout -- .` and revisit.
+1. Template not found: Verify `_TEMPLATES_DIR` resolves correctly. Print `_TEMPLATES_DIR` to debug.
+2. ScaffoldError not raised: Check condition — it only raises when `miniautogen.yaml` exists inside the dir.
+3. Rollback: `git checkout -- miniautogen/cli/services/ tests/cli/test_init_service.py`
 
 ---
 
-## Task 8: Create init command
+## Task 8: Create commands/init.py — Click command + register with group
 
 **Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/__init__.py`
 - Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/init.py`
-- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py`
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_init.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_init_command.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py` (register command)
 
 **Prerequisites:**
-- Task 2 complete (main.py with cli group)
-- Task 5 complete (output.py)
-- Task 7 complete (init_project service)
+- Task 7 complete (init_project service exists)
+- Task 5 complete (output helpers exist)
+- Task 4 complete (error hierarchy exists)
 
-**Step 1: Create directories**
+**Step 1: Write failing tests for the init command (Click CliRunner)**
 
-Run:
-```bash
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands
-mkdir -p /Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands
-```
-
-**Step 2: Create commands/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/__init__.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_init_command.py`:
 
 ```python
-"""CLI command adapters — Click commands that delegate to services."""
-```
-
-**Step 3: Create tests/cli/commands/__init__.py**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py`:
-
-```python
-```
-
-(Empty file.)
-
-**Step 4: Write the failing test**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_init.py`:
-
-```python
-"""Tests for the ``miniautogen init`` command."""
+"""Tests for the 'miniautogen init' CLI command."""
 
 from __future__ import annotations
 
@@ -1500,98 +1569,114 @@ from pathlib import Path
 import yaml
 from click.testing import CliRunner
 
-from miniautogen.cli.main import cli
 
+class TestInitCommand:
+    def test_init_creates_project(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
-def test_init_creates_project(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["init", "my-app", "--target-dir", str(tmp_path)])
+        runner = CliRunner()
+        project_dir = tmp_path / "new-project"
+        result = runner.invoke(cli, ["init", str(project_dir)])
+        assert result.exit_code == 0, result.output
+        assert (project_dir / "miniautogen.yaml").is_file()
 
-    assert result.exit_code == 0, f"Failed: {result.output}"
-    project_dir = tmp_path / "my-app"
-    assert project_dir.is_dir()
-    assert (project_dir / "miniautogen.yaml").is_file()
-    assert (project_dir / "agents" / "__init__.py").is_file()
-    assert (project_dir / "pipelines" / "main.py").is_file()
-    assert (project_dir / ".env").is_file()
-    assert (project_dir / "tools").is_dir()
+    def test_init_with_custom_model(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
+        runner = CliRunner()
+        project_dir = tmp_path / "custom-model"
+        result = runner.invoke(
+            cli,
+            ["init", str(project_dir), "--model", "claude-3-opus"],
+        )
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(
+            (project_dir / "miniautogen.yaml").read_text()
+        )
+        assert config["engine_profiles"]["default_api"]["model"] == "claude-3-opus"
 
-def test_init_yaml_has_correct_values(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli,
-        [
-            "init", "test-proj",
-            "--target-dir", str(tmp_path),
-            "--model", "claude-3-haiku",
-            "--provider", "anthropic",
-        ],
-    )
+    def test_init_with_custom_provider(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
-    assert result.exit_code == 0, f"Failed: {result.output}"
-    content = yaml.safe_load((tmp_path / "test-proj" / "miniautogen.yaml").read_text())
-    assert content["project"]["name"] == "test-proj"
-    assert content["provider"]["model"] == "claude-3-haiku"
-    assert content["provider"]["default"] == "anthropic"
+        runner = CliRunner()
+        project_dir = tmp_path / "custom-provider"
+        result = runner.invoke(
+            cli,
+            ["init", str(project_dir), "--provider", "anthropic"],
+        )
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(
+            (project_dir / "miniautogen.yaml").read_text()
+        )
+        assert config["engine_profiles"]["default_api"]["provider"] == "anthropic"
 
+    def test_init_success_message(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
-def test_init_default_model_and_provider(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["init", "demo", "--target-dir", str(tmp_path)])
+        runner = CliRunner()
+        project_dir = tmp_path / "msg-project"
+        result = runner.invoke(cli, ["init", str(project_dir)])
+        assert result.exit_code == 0
+        assert "msg-project" in result.output or "created" in result.output.lower()
 
-    assert result.exit_code == 0, f"Failed: {result.output}"
-    content = yaml.safe_load((tmp_path / "demo" / "miniautogen.yaml").read_text())
-    assert content["provider"]["default"] == "litellm"
-    assert content["provider"]["model"] == "gpt-4o-mini"
+    def test_init_fails_if_project_exists(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
+        runner = CliRunner()
+        project_dir = tmp_path / "exists"
+        project_dir.mkdir()
+        (project_dir / "miniautogen.yaml").write_text("project:\n  name: x\n")
+        result = runner.invoke(cli, ["init", str(project_dir)])
+        assert result.exit_code != 0
 
-def test_init_no_examples(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(
-        cli, ["init", "minimal", "--target-dir", str(tmp_path), "--no-examples"],
-    )
+    def test_init_creates_full_structure(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
-    assert result.exit_code == 0, f"Failed: {result.output}"
-    project_dir = tmp_path / "minimal"
-    assert project_dir.is_dir()
-    assert (project_dir / "miniautogen.yaml").is_file()
-    # No example pipeline main.py, but __init__.py should exist
-    assert not (project_dir / "pipelines" / "main.py").exists()
+        runner = CliRunner()
+        project_dir = tmp_path / "full"
+        result = runner.invoke(cli, ["init", str(project_dir)])
+        assert result.exit_code == 0, result.output
+        expected = [
+            "miniautogen.yaml",
+            "agents/researcher.yaml",
+            "skills/example/skill.yaml",
+            "skills/example/SKILL.md",
+            "tools/web_search.yaml",
+            "pipelines/main.py",
+            ".env",
+        ]
+        for f in expected:
+            assert (project_dir / f).is_file(), f"Missing: {f}"
+        assert (project_dir / "mcp").is_dir()
 
+    def test_init_uses_directory_basename_as_name(self, tmp_path: Path) -> None:
+        from miniautogen.cli.main import cli
 
-def test_init_error_on_existing_directory(tmp_path: Path) -> None:
-    (tmp_path / "existing").mkdir()
-    runner = CliRunner()
-    result = runner.invoke(cli, ["init", "existing", "--target-dir", str(tmp_path)])
-
-    assert result.exit_code != 0
-    assert "already exists" in result.output.lower()
-
-
-def test_init_success_message(tmp_path: Path) -> None:
-    runner = CliRunner()
-    result = runner.invoke(cli, ["init", "hello", "--target-dir", str(tmp_path)])
-
-    assert result.exit_code == 0
-    assert "hello" in result.output.lower() or "created" in result.output.lower()
+        runner = CliRunner()
+        project_dir = tmp_path / "my-cool-project"
+        result = runner.invoke(cli, ["init", str(project_dir)])
+        assert result.exit_code == 0, result.output
+        config = yaml.safe_load(
+            (project_dir / "miniautogen.yaml").read_text()
+        )
+        assert config["project"]["name"] == "my-cool-project"
 ```
 
-**Step 5: Run test to verify it fails**
+**Step 2: Run tests to verify they fail**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/commands/test_init.py -v 2>&1 | head -10
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_init_command.py -v 2>&1 | head -20
 ```
 
-**Expected output:** Failures — the `init` command is not yet registered.
+**Expected output:** Tests FAIL — `init` command not registered yet.
 
-**Step 6: Write the init command**
+**Step 3: Implement commands/init.py**
 
 Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/init.py`:
 
 ```python
-"""``miniautogen init`` command — scaffolds a new project."""
+"""CLI command: miniautogen init <path>."""
 
 from __future__ import annotations
 
@@ -1599,396 +1684,150 @@ from pathlib import Path
 
 import click
 
-from miniautogen.cli.main import run_async
-from miniautogen.cli.output import echo_error, echo_success
-from miniautogen.cli.services.init_project import scaffold_project
+from miniautogen.cli.errors import CLIError
+from miniautogen.cli.output import echo_error, echo_info, echo_success
+from miniautogen.cli.services.init_project import init_project
 
 
 @click.command("init")
-@click.argument("name")
+@click.argument("path", type=click.Path())
 @click.option(
     "--model",
     default="gpt-4o-mini",
     show_default=True,
-    help="Default LLM model.",
+    help="Default LLM model for the project.",
 )
 @click.option(
     "--provider",
     default="litellm",
     show_default=True,
-    help="Default LLM provider.",
+    help="Default LLM provider for the project.",
 )
-@click.option(
-    "--no-examples",
-    is_flag=True,
-    default=False,
-    help="Skip example agent and pipeline files.",
-)
-@click.option(
-    "--target-dir",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    default=".",
-    help="Parent directory for the new project.",
-)
-def init_command(
-    name: str,
-    model: str,
-    provider: str,
-    no_examples: bool,
-    target_dir: Path,
-) -> None:
-    """Create a new MiniAutoGen project."""
+def init_cmd(path: str, model: str, provider: str) -> None:
+    """Create a new MiniAutoGen project at PATH."""
+    target = Path(path).resolve()
+    project_name = target.name
+
+    echo_info(f"Creating project '{project_name}' at {target}")
+
     try:
-        project_path = run_async(
-            scaffold_project,
-            name=name,
+        init_project(
+            target_dir=target,
+            project_name=project_name,
             model=model,
             provider=provider,
-            target_dir=target_dir,
-            include_examples=not no_examples,
         )
-        echo_success(f"Project created at {project_path}")
-    except FileExistsError as exc:
+    except CLIError as exc:
         echo_error(str(exc))
-        raise SystemExit(1) from exc
+        raise SystemExit(exc.exit_code) from exc
+
+    echo_success(f"Project '{project_name}' created at {target}")
+    echo_info("Next steps:")
+    echo_info(f"  cd {target}")
+    echo_info("  miniautogen check")
+    echo_info("  miniautogen run main")
 ```
 
-**Step 7: Register the init command in main.py**
+**Step 4: Register the init command in main.py**
 
-Modify `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py`. Add these lines **after** the `cli` group definition (at the bottom of the file):
-
-```python
-# --- Register commands ---
-from miniautogen.cli.commands.init import init_command  # noqa: E402
-
-cli.add_command(init_command)
-```
-
-The full file should now be:
+Modify `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py` — add the import and registration at the bottom of the file. The full file should now be:
 
 ```python
-"""CLI entry point and async bridge.
-
-This module defines the top-level Click group and a helper to bridge
-synchronous Click commands to asynchronous service functions via AnyIO.
-"""
+"""Click group and async bridge for the MiniAutoGen CLI."""
 
 from __future__ import annotations
 
 import functools
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 import anyio
 import click
 
-F = TypeVar("F", bound=Callable[..., Any])
 
-_VERSION = "0.1.0"
+def run_async(func):  # noqa: ANN001, ANN201
+    """Decorator that bridges an async Click command to sync Click entry."""
 
+    @functools.wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        return anyio.from_thread.run(func, *args, **kwargs)
 
-def run_async(func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
-    """Run an async function synchronously using AnyIO.
-
-    Used by Click commands to call async service functions::
-
-        result = run_async(scaffold_project, name="demo", model="gpt-4o-mini")
-    """
-    return anyio.from_thread.run(func, *args, **kwargs) if False else anyio.run(
-        functools.partial(func, *args, **kwargs),
-    )
-
-
-def _get_version() -> str:
-    """Return package version from metadata, falling back to hardcoded value."""
-    try:
-        from importlib.metadata import version
-
-        return version("miniautogen")
-    except Exception:
-        return _VERSION
+    return wrapper
 
 
 @click.group()
-@click.version_option(version=_get_version(), prog_name="miniautogen")
+@click.version_option(package_name="miniautogen")
 def cli() -> None:
-    """MiniAutoGen — multi-agent orchestration framework."""
+    """MiniAutoGen — Multi-agent orchestration framework."""
 
 
-# --- Register commands ---
-from miniautogen.cli.commands.init import init_command  # noqa: E402
+# -- Register commands --
+from miniautogen.cli.commands.init import init_cmd  # noqa: E402
 
-cli.add_command(init_command)
+cli.add_command(init_cmd)
 ```
 
-**Step 8: Run tests to verify they pass**
+**Step 5: Run tests to verify they pass**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/commands/test_init.py -v
-```
-
-**Expected output:** All tests PASSED (6 tests).
-
-**Step 9: Run all CLI tests together**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/ -v
-```
-
-**Expected output:** All CLI tests pass (main + errors + config + output + services + commands).
-
-**Step 10: Run ruff**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/ tests/cli/ --fix
-```
-
-**Step 11: Commit**
-
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add miniautogen/cli/commands/__init__.py miniautogen/cli/commands/init.py miniautogen/cli/main.py tests/cli/commands/__init__.py tests/cli/commands/test_init.py && git commit -m "feat: add 'miniautogen init' command with project scaffolding"
-```
-
-**If Task Fails:**
-1. **CliRunner path validation fails:** The `--target-dir` option uses `click.Path(exists=True)`. When using `CliRunner`, `tmp_path` should exist. If Click cannot find the path, check that `tmp_path` is an absolute path and exists.
-2. **run_async raises "cannot be called from a running event loop":** If Click's test runner already has an event loop, change `run_async` to detect and handle this case. However, `CliRunner` is synchronous, so this should not occur.
-3. **Can't recover:** `git checkout -- .` and revisit.
-
----
-
-## Task 9: Architectural import boundary test
-
-**Files:**
-- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_import_boundary.py`
-
-**Prerequisites:**
-- Tasks 2-8 complete (all cli/ files exist)
-
-**Step 1: Write the boundary test**
-
-Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_import_boundary.py`:
-
-```python
-"""Architectural test: CLI code must not import internal SDK modules.
-
-The CLI is a pure consumer of ``miniautogen.api``.  It must never reach
-into ``miniautogen.core``, ``miniautogen.stores``, ``miniautogen.backends``,
-``miniautogen.policies``, ``miniautogen.adapters``, ``miniautogen.pipeline``,
-or ``miniautogen.observability`` directly.
-
-This test scans all ``.py`` files under ``miniautogen/cli/`` using the
-``ast`` module and asserts that no prohibited imports are found.
-"""
-
-from __future__ import annotations
-
-import ast
-from pathlib import Path
-
-import pytest
-
-# Root of the CLI package.
-CLI_ROOT = Path(__file__).resolve().parent.parent.parent / "miniautogen" / "cli"
-
-# Prefixes that CLI code is NOT allowed to import.
-PROHIBITED_PREFIXES = (
-    "miniautogen.core",
-    "miniautogen.stores",
-    "miniautogen.backends",
-    "miniautogen.policies",
-    "miniautogen.adapters",
-    "miniautogen.pipeline",
-    "miniautogen.observability",
-    "miniautogen.storage",
-    "miniautogen.app",
-    "miniautogen.agent",
-    "miniautogen.chat",
-    "miniautogen.llms",
-    "miniautogen.schemas",
-    "miniautogen.compat",
-)
-
-# Prefixes that ARE allowed.
-ALLOWED_PREFIXES = (
-    "miniautogen.api",
-    "miniautogen.cli",
-)
-
-
-def _collect_imports(filepath: Path) -> list[tuple[str, int]]:
-    """Return list of (module_path, line_number) for all imports in file."""
-    source = filepath.read_text()
-    tree = ast.parse(source, filename=str(filepath))
-    imports: list[tuple[str, int]] = []
-
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                imports.append((alias.name, node.lineno))
-        elif isinstance(node, ast.ImportFrom):
-            if node.module:
-                imports.append((node.module, node.lineno))
-
-    return imports
-
-
-def _find_violations() -> list[str]:
-    """Scan all .py files in CLI package for prohibited imports."""
-    violations = []
-
-    for py_file in CLI_ROOT.rglob("*.py"):
-        rel_path = py_file.relative_to(CLI_ROOT.parent.parent)
-        for module, lineno in _collect_imports(py_file):
-            if not module.startswith("miniautogen"):
-                continue
-            if any(module.startswith(p) for p in ALLOWED_PREFIXES):
-                continue
-            if any(module.startswith(p) for p in PROHIBITED_PREFIXES):
-                violations.append(
-                    f"{rel_path}:{lineno} imports '{module}' "
-                    f"(only miniautogen.api and miniautogen.cli.* allowed)"
-                )
-
-    return violations
-
-
-def test_cli_only_imports_from_public_api() -> None:
-    """CLI code must only import from miniautogen.api or miniautogen.cli.*."""
-    violations = _find_violations()
-    assert violations == [], (
-        "CLI import boundary violated:\n" + "\n".join(f"  - {v}" for v in violations)
-    )
-
-
-def test_cli_directory_has_python_files() -> None:
-    """Sanity check: ensure the test actually scans files."""
-    py_files = list(CLI_ROOT.rglob("*.py"))
-    assert len(py_files) >= 5, (
-        f"Expected at least 5 .py files in {CLI_ROOT}, found {len(py_files)}"
-    )
-```
-
-**Step 2: Run the test**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/test_import_boundary.py -v
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_init_command.py -v
 ```
 
 **Expected output:**
 ```
-tests/cli/test_import_boundary.py::test_cli_only_imports_from_public_api PASSED
-tests/cli/test_import_boundary.py::test_cli_directory_has_python_files PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_creates_project PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_with_custom_model PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_with_custom_provider PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_success_message PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_fails_if_project_exists PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_creates_full_structure PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_uses_directory_basename_as_name PASSED
+
+7 passed
 ```
 
-If it FAILS with import violations, fix the offending file to import from `miniautogen.api` instead, then re-run.
-
-**Step 3: Run ruff**
+**Step 6: Verify CLI integration**
 
 Run:
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check tests/cli/test_import_boundary.py --fix
-```
-
-**Step 4: Commit**
-
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add tests/cli/test_import_boundary.py && git commit -m "test: add architectural import boundary test for CLI package"
-```
-
-**If Task Fails:**
-1. **Violations found in CLI code:** This means a previous task introduced a prohibited import. Fix the offending file to use `miniautogen.api` instead of the internal module. The most likely offenders are `services/init_project.py` or `config.py` — but as written they only import stdlib, pydantic, yaml, jinja2, and click.
-2. **CLI_ROOT path resolution wrong:** The test computes `CLI_ROOT` as `tests/cli/../../miniautogen/cli`. Verify the file is at `tests/cli/test_import_boundary.py` and the project root is two levels up.
-3. **Can't recover:** `git checkout -- .` and revisit.
-
----
-
-## Task 10: Run full test suite and verify everything passes
-
-**Files:**
-- No new files
-
-**Prerequisites:**
-- Tasks 1-9 all complete
-
-**Step 1: Run all CLI tests**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest tests/cli/ -v --tb=short
-```
-
-**Expected output:** All CLI tests pass. Expected count: approximately 45+ tests.
-
-**Step 2: Run the full test suite**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && pytest --tb=short -q
-```
-
-**Expected output:** All tests pass. Count should be 542 + ~45 new CLI tests = ~587 tests. Zero failures.
-
-**Step 3: Run ruff on all new code**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/ miniautogen/__main__.py tests/cli/ --fix
-```
-
-**Expected output:** No errors remaining.
-
-**Step 4: Verify CLI entry point works**
-
-Run:
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --version
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen init --help
 ```
 
 **Expected output:**
 ```
-miniautogen, version 0.1.0
+Usage: python -m miniautogen init [OPTIONS] PATH
+
+  Create a new MiniAutoGen project at PATH.
+
+Options:
+  --model TEXT     Default LLM model for the project.  [default: gpt-4o-mini]
+  --provider TEXT  Default LLM provider for the project.  [default: litellm]
+  --help           Show this message and exit.
 ```
 
-Run:
+**Step 7: Commit**
+
 ```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help
-```
-
-**Expected output:** Shows help text with `init` command listed.
-
-Run:
-```bash
-cd /tmp && python -m miniautogen init test-project && ls test-project/ && rm -rf test-project
-```
-
-**Expected output:**
-```
-[OK] Project created at /tmp/test-project
-agents  miniautogen.yaml  pipelines  tools  .env
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/commands/init.py miniautogen/cli/main.py tests/cli/test_init_command.py
+git commit -m "feat(cli): implement 'miniautogen init' command with Click integration"
 ```
 
 **If Task Fails:**
-1. **Some existing tests broke:** Run `pytest --tb=long` to identify the failing test. Likely caused by an import side-effect. Fix the import or isolate the issue.
-2. **python -m miniautogen fails:** Check `miniautogen/__main__.py` exists and imports correctly.
-3. **Can't recover:** Document what failed, `git stash`, and return to human partner.
+1. `init` not showing in `--help`: Check `cli.add_command(init_cmd)` is at module level in `main.py`.
+2. CliRunner exit_code != 0: Read `result.output` and `result.exception` for details.
+3. Rollback: `git checkout -- miniautogen/cli/commands/ miniautogen/cli/main.py tests/cli/test_init_command.py`
 
 ---
 
-## Task 11: Code Review Checkpoint
+### Code Review Checkpoint (Tasks 1-8)
 
-**Prerequisites:**
-- Tasks 1-10 complete, all tests passing
-
-**Step 1: Dispatch all 3 reviewers in parallel**
-
+**Dispatch all 3 reviewers in parallel:**
 - REQUIRED SUB-SKILL: Use requesting-code-review
 - All reviewers run simultaneously (code-reviewer, business-logic-reviewer, security-reviewer)
 - Wait for all to complete
 
-**Step 2: Handle findings by severity (MANDATORY)**
+**Handle findings by severity (MANDATORY):**
 
 **Critical/High/Medium Issues:**
 - Fix immediately (do NOT add TODO comments for these severities)
@@ -1998,58 +1837,315 @@ agents  miniautogen.yaml  pipelines  tools  .env
 **Low Issues:**
 - Add `TODO(review):` comments in code at the relevant location
 - Format: `TODO(review): [Issue description] (reported by [reviewer] on [date], severity: Low)`
-- This tracks tech debt for future resolution
 
 **Cosmetic/Nitpick Issues:**
 - Add `FIXME(nitpick):` comments in code at the relevant location
 - Format: `FIXME(nitpick): [Issue description] (reported by [reviewer] on [date], severity: Cosmetic)`
-- Low-priority improvements tracked inline
 
-**Step 3: Proceed only when:**
+**Proceed only when:**
 - Zero Critical/High/Medium issues remain
-- All Low issues have `TODO(review):` comments added
-- All Cosmetic issues have `FIXME(nitpick):` comments added
-
-**Step 4: Final commit with review fixes (if any)**
-
-```bash
-cd /Users/brunocapelao/Projects/miniAutoGen && git add -A && git commit -m "fix: address code review findings for CLI chunk 1"
-```
+- All Low issues have TODO(review): comments added
+- All Cosmetic issues have FIXME(nitpick): comments added
 
 ---
 
-## Summary of Files Created
+## Task 9: Architectural import boundary test
 
+**Files:**
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_import_boundary.py`
+
+**Prerequisites:**
+- Tasks 2-8 complete (all CLI modules exist)
+
+**Step 1: Write the architectural boundary test**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/test_import_boundary.py`:
+
+```python
+"""Architectural test: CLI modules must not import internal packages.
+
+The CLI is a pure consumer of miniautogen.api. It must NEVER import
+from internal modules like core, stores, backends, adapters, etc.
+This test enforces Design Decision D3 from the CLI design document.
+"""
+
+from __future__ import annotations
+
+import ast
+import importlib
+from pathlib import Path
+
+import pytest
+
+CLI_PACKAGE_DIR = (
+    Path(__file__).resolve().parent.parent.parent / "miniautogen" / "cli"
+)
+
+# Imports from these top-level miniautogen subpackages are FORBIDDEN.
+FORBIDDEN_PACKAGES = frozenset(
+    {
+        "miniautogen.core",
+        "miniautogen.stores",
+        "miniautogen.backends",
+        "miniautogen.adapters",
+        "miniautogen.policies",
+        "miniautogen.observability",
+        "miniautogen.pipeline",
+        "miniautogen.app",
+    }
+)
+
+# These are the ONLY miniautogen imports allowed.
+ALLOWED_PREFIXES = (
+    "miniautogen.api",
+    "miniautogen.cli",
+)
+
+
+def _collect_cli_py_files() -> list[Path]:
+    """Collect all .py files under miniautogen/cli/."""
+    return sorted(CLI_PACKAGE_DIR.rglob("*.py"))
+
+
+def _extract_imports(filepath: Path) -> list[str]:
+    """Extract all import strings from a Python file using AST."""
+    source = filepath.read_text(encoding="utf-8")
+    tree = ast.parse(source, filename=str(filepath))
+    imports: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imports.append(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imports.append(node.module)
+    return imports
+
+
+class TestCLIImportBoundary:
+    """Verify CLI code only imports from allowed sources."""
+
+    @pytest.fixture()
+    def cli_files(self) -> list[Path]:
+        files = _collect_cli_py_files()
+        assert len(files) > 0, "No CLI Python files found"
+        return files
+
+    def test_no_forbidden_imports(self, cli_files: list[Path]) -> None:
+        violations: list[str] = []
+        for filepath in cli_files:
+            rel = filepath.relative_to(CLI_PACKAGE_DIR.parent.parent)
+            for imp in _extract_imports(filepath):
+                if not imp.startswith("miniautogen"):
+                    continue  # external or stdlib — allowed
+                if any(imp.startswith(prefix) for prefix in ALLOWED_PREFIXES):
+                    continue  # explicitly allowed
+                violations.append(f"{rel}: imports '{imp}'")
+
+        assert violations == [], (
+            "CLI modules must only import from miniautogen.api "
+            "and miniautogen.cli.*. Violations:\n"
+            + "\n".join(f"  - {v}" for v in violations)
+        )
+
+    def test_cli_modules_importable(self) -> None:
+        """Verify all CLI modules can be imported without error."""
+        modules = [
+            "miniautogen.cli",
+            "miniautogen.cli.main",
+            "miniautogen.cli.config",
+            "miniautogen.cli.errors",
+            "miniautogen.cli.output",
+            "miniautogen.cli.commands.init",
+            "miniautogen.cli.services.init_project",
+        ]
+        for mod in modules:
+            importlib.import_module(mod)
+```
+
+**Step 2: Run the architectural test**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/test_import_boundary.py -v
+```
+
+**Expected output:**
+```
+tests/cli/test_import_boundary.py::TestCLIImportBoundary::test_no_forbidden_imports PASSED
+tests/cli/test_import_boundary.py::TestCLIImportBoundary::test_cli_modules_importable PASSED
+
+2 passed
+```
+
+**If a violation is found:** The test will list the exact file and import. Fix the offending module to use `miniautogen.api` instead.
+
+**Step 3: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add tests/cli/test_import_boundary.py
+git commit -m "test(cli): add architectural import boundary enforcement test"
+```
+
+**If Task Fails:**
+1. Violations found: The test output tells you exactly which file imports which forbidden module. Fix the import.
+2. Import error in `test_cli_modules_importable`: A module has a syntax or dependency error — check the traceback.
+3. Rollback: `git checkout -- tests/cli/test_import_boundary.py`
+
+---
+
+## Task 10: Full regression + verification
+
+**Files:**
+- No new files (verification only)
+
+**Prerequisites:**
+- Tasks 1-9 all complete
+
+**Step 1: Run ALL CLI tests**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest tests/cli/ -v
+```
+
+**Expected output:**
+```
+tests/cli/test_config.py::TestEngineProfileConfig::test_api_profile PASSED
+tests/cli/test_config.py::TestEngineProfileConfig::test_cli_profile PASSED
+tests/cli/test_config.py::TestEngineProfileConfig::test_default_temperature PASSED
+tests/cli/test_config.py::TestProjectConfig::test_full_config PASSED
+tests/cli/test_config.py::TestProjectConfig::test_config_without_database PASSED
+tests/cli/test_config.py::TestFindProjectRoot::test_finds_root_with_yaml PASSED
+tests/cli/test_config.py::TestFindProjectRoot::test_returns_none_when_not_found PASSED
+tests/cli/test_config.py::TestLoadConfig::test_loads_yaml_into_model PASSED
+tests/cli/test_config.py::TestLoadConfig::test_raises_on_missing_file PASSED
+tests/cli/test_config.py::TestLoadConfig::test_raises_on_invalid_yaml PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_base_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_config_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_project_not_found_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_scaffold_error PASSED
+tests/cli/test_errors.py::TestCLIErrorHierarchy::test_pipeline_error PASSED
+tests/cli/test_errors.py::TestExitCodes::test_exit_code_constants PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_success PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_error PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_info PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_json PASSED
+tests/cli/test_output.py::TestOutputHelpers::test_echo_table PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_miniautogen_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_researcher_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_skill_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_skill_md_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_tool_yaml_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_pipeline_main_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_env_renders PASSED
+tests/cli/test_templates.py::TestTemplateRendering::test_all_templates_exist PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_project_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_miniautogen_yaml PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_agent_spec PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_skill_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_tool_spec PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_mcp_directory PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_pipeline PASSED
+tests/cli/test_init_service.py::TestInitProject::test_creates_env_file PASSED
+tests/cli/test_init_service.py::TestInitProject::test_raises_if_directory_exists PASSED
+tests/cli/test_init_service.py::TestInitProject::test_full_directory_structure PASSED
+tests/cli/test_init_service.py::TestInitProject::test_custom_model_and_provider PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_creates_project PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_with_custom_model PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_with_custom_provider PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_success_message PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_fails_if_project_exists PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_creates_full_structure PASSED
+tests/cli/test_init_command.py::TestInitCommand::test_init_uses_directory_basename_as_name PASSED
+tests/cli/test_import_boundary.py::TestCLIImportBoundary::test_no_forbidden_imports PASSED
+tests/cli/test_import_boundary.py::TestCLIImportBoundary::test_cli_modules_importable PASSED
+
+48 passed
+```
+
+**Step 2: Run full test suite (regression check)**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m pytest --tb=short -q
+```
+
+**Expected output:** All existing tests still pass. The new 48 CLI tests are additive. No regressions.
+
+**Step 3: Lint all new files**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && ruff check miniautogen/cli/ tests/cli/
+```
+
+**Expected output:** No lint errors.
+
+**Step 4: Verify end-to-end scaffold**
+
+Run:
+```bash
+cd /tmp && python -m miniautogen init test-e2e-project && ls -la test-e2e-project/ && ls -la test-e2e-project/agents/ && ls -la test-e2e-project/skills/example/ && ls -la test-e2e-project/tools/ && ls -la test-e2e-project/mcp/ && cat test-e2e-project/miniautogen.yaml && rm -rf test-e2e-project
+```
+
+**Expected output:** Full directory structure visible, miniautogen.yaml content displayed with correct defaults.
+
+**Step 5: Verify entry point works**
+
+Run:
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen && python -m miniautogen --help && python -m miniautogen init --help
+```
+
+**Expected output:** Both help messages display correctly.
+
+**If Task Fails:**
+1. Regressions in existing tests: Check if new imports or dependencies conflict. The CLI is isolated and should not affect existing code.
+2. Lint errors: Fix with `ruff check --fix miniautogen/cli/ tests/cli/`.
+3. E2E scaffold fails: Check template paths resolve correctly from installed package.
+
+---
+
+## Summary of Files Created/Modified
+
+### New Files (Production)
 | File | Purpose |
-|------|---------|
-| `miniautogen/__main__.py` | `python -m miniautogen` support |
-| `miniautogen/cli/__init__.py` | CLI package marker |
-| `miniautogen/cli/main.py` | Click group, `run_async` helper, version |
-| `miniautogen/cli/errors.py` | Error hierarchy with exit codes |
-| `miniautogen/cli/config.py` | `ProjectConfig`, `find_project_root`, `load_config` |
-| `miniautogen/cli/output.py` | `echo_success/error/info/json/table` |
-| `miniautogen/cli/templates/__init__.py` | Templates package marker |
+|---|---|
+| `miniautogen/__main__.py` | `python -m miniautogen` entry point |
+| `miniautogen/cli/__init__.py` | CLI package init |
+| `miniautogen/cli/main.py` | Click group + async bridge + command registration |
+| `miniautogen/cli/config.py` | ProjectConfig Pydantic models + YAML loading |
+| `miniautogen/cli/errors.py` | CLI error hierarchy + BSD sysexits codes |
+| `miniautogen/cli/output.py` | Terminal output helpers |
+| `miniautogen/cli/commands/__init__.py` | Commands package init |
+| `miniautogen/cli/commands/init.py` | `miniautogen init` Click command |
+| `miniautogen/cli/services/__init__.py` | Services package init |
+| `miniautogen/cli/services/init_project.py` | Project scaffolding service |
 | `miniautogen/cli/templates/project/miniautogen.yaml.j2` | Project config template |
-| `miniautogen/cli/templates/project/agents/__init__.py.j2` | Agents module template |
-| `miniautogen/cli/templates/project/pipelines/main.py.j2` | Pipeline example template |
+| `miniautogen/cli/templates/project/agents/researcher.yaml.j2` | Agent spec template |
+| `miniautogen/cli/templates/project/skills/example/SKILL.md.j2` | Skill instructions template |
+| `miniautogen/cli/templates/project/skills/example/skill.yaml.j2` | Skill metadata template |
+| `miniautogen/cli/templates/project/tools/web_search.yaml.j2` | Tool spec template |
+| `miniautogen/cli/templates/project/pipelines/main.py.j2` | Pipeline template |
 | `miniautogen/cli/templates/project/.env.j2` | Environment file template |
-| `miniautogen/cli/services/__init__.py` | Services package marker |
-| `miniautogen/cli/services/init_project.py` | `scaffold_project` async service |
-| `miniautogen/cli/commands/__init__.py` | Commands package marker |
-| `miniautogen/cli/commands/init.py` | `init` Click command |
-| `tests/cli/__init__.py` | Test package marker |
-| `tests/cli/test_main.py` | CLI foundation tests |
-| `tests/cli/test_errors.py` | Error hierarchy tests |
-| `tests/cli/test_config.py` | Config loading tests |
-| `tests/cli/test_output.py` | Output formatting tests |
-| `tests/cli/test_import_boundary.py` | Architectural boundary test |
-| `tests/cli/services/__init__.py` | Test package marker |
-| `tests/cli/services/test_init_project.py` | Scaffolding service tests |
-| `tests/cli/commands/__init__.py` | Test package marker |
-| `tests/cli/commands/test_init.py` | Init command integration tests |
 
-**Files Modified:**
+### New Files (Tests)
+| File | Purpose |
+|---|---|
+| `tests/cli/__init__.py` | Test package init |
+| `tests/cli/test_config.py` | Config model + loading tests (10 tests) |
+| `tests/cli/test_errors.py` | Error hierarchy tests (6 tests) |
+| `tests/cli/test_output.py` | Output helper tests (5 tests) |
+| `tests/cli/test_templates.py` | Template rendering tests (8 tests) |
+| `tests/cli/test_init_service.py` | Init service tests (11 tests) |
+| `tests/cli/test_init_command.py` | Init CLI command tests (7 tests) |
+| `tests/cli/test_import_boundary.py` | Architectural boundary test (2 tests) |
+
+### Modified Files
 | File | Change |
-|------|--------|
-| `pyproject.toml` | Added click, pyyaml deps + scripts entry |
-| `poetry.lock` | Updated by poetry lock |
+|---|---|
+| `pyproject.toml` | Added click, pyyaml deps + scripts entry point |
+
+### Total: 49 new tests across 7 test files

@@ -1,12 +1,12 @@
-# M2 Chunk 4: Sessions Command Implementation Plan
+# Milestone 2 — Chunk 4: `sessions` Command Implementation Plan
 
 > **For Agents:** REQUIRED SUB-SKILL: Use executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement `miniautogen sessions list` and `miniautogen sessions clean` CLI commands that query and manage run data through the public SDK surface.
 
-**Architecture:** The `sessions` command follows the same adapter/service split as other CLI commands. `commands/sessions.py` is a thin Click adapter that parses arguments and renders output. `services/session_ops.py` contains all application logic (store creation, querying, filtering, deletion). Services import only from `miniautogen.api` (and stdlib). A `create_run_store` factory abstracts over InMemory vs SQLAlchemy backends based on project config.
+**Architecture:** The `sessions` command follows the same adapter/service split as other CLI commands (D5). `commands/sessions.py` is a thin Click adapter that parses arguments and renders output. `services/session_ops.py` contains all application logic (store creation, querying, filtering, deletion). Services import only from `miniautogen.api` (D3 import boundary). A `create_run_store` factory abstracts over `InMemoryRunStore` vs `SQLAlchemyRunStore` backends based on the project config's `database.url` field. The `clean` operation enforces a safety invariant: it NEVER deletes runs with `status="started"` (active runs).
 
-**Tech Stack:** Python 3.10+, Click 8+, SQLAlchemy 2+ (async), aiosqlite, pytest 7+, pytest-asyncio, ruff (line-length=100)
+**Tech Stack:** Python 3.10+, Click 8+, SQLAlchemy 2+ (async), aiosqlite, Pydantic v2, pytest 7+, pytest-asyncio 0.23+, ruff (line-length=100)
 
 **Global Prerequisites:**
 - Environment: macOS, Python 3.10-3.11
@@ -17,122 +17,96 @@
 
 **Verification before starting:**
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 python --version        # Expected: Python 3.10.x or 3.11.x
 poetry --version        # Expected: Poetry 1.x+
-poetry run pytest --co  # Expected: collects tests, no import errors
-poetry run ruff check . # Expected: no errors (or only pre-existing)
+poetry run python -c "from miniautogen.cli.main import cli; print('OK')"       # Expected: OK
+poetry run python -c "from miniautogen.cli.config import ProjectConfig, load_config; print('OK')"  # Expected: OK
+poetry run python -c "from miniautogen.cli.errors import CLIError; print('OK')"  # Expected: OK
+poetry run pytest --co -q  # Expected: collects tests, no import errors
 git status              # Expected: clean working tree
 ```
 
-**Important Codebase Facts (discovered during planning):**
-
-1. **RunStore is NOT in `miniautogen.api`** -- Task 0 must add it before CLI services can import it.
-2. **Run payloads lack `created_at`** -- The PipelineRunner saves `{"status": "started", "correlation_id": "..."}` with no timestamp in the dict. The SQLAlchemy model has `updated_at` on the DB row but that's not returned in the payload. Task 0 must also add `created_at` to run payloads saved by PipelineRunner.
-3. **Active run statuses are:** `"started"` (the only non-terminal status). Terminal statuses are: `"finished"`, `"failed"`, `"cancelled"`, `"timed_out"`.
-4. **Click is not yet a dependency** -- must be added to pyproject.toml (expected from Chunk 1).
-5. **The `run_id` is the dict key, not inside the payload** -- `list_runs` returns payloads without `run_id`. Services must handle this.
-
-**What Already Exists (from SDK, DO NOT recreate):**
+**What Already Exists (DO NOT recreate):**
 - `miniautogen/stores/run_store.py` -- `RunStore` ABC with `save_run`, `get_run`, `list_runs`, `delete_run`
-- `miniautogen/stores/in_memory_run_store.py` -- `InMemoryRunStore`
-- `miniautogen/stores/sqlalchemy_run_store.py` -- `SQLAlchemyRunStore` with `init_db()`, `DBRun` model
-- `miniautogen/stores/__init__.py` -- exports all store classes
+- `miniautogen/stores/in_memory_run_store.py` -- `InMemoryRunStore` (dict-backed)
+- `miniautogen/stores/sqlalchemy_run_store.py` -- `SQLAlchemyRunStore` with `DBRun` ORM model, `init_db()`, full CRUD
+- `miniautogen/stores/__init__.py` -- re-exports all store classes
+- `miniautogen/cli/main.py` -- Click group + `run_async` helper (from Chunks 1-2)
+- `miniautogen/cli/config.py` -- `ProjectConfig` (fields: `project: dict`, `provider: dict`, `pipelines: dict`, `database: dict | None`), `load_config()`, `find_project_root()`
+- `miniautogen/cli/errors.py` -- `CLIError`, `ConfigurationError`
+- `miniautogen/cli/output.py` -- output formatting functions
+- `miniautogen/cli/commands/run.py` -- `run_command` registered via `cli.add_command()`
 
-**What Must Exist from Chunks 1-3 (prerequisites, not built here):**
-- `miniautogen/cli/__init__.py`
-- `miniautogen/cli/main.py` -- Click group + `run_async` helper
-- `miniautogen/cli/config.py` -- `ProjectConfig` Pydantic model with `database` section, `load_config()`
-- `miniautogen/cli/errors.py` -- CLI error hierarchy + exit codes
-- `miniautogen/cli/output.py` -- `render_text()`, `render_json()` formatting helpers
-- `miniautogen/cli/commands/__init__.py`
-- `miniautogen/cli/services/__init__.py`
-- `click` in pyproject.toml dependencies
+**Important Design Facts:**
+1. `ProjectConfig.database` is `dict[str, Any] | None`. When present, it has a `"url"` key with a SQLAlchemy async DSN like `"sqlite+aiosqlite:///miniautogen.db"`. When `None`, the in-memory store is used.
+2. `RunStore.list_runs(status, limit)` returns `list[dict[str, Any]]`. Each dict is the payload saved via `save_run`. The payload typically contains `"run_id"`, `"status"`, `"started_at"`, `"finished_at"` keys, but this is convention (the store treats payloads as opaque dicts).
+3. `SQLAlchemyRunStore` has an `updated_at` column on `DBRun`, but `list_runs` does NOT filter by date. Date filtering must happen in our service layer by inspecting payload fields.
+4. `RunStore` and `SQLAlchemyRunStore` are NOT currently in `miniautogen.api`. Task 1 adds them.
+
+**Important Design Constraint (D3):** `services/session_ops.py` may ONLY import from `miniautogen.api`, stdlib, and external deps. It must NOT import from `miniautogen.stores`, `miniautogen.core`, or any other internal module.
 
 ---
 
-## Task 0: Expose RunStore in Public API and Add `created_at` to Run Payloads
+## Task 1: Extend `miniautogen.api` to Export RunStore, InMemoryRunStore, SQLAlchemyRunStore
 
-**Why:** The design doc (D3) prohibits CLI services from importing `miniautogen.stores` directly. They must go through `miniautogen.api`. Also, `sessions clean --older-than` needs a `created_at` timestamp in run payloads, which the PipelineRunner currently doesn't save. We also need `run_id` inside the payload for `list_runs` to be useful.
+**Why:** The sessions service needs `RunStore`, `InMemoryRunStore`, and `SQLAlchemyRunStore`, but `miniautogen/api.py` does not export them yet. D3 compliance requires all store access to go through the public API facade.
 
 **Files:**
-- Modify: `miniautogen/api.py`
-- Modify: `miniautogen/core/runtime/pipeline_runner.py`
-- Modify: `miniautogen/stores/in_memory_run_store.py`
-- Create: `tests/stores/test_run_store_payload_enrichment.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/api.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/test_api_exports.py`
 
 **Prerequisites:**
-- Clean working tree on a feature branch
+- `miniautogen/api.py` must exist (it does)
+- `miniautogen/stores/run_store.py` must exist (it does)
+- `miniautogen/stores/in_memory_run_store.py` must exist (it does)
+- `miniautogen/stores/sqlalchemy_run_store.py` must exist (it does)
 
-**Step 1: Write the test for enriched payloads**
+**Step 1: Write the failing test**
 
-Create `tests/stores/test_run_store_payload_enrichment.py`:
+Append these tests to the **end** of `/Users/brunocapelao/Projects/miniAutoGen/tests/test_api_exports.py`:
 
 ```python
-"""Verify PipelineRunner saves run_id and created_at in run payloads."""
-
-from datetime import datetime, timezone
-
-import pytest
-
-from miniautogen.stores import InMemoryRunStore
+def test_api_exports_run_store():
+    from miniautogen.api import RunStore
+    assert RunStore is not None
 
 
-@pytest.mark.asyncio
-async def test_list_runs_returns_payloads_with_run_id() -> None:
-    store = InMemoryRunStore()
-    await store.save_run(
-        "run-abc",
-        {
-            "run_id": "run-abc",
-            "status": "finished",
-            "created_at": "2026-03-17T10:00:00+00:00",
-        },
-    )
-
-    runs = await store.list_runs()
-    assert len(runs) == 1
-    assert runs[0]["run_id"] == "run-abc"
-    assert runs[0]["created_at"] == "2026-03-17T10:00:00+00:00"
+def test_api_exports_in_memory_run_store():
+    from miniautogen.api import InMemoryRunStore
+    assert InMemoryRunStore is not None
 
 
-@pytest.mark.asyncio
-async def test_list_runs_filters_by_status() -> None:
-    store = InMemoryRunStore()
-    await store.save_run(
-        "run-1",
-        {"run_id": "run-1", "status": "finished", "created_at": "2026-03-17T10:00:00+00:00"},
-    )
-    await store.save_run(
-        "run-2",
-        {"run_id": "run-2", "status": "started", "created_at": "2026-03-17T11:00:00+00:00"},
-    )
-
-    finished = await store.list_runs(status="finished")
-    assert len(finished) == 1
-    assert finished[0]["run_id"] == "run-1"
+def test_api_exports_sqlalchemy_run_store():
+    from miniautogen.api import SQLAlchemyRunStore
+    assert SQLAlchemyRunStore is not None
 ```
 
-**Step 2: Run test to verify it passes (it should, since InMemoryRunStore just stores dicts)**
+**Note:** `InMemoryRunStore` may already be exported if Chunk 3 Task 1 was executed. If the test already passes for `InMemoryRunStore`, that is fine -- the test is still valid. The new exports are `RunStore` and `SQLAlchemyRunStore`.
 
-Run: `poetry run pytest tests/stores/test_run_store_payload_enrichment.py -v`
+**Step 2: Run test to verify it fails**
+
+Run: `poetry run pytest tests/test_api_exports.py::test_api_exports_run_store tests/test_api_exports.py::test_api_exports_sqlalchemy_run_store -v`
 
 **Expected output:**
 ```
-PASSED tests/stores/test_run_store_payload_enrichment.py::test_list_runs_returns_payloads_with_run_id
-PASSED tests/stores/test_run_store_payload_enrichment.py::test_list_runs_filters_by_status
+FAILED tests/test_api_exports.py::test_api_exports_run_store - ImportError: cannot import name 'RunStore'
+FAILED tests/test_api_exports.py::test_api_exports_sqlalchemy_run_store - ImportError: cannot import name 'SQLAlchemyRunStore'
 ```
 
-**Step 3: Add RunStore exports to `miniautogen/api.py`**
+**Step 3: Add imports and exports to `miniautogen/api.py`**
 
-Add these imports after the existing imports in `miniautogen/api.py`:
+Add these import lines. Place them after the existing `from miniautogen.core.runtime.recovery import SessionRecovery` line (or after the `InMemoryRunStore` import if Chunk 3 already added it):
 
 ```python
-from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 from miniautogen.stores.run_store import RunStore
+from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 ```
 
-Add to the `__all__` list (in the "# Recovery" section or a new "# Stores" section):
+**Note:** If `InMemoryRunStore` was already imported by Chunk 3, do NOT duplicate it. Only add the missing imports.
+
+Then add these strings to the `__all__` list. Add a `# Stores` section (or extend the existing one if Chunk 3 created it):
 
 ```python
     # Stores
@@ -141,1120 +115,1113 @@ Add to the `__all__` list (in the "# Recovery" section or a new "# Stores" secti
     "SQLAlchemyRunStore",
 ```
 
-**Step 4: Enrich PipelineRunner to save `run_id` and `created_at` in payloads**
+**Step 4: Run test to verify it passes**
 
-In `miniautogen/core/runtime/pipeline_runner.py`, modify the `run_pipeline` method. Find the first `save_run` call (around line 98):
+Run: `poetry run pytest tests/test_api_exports.py::test_api_exports_run_store tests/test_api_exports.py::test_api_exports_in_memory_run_store tests/test_api_exports.py::test_api_exports_sqlalchemy_run_store -v`
 
-Replace:
-```python
-        if self.run_store is not None:
-            await self.run_store.save_run(
-                current_run_id,
-                {
-                    "status": "started",
-                    "correlation_id": correlation_id,
-                },
-            )
+**Expected output:**
+```
+PASSED tests/test_api_exports.py::test_api_exports_run_store
+PASSED tests/test_api_exports.py::test_api_exports_in_memory_run_store
+PASSED tests/test_api_exports.py::test_api_exports_sqlalchemy_run_store
 ```
 
-With:
-```python
-        run_created_at = datetime.now(timezone.utc).isoformat()
-        if self.run_store is not None:
-            await self.run_store.save_run(
-                current_run_id,
-                {
-                    "run_id": current_run_id,
-                    "status": "started",
-                    "correlation_id": correlation_id,
-                    "created_at": run_created_at,
-                },
-            )
-```
+**Step 5: Run full API export tests**
 
-Then update ALL subsequent `save_run` calls in the same method to include `"run_id": current_run_id` and `"created_at": run_created_at`. There are 4 more calls to update:
+Run: `poetry run pytest tests/test_api_exports.py -v`
 
-1. The cancelled run (around line 153):
-```python
-                    await self.run_store.save_run(
-                        current_run_id,
-                        {
-                            "run_id": current_run_id,
-                            "status": "cancelled",
-                            "correlation_id": correlation_id,
-                            "created_at": run_created_at,
-                        },
-                    )
-```
+**Expected output:** All tests PASSED.
 
-2. The timed_out run (around line 177):
-```python
-                    await self.run_store.save_run(
-                        current_run_id,
-                        {
-                            "run_id": current_run_id,
-                            "status": "timed_out",
-                            "correlation_id": correlation_id,
-                            "created_at": run_created_at,
-                        },
-                    )
-```
+**Step 6: Run linter**
 
-3. The finished run (around line 202):
-```python
-                    await self.run_store.save_run(
-                        current_run_id,
-                        {
-                            "run_id": current_run_id,
-                            "status": "finished",
-                            "correlation_id": correlation_id,
-                            "created_at": run_created_at,
-                        },
-                    )
-```
+Run: `poetry run ruff check miniautogen/api.py tests/test_api_exports.py`
 
-4. Update `_persist_failed_run` method to accept and include `created_at`:
+**Expected output:** No errors.
 
-Change the signature to:
-```python
-    async def _persist_failed_run(
-        self,
-        run_id: str,
-        correlation_id: str,
-        error_type: str,
-        created_at: str,
-    ) -> None:
-        if self.run_store is not None:
-            await self.run_store.save_run(
-                run_id,
-                {
-                    "run_id": run_id,
-                    "status": "failed",
-                    "correlation_id": correlation_id,
-                    "error_type": error_type,
-                    "created_at": created_at,
-                },
-            )
-```
-
-And update the two calls to `_persist_failed_run` to pass `run_created_at`:
-```python
-            await self._persist_failed_run(
-                current_run_id, correlation_id, type(exc).__name__, run_created_at,
-            )
-```
-
-**Step 5: Run existing tests to verify no regression**
-
-Run: `poetry run pytest tests/ -v -k "run_store or pipeline_runner" --no-header`
-
-**Expected output:** All existing tests pass. No failures.
-
-**Step 6: Commit**
+**Step 7: Commit**
 
 ```bash
-git add miniautogen/api.py miniautogen/core/runtime/pipeline_runner.py tests/stores/test_run_store_payload_enrichment.py
-git commit -m "feat: expose RunStore in public API and enrich run payloads with run_id and created_at"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/api.py tests/test_api_exports.py
+git commit -m "feat(api): export RunStore, InMemoryRunStore, SQLAlchemyRunStore from public API"
 ```
 
 **If Task Fails:**
 
-1. **Import error in api.py:**
-   - Check: `from miniautogen.stores.run_store import RunStore` -- verify file exists
-   - Fix: Ensure `miniautogen/stores/run_store.py` is present
-   - Rollback: `git checkout -- miniautogen/api.py`
+1. **Import error on stores:**
+   - Check: `poetry run python -c "from miniautogen.stores.run_store import RunStore; print('OK')"`
+   - Check: `poetry run python -c "from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore; print('OK')"`
+   - Both should print `OK`. If not, the source files have import issues.
 
-2. **Existing tests break after PipelineRunner changes:**
-   - Run: `poetry run pytest tests/ -v` (check what broke)
-   - The payload shape changed, so tests that assert exact payload dicts will need updating
-   - Rollback: `git checkout -- miniautogen/core/runtime/pipeline_runner.py`
+2. **Duplicate InMemoryRunStore import:**
+   - If Chunk 3 already added `InMemoryRunStore`, you will get a ruff error for duplicate import.
+   - Fix: Remove the duplicate import line, keep only one.
+
+3. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/api.py tests/test_api_exports.py`
 
 ---
 
-## Task 1: Create `services/session_ops.py` -- Store Factory
+## Task 2: Create `create_run_store` Factory in `services/session_ops.py`
 
-**Why:** Both `list_sessions` and `clean_sessions` need a RunStore instance. The factory encapsulates the decision of InMemory vs SQLAlchemy based on project config.
+**Why:** The factory function creates the appropriate `RunStore` backend based on whether the project config has a database URL configured. This is the foundation for all session operations.
 
 **Files:**
-- Create: `miniautogen/cli/services/session_ops.py`
-- Create: `tests/cli/__init__.py`
-- Create: `tests/cli/services/__init__.py`
-- Create: `tests/cli/services/test_session_ops.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`
 
 **Prerequisites:**
-- Task 0 complete (RunStore exported from `miniautogen.api`)
-- Chunks 1-3 complete (CLI package structure exists, `config.py` has `ProjectConfig`)
+- Task 1 completed (API exports RunStore, InMemoryRunStore, SQLAlchemyRunStore)
+- `miniautogen/cli/services/__init__.py` must exist (from Chunks 1-2)
+- `tests/cli/services/__init__.py` must exist (from Chunk 2 or 3)
 
-**Step 1: Write the test for the store factory**
+**Step 1: Verify directory structure**
 
-Create `tests/cli/__init__.py` (empty file):
-```python
+Run:
+```bash
+ls /Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/__init__.py
+ls /Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py
 ```
 
-Create `tests/cli/services/__init__.py` (empty file):
-```python
+**Expected output:** Both files listed. If missing, create them:
+```bash
+mkdir -p /Users/brunocapelao/Projects/miniAutoGen/tests/cli/services
+touch /Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/__init__.py
 ```
 
-Create `tests/cli/services/test_session_ops.py`:
+**Step 2: Write the failing tests**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`:
 
 ```python
-"""Tests for session_ops service — store factory, list, and clean."""
-
+"""Tests for session operations service."""
 from __future__ import annotations
 
 import pytest
 
-from miniautogen.api import InMemoryRunStore
 from miniautogen.cli.services.session_ops import create_run_store
 
 
-@pytest.mark.asyncio
-async def test_create_run_store_returns_in_memory_when_no_db_url() -> None:
-    store = await create_run_store(database_url=None)
-    assert isinstance(store, InMemoryRunStore)
+class TestCreateRunStore:
+    """Tests for the create_run_store factory."""
 
+    def test_returns_in_memory_store_when_no_database(self) -> None:
+        from miniautogen.api import InMemoryRunStore
 
-@pytest.mark.asyncio
-async def test_create_run_store_returns_sqlalchemy_when_db_url(tmp_path) -> None:
-    from miniautogen.api import SQLAlchemyRunStore
+        config_database = None
+        store = create_run_store(config_database)
+        assert isinstance(store, InMemoryRunStore)
 
-    db_url = f"sqlite+aiosqlite:///{tmp_path / 'test.db'}"
-    store = await create_run_store(database_url=db_url)
-    assert isinstance(store, SQLAlchemyRunStore)
+    def test_returns_sqlalchemy_store_when_database_url_present(self) -> None:
+        from miniautogen.api import SQLAlchemyRunStore
+
+        config_database = {"url": "sqlite+aiosqlite:///test.db"}
+        store = create_run_store(config_database)
+        assert isinstance(store, SQLAlchemyRunStore)
+
+    def test_returns_in_memory_store_when_database_dict_has_no_url(
+        self,
+    ) -> None:
+        from miniautogen.api import InMemoryRunStore
+
+        config_database = {"other_key": "value"}
+        store = create_run_store(config_database)
+        assert isinstance(store, InMemoryRunStore)
 ```
 
-**Step 2: Run test to verify it fails (module doesn't exist yet)**
+**Step 3: Run test to verify it fails**
 
-Run: `poetry run pytest tests/cli/services/test_session_ops.py::test_create_run_store_returns_in_memory_when_no_db_url -v`
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestCreateRunStore -v`
 
 **Expected output:**
 ```
-FAILED - ModuleNotFoundError: No module named 'miniautogen.cli.services.session_ops'
+ERROR tests/cli/services/test_session_ops.py - ModuleNotFoundError: No module named 'miniautogen.cli.services.session_ops'
 ```
 
-**Step 3: Implement the store factory**
+**Step 4: Write minimal implementation**
 
-Create `miniautogen/cli/services/session_ops.py`:
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`:
 
 ```python
-"""Session operations — application logic for the sessions CLI command.
+"""Session/run management service for the CLI.
 
-This module provides store creation, session listing, and session cleanup.
-It imports ONLY from miniautogen.api (public SDK surface) and stdlib.
+Provides operations to list, inspect, and clean session/run data
+via the public SDK surface (miniautogen.api).
 """
-
 from __future__ import annotations
 
-import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from miniautogen.api import InMemoryRunStore, RunStore, SQLAlchemyRunStore
 
-logger = logging.getLogger(__name__)
 
-# Statuses that are safe to delete (terminal states only).
-_TERMINAL_STATUSES = frozenset({"finished", "failed", "cancelled", "timed_out"})
+def create_run_store(
+    config_database: dict[str, Any] | None,
+) -> RunStore:
+    """Create a RunStore based on project database configuration.
 
-# Statuses that must NEVER be deleted (active/in-progress).
-_ACTIVE_STATUSES = frozenset({"started"})
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+        If ``None`` or missing ``url`` key, returns ``InMemoryRunStore``.
+        Otherwise returns ``SQLAlchemyRunStore`` connected to the URL.
 
-
-async def create_run_store(database_url: str | None) -> RunStore:
-    """Create a RunStore from a database URL.
-
-    If database_url is None or empty, returns InMemoryRunStore with a
-    warning that data won't persist across CLI invocations.
-
-    If database_url is provided, returns SQLAlchemyRunStore with
-    tables auto-created.
+    Returns
+    -------
+    RunStore
+        The appropriate store implementation.
     """
-    if not database_url:
-        logger.warning(
-            "No database URL configured. Using in-memory store. "
-            "Session data will not persist across CLI invocations."
-        )
-        return InMemoryRunStore()
-
-    store = SQLAlchemyRunStore(db_url=database_url)
-    await store.init_db()
-    return store
+    if config_database and "url" in config_database:
+        return SQLAlchemyRunStore(config_database["url"])
+    return InMemoryRunStore()
 ```
 
-**Step 4: Run tests to verify they pass**
+**Step 5: Run test to verify it passes**
 
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v`
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestCreateRunStore -v`
 
 **Expected output:**
 ```
-PASSED tests/cli/services/test_session_ops.py::test_create_run_store_returns_in_memory_when_no_db_url
-PASSED tests/cli/services/test_session_ops.py::test_create_run_store_returns_sqlalchemy_when_db_url
+PASSED tests/cli/services/test_session_ops.py::TestCreateRunStore::test_returns_in_memory_store_when_no_database
+PASSED tests/cli/services/test_session_ops.py::TestCreateRunStore::test_returns_sqlalchemy_store_when_database_url_present
+PASSED tests/cli/services/test_session_ops.py::TestCreateRunStore::test_returns_in_memory_store_when_database_dict_has_no_url
 ```
 
-**Step 5: Commit**
+**Step 6: Run linter**
+
+Run: `poetry run ruff check miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py`
+
+**Expected output:** No errors.
+
+**Step 7: Commit**
 
 ```bash
-git add miniautogen/cli/services/session_ops.py tests/cli/__init__.py tests/cli/services/__init__.py tests/cli/services/test_session_ops.py
-git commit -m "feat: add create_run_store factory for session operations"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py
+git commit -m "feat(cli): add create_run_store factory for session operations"
 ```
 
 **If Task Fails:**
 
-1. **Import error on `miniautogen.cli.services`:**
-   - Check: Does `miniautogen/cli/services/__init__.py` exist? (Chunk 1-3 prerequisite)
-   - Fix: Create the `__init__.py` if missing
+1. **Import error on miniautogen.api stores:**
+   - Check: `poetry run python -c "from miniautogen.api import RunStore, InMemoryRunStore, SQLAlchemyRunStore; print('OK')"`
+   - If fails, Task 1 was not completed. Go back.
 
-2. **SQLAlchemy store `init_db` fails:**
-   - Check: `aiosqlite` installed? `poetry run python -c "import aiosqlite"`
-   - Fix: `poetry add aiosqlite`
+2. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/cli/services/session_ops.py`
 
 ---
 
-## Task 2: Implement `list_sessions` Service Function
+## Task 3: Add `list_sessions` Async Service Function
 
-**Why:** The `sessions list` command needs a function that queries the store and returns formatted results.
+**Why:** The core query logic for listing sessions. It creates a store, queries it with optional status filter and limit, and returns a list of session dicts. This function handles the `SQLAlchemyRunStore.init_db()` call when using a database backend.
 
 **Files:**
-- Modify: `miniautogen/cli/services/session_ops.py`
-- Modify: `tests/cli/services/test_session_ops.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`
 
 **Prerequisites:**
-- Task 1 complete
+- Task 2 completed
 
-**Step 1: Write the tests for list_sessions**
+**Step 1: Write the failing test**
 
-Append to `tests/cli/services/test_session_ops.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`:
 
 ```python
-from miniautogen.cli.services.session_ops import list_sessions
+class TestListSessions:
+    """Tests for the list_sessions async function."""
 
+    @pytest.mark.anyio
+    async def test_list_sessions_empty_store(self) -> None:
+        from miniautogen.cli.services.session_ops import list_sessions
 
-@pytest.mark.asyncio
-async def test_list_sessions_returns_all_runs() -> None:
-    store = InMemoryRunStore()
-    await store.save_run(
-        "run-1",
-        {
+        result = await list_sessions(
+            config_database=None,
+            status=None,
+            limit=100,
+        )
+        assert result == []
+
+    @pytest.mark.anyio
+    async def test_list_sessions_returns_saved_runs(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            list_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        await store.save_run("run-1", {
             "run_id": "run-1",
             "status": "finished",
-            "created_at": "2026-03-17T10:00:00+00:00",
-        },
-    )
-    await store.save_run(
-        "run-2",
-        {
+            "started_at": "2026-03-17T10:00:00Z",
+        })
+        await store.save_run("run-2", {
             "run_id": "run-2",
-            "status": "started",
-            "created_at": "2026-03-17T11:00:00+00:00",
-        },
-    )
+            "status": "failed",
+            "started_at": "2026-03-17T11:00:00Z",
+        })
 
-    result = await list_sessions(store=store, status=None, limit=20)
-    assert len(result) == 2
+        result = await list_sessions_from_store(
+            store=store, status=None, limit=100
+        )
+        assert len(result) == 2
 
+    @pytest.mark.anyio
+    async def test_list_sessions_filter_by_status(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            list_sessions_from_store,
+        )
 
-@pytest.mark.asyncio
-async def test_list_sessions_filters_by_status() -> None:
-    store = InMemoryRunStore()
-    await store.save_run(
-        "run-1",
-        {"run_id": "run-1", "status": "finished", "created_at": "2026-03-17T10:00:00+00:00"},
-    )
-    await store.save_run(
-        "run-2",
-        {"run_id": "run-2", "status": "started", "created_at": "2026-03-17T11:00:00+00:00"},
-    )
+        store = InMemoryRunStore()
+        await store.save_run("run-1", {
+            "run_id": "run-1",
+            "status": "finished",
+        })
+        await store.save_run("run-2", {
+            "run_id": "run-2",
+            "status": "failed",
+        })
+        await store.save_run("run-3", {
+            "run_id": "run-3",
+            "status": "finished",
+        })
 
-    result = await list_sessions(store=store, status="finished", limit=20)
-    assert len(result) == 1
-    assert result[0]["run_id"] == "run-1"
+        result = await list_sessions_from_store(
+            store=store, status="finished", limit=100
+        )
+        assert len(result) == 2
+        assert all(r["status"] == "finished" for r in result)
 
+    @pytest.mark.anyio
+    async def test_list_sessions_respects_limit(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            list_sessions_from_store,
+        )
 
-@pytest.mark.asyncio
-async def test_list_sessions_respects_limit() -> None:
-    store = InMemoryRunStore()
-    for i in range(5):
-        await store.save_run(
-            f"run-{i}",
-            {
+        store = InMemoryRunStore()
+        for i in range(10):
+            await store.save_run(f"run-{i}", {
                 "run_id": f"run-{i}",
                 "status": "finished",
-                "created_at": f"2026-03-17T{10 + i}:00:00+00:00",
-            },
+            })
+
+        result = await list_sessions_from_store(
+            store=store, status=None, limit=3
         )
-
-    result = await list_sessions(store=store, status=None, limit=3)
-    assert len(result) == 3
-
-
-@pytest.mark.asyncio
-async def test_list_sessions_empty_store() -> None:
-    store = InMemoryRunStore()
-    result = await list_sessions(store=store, status=None, limit=20)
-    assert result == []
-```
-
-**Step 2: Run tests to verify they fail**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v -k "list_sessions"`
-
-**Expected output:**
-```
-FAILED - ImportError: cannot import name 'list_sessions' from 'miniautogen.cli.services.session_ops'
-```
-
-**Step 3: Implement list_sessions**
-
-Add to `miniautogen/cli/services/session_ops.py` (after the `create_run_store` function):
-
-```python
-async def list_sessions(
-    *,
-    store: RunStore,
-    status: str | None,
-    limit: int,
-) -> list[dict[str, Any]]:
-    """List runs from the store, optionally filtered by status.
-
-    Args:
-        store: The RunStore to query.
-        status: If provided, only return runs with this status.
-        limit: Maximum number of runs to return.
-
-    Returns:
-        List of run payload dicts, each containing at least
-        run_id, status, and created_at.
-    """
-    return await store.list_runs(status=status, limit=limit)
-```
-
-**Step 4: Run tests to verify they pass**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v -k "list_sessions"`
-
-**Expected output:**
-```
-PASSED tests/cli/services/test_session_ops.py::test_list_sessions_returns_all_runs
-PASSED tests/cli/services/test_session_ops.py::test_list_sessions_filters_by_status
-PASSED tests/cli/services/test_session_ops.py::test_list_sessions_respects_limit
-PASSED tests/cli/services/test_session_ops.py::test_list_sessions_empty_store
-```
-
-**Step 5: Commit**
-
-```bash
-git add miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py
-git commit -m "feat: add list_sessions service function"
-```
-
-**If Task Fails:**
-
-1. **list_runs returns unexpected shape:**
-   - Check: Payload dicts must include `run_id` and `status` (Task 0 ensures this)
-   - Fix: Verify Task 0 was applied correctly
-
----
-
-## Task 3: Implement `clean_sessions` Service Function
-
-**Why:** The `sessions clean` command needs a function that safely deletes old terminal runs while NEVER touching active runs.
-
-**Files:**
-- Modify: `miniautogen/cli/services/session_ops.py`
-- Modify: `tests/cli/services/test_session_ops.py`
-
-**Prerequisites:**
-- Task 2 complete
-
-**Step 1: Write the tests for clean_sessions**
-
-Append to `tests/cli/services/test_session_ops.py`:
-
-```python
-from datetime import datetime, timedelta, timezone
-
-from miniautogen.cli.services.session_ops import clean_sessions
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_deletes_old_terminal_runs() -> None:
-    store = InMemoryRunStore()
-    old_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-    await store.save_run(
-        "run-old",
-        {"run_id": "run-old", "status": "finished", "created_at": old_date},
-    )
-
-    count = await clean_sessions(store=store, older_than_days=7)
-    assert count == 1
-
-    remaining = await store.list_runs()
-    assert len(remaining) == 0
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_never_deletes_active_runs() -> None:
-    """SAFETY INVARIANT: active (started) runs must never be deleted."""
-    store = InMemoryRunStore()
-    old_date = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    await store.save_run(
-        "run-active",
-        {"run_id": "run-active", "status": "started", "created_at": old_date},
-    )
-
-    count = await clean_sessions(store=store, older_than_days=1)
-    assert count == 0
-
-    remaining = await store.list_runs()
-    assert len(remaining) == 1
-    assert remaining[0]["status"] == "started"
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_respects_age_threshold() -> None:
-    store = InMemoryRunStore()
-    recent_date = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
-    old_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-
-    await store.save_run(
-        "run-recent",
-        {"run_id": "run-recent", "status": "finished", "created_at": recent_date},
-    )
-    await store.save_run(
-        "run-old",
-        {"run_id": "run-old", "status": "failed", "created_at": old_date},
-    )
-
-    count = await clean_sessions(store=store, older_than_days=7)
-    assert count == 1
-
-    remaining = await store.list_runs()
-    assert len(remaining) == 1
-    assert remaining[0]["run_id"] == "run-recent"
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_deletes_all_terminal_statuses() -> None:
-    store = InMemoryRunStore()
-    old_date = (datetime.now(timezone.utc) - timedelta(days=10)).isoformat()
-
-    for i, status in enumerate(["finished", "failed", "cancelled", "timed_out"]):
-        await store.save_run(
-            f"run-{i}",
-            {"run_id": f"run-{i}", "status": status, "created_at": old_date},
-        )
-
-    count = await clean_sessions(store=store, older_than_days=7)
-    assert count == 4
-
-    remaining = await store.list_runs()
-    assert len(remaining) == 0
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_empty_store_returns_zero() -> None:
-    store = InMemoryRunStore()
-    count = await clean_sessions(store=store, older_than_days=7)
-    assert count == 0
-
-
-@pytest.mark.asyncio
-async def test_clean_sessions_skips_runs_without_created_at() -> None:
-    """Runs missing created_at are skipped (not deleted) for safety."""
-    store = InMemoryRunStore()
-    await store.save_run(
-        "run-no-date",
-        {"run_id": "run-no-date", "status": "finished"},
-    )
-
-    count = await clean_sessions(store=store, older_than_days=1)
-    assert count == 0
-
-    remaining = await store.list_runs()
-    assert len(remaining) == 1
-```
-
-**Step 2: Run tests to verify they fail**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v -k "clean_sessions"`
-
-**Expected output:**
-```
-FAILED - ImportError: cannot import name 'clean_sessions' from 'miniautogen.cli.services.session_ops'
-```
-
-**Step 3: Implement clean_sessions**
-
-Add to `miniautogen/cli/services/session_ops.py`:
-
-```python
-async def clean_sessions(
-    *,
-    store: RunStore,
-    older_than_days: int,
-) -> int:
-    """Delete terminal runs older than the given number of days.
-
-    SAFETY INVARIANT: Active runs (status='started') are NEVER deleted,
-    regardless of age. Runs without a created_at field are also skipped
-    for safety.
-
-    Args:
-        store: The RunStore to clean.
-        older_than_days: Only delete runs older than this many days.
-
-    Returns:
-        Number of runs deleted.
-    """
-    cutoff = datetime.now(timezone.utc) - __import__("datetime").timedelta(days=older_than_days)
-    all_runs = await store.list_runs(limit=10_000)
-
-    deleted_count = 0
-    for run in all_runs:
-        status = run.get("status", "")
-        if status in _ACTIVE_STATUSES:
-            continue
-        if status not in _TERMINAL_STATUSES:
-            continue
-
-        created_at_str = run.get("created_at")
-        if not created_at_str:
-            logger.warning(
-                "Skipping run %s: no created_at field", run.get("run_id", "unknown")
-            )
-            continue
-
-        try:
-            created_at = datetime.fromisoformat(created_at_str)
-        except (ValueError, TypeError):
-            logger.warning(
-                "Skipping run %s: invalid created_at=%r",
-                run.get("run_id", "unknown"),
-                created_at_str,
-            )
-            continue
-
-        if created_at < cutoff:
-            run_id = run.get("run_id")
-            if run_id and await store.delete_run(run_id):
-                deleted_count += 1
-
-    return deleted_count
-```
-
-**IMPORTANT:** Replace the `__import__("datetime").timedelta` with a proper import. The function should use `timedelta` directly. Add `timedelta` to the existing `from datetime import datetime, timezone` import at the top of the file:
-
-Change the import line from:
-```python
-from datetime import datetime, timezone
-```
-to:
-```python
-from datetime import datetime, timedelta, timezone
-```
-
-And the cutoff line becomes:
-```python
-    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
-```
-
-**Step 4: Run tests to verify they pass**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v -k "clean_sessions"`
-
-**Expected output:**
-```
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_deletes_old_terminal_runs
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_never_deletes_active_runs
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_respects_age_threshold
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_deletes_all_terminal_statuses
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_empty_store_returns_zero
-PASSED tests/cli/services/test_session_ops.py::test_clean_sessions_skips_runs_without_created_at
-```
-
-**Step 5: Run ALL session_ops tests**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops.py -v`
-
-**Expected output:** All 10 tests pass.
-
-**Step 6: Commit**
-
-```bash
-git add miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py
-git commit -m "feat: add clean_sessions service with safety invariant against active run deletion"
-```
-
-**If Task Fails:**
-
-1. **datetime.fromisoformat fails on Python 3.10:**
-   - Check: Python 3.10 supports ISO format with `+00:00` suffix
-   - Fix: If it fails, use `dateutil.parser.isoparse` instead (but it shouldn't)
-
-2. **delete_run returns False unexpectedly:**
-   - Check: `run_id` must be present in the payload for lookup
-   - Fix: Verify Task 0 enrichment was applied
-
----
-
-## Task 4: Run Code Review (Services)
-
-1. **Dispatch all 3 reviewers in parallel:**
-   - REQUIRED SUB-SKILL: Use requesting-code-review
-   - All reviewers run simultaneously (code-reviewer, business-logic-reviewer, security-reviewer)
-   - Wait for all to complete
-
-2. **Handle findings by severity (MANDATORY):**
-
-**Critical/High/Medium Issues:**
-- Fix immediately (do NOT add TODO comments for these severities)
-- Re-run all 3 reviewers in parallel after fixes
-- Repeat until zero Critical/High/Medium issues remain
-
-**Low Issues:**
-- Add `TODO(review):` comments in code at the relevant location
-- Format: `TODO(review): [Issue description] (reported by [reviewer] on [date], severity: Low)`
-
-**Cosmetic/Nitpick Issues:**
-- Add `FIXME(nitpick):` comments in code at the relevant location
-- Format: `FIXME(nitpick): [Issue description] (reported by [reviewer] on [date], severity: Cosmetic)`
-
-3. **Proceed only when:**
-   - Zero Critical/High/Medium issues remain
-   - All Low issues have TODO(review): comments added
-   - All Cosmetic issues have FIXME(nitpick): comments added
-
----
-
-## Task 5: Create `commands/sessions.py` -- Click Group with `list` Subcommand
-
-**Why:** The `sessions list` subcommand is the CLI adapter that parses arguments, calls the service, and renders output.
-
-**Files:**
-- Create: `miniautogen/cli/commands/sessions.py`
-- Create: `tests/cli/commands/__init__.py`
-- Create: `tests/cli/commands/test_sessions.py`
-
-**Prerequisites:**
-- Tasks 0-3 complete
-- Chunks 1-3 complete (specifically: `miniautogen/cli/main.py` with `cli` group, `config.py` with `load_config`, `output.py`)
-
-**Step 1: Write the test for `sessions list`**
-
-Create `tests/cli/commands/__init__.py` (empty file):
-```python
-```
-
-Create `tests/cli/commands/test_sessions.py`:
-
-```python
-"""Tests for sessions CLI command using Click's CliRunner."""
-
-from __future__ import annotations
-
-from unittest.mock import AsyncMock, patch
-
-from click.testing import CliRunner
-
-from miniautogen.cli.commands.sessions import sessions
-
-
-def test_sessions_list_text_format() -> None:
-    """sessions list renders a text table by default."""
-    mock_runs = [
-        {
-            "run_id": "run-abc",
-            "status": "finished",
-            "created_at": "2026-03-17T10:00:00+00:00",
-        },
-        {
-            "run_id": "run-def",
-            "status": "failed",
-            "created_at": "2026-03-17T11:00:00+00:00",
-        },
-    ]
-
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_list_sessions",
-        return_value=mock_runs,
-    ):
-        result = runner.invoke(sessions, ["list"])
-
-    assert result.exit_code == 0
-    assert "run-abc" in result.output
-    assert "finished" in result.output
-    assert "run-def" in result.output
-
-
-def test_sessions_list_json_format() -> None:
-    """sessions list --format json renders JSON output."""
-    mock_runs = [
-        {
-            "run_id": "run-abc",
-            "status": "finished",
-            "created_at": "2026-03-17T10:00:00+00:00",
-        },
-    ]
-
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_list_sessions",
-        return_value=mock_runs,
-    ):
-        result = runner.invoke(sessions, ["list", "--format", "json"])
-
-    assert result.exit_code == 0
-    import json
-
-    parsed = json.loads(result.output)
-    assert len(parsed) == 1
-    assert parsed[0]["run_id"] == "run-abc"
-
-
-def test_sessions_list_empty() -> None:
-    """sessions list with no runs shows informative message."""
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_list_sessions",
-        return_value=[],
-    ):
-        result = runner.invoke(sessions, ["list"])
-
-    assert result.exit_code == 0
-    assert "No sessions found" in result.output
-
-
-def test_sessions_list_with_status_filter() -> None:
-    """sessions list --status finished passes filter to service."""
-    mock_runs = [
-        {
-            "run_id": "run-abc",
-            "status": "finished",
-            "created_at": "2026-03-17T10:00:00+00:00",
-        },
-    ]
-
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_list_sessions",
-        return_value=mock_runs,
-    ) as mock_fn:
-        result = runner.invoke(sessions, ["list", "--status", "finished"])
-
-    assert result.exit_code == 0
-    assert "run-abc" in result.output
+        assert len(result) == 3
 ```
 
 **Step 2: Run test to verify it fails**
 
-Run: `poetry run pytest tests/cli/commands/test_sessions.py::test_sessions_list_text_format -v`
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestListSessions -v`
 
 **Expected output:**
 ```
-FAILED - ModuleNotFoundError: No module named 'miniautogen.cli.commands.sessions'
+FAILED ... - ImportError: cannot import name 'list_sessions' from 'miniautogen.cli.services.session_ops'
 ```
 
-**Step 3: Implement the sessions command with list subcommand**
+**Step 3: Implement `list_sessions` and `list_sessions_from_store`**
 
-Create `miniautogen/cli/commands/sessions.py`:
+Add to the **end** of `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`:
 
 ```python
-"""CLI command adapter for session management.
-
-This module is a thin Click adapter. All application logic lives in
-miniautogen.cli.services.session_ops.
-"""
-
-from __future__ import annotations
-
-import json
-
-import anyio
-import click
 
 
-def _run_list_sessions(
+async def list_sessions_from_store(
+    store: RunStore,
     status: str | None,
     limit: int,
-    database_url: str | None,
-) -> list[dict]:
-    """Bridge async list_sessions into sync Click context."""
-    from miniautogen.cli.services.session_ops import create_run_store, list_sessions
+) -> list[dict[str, Any]]:
+    """Query sessions from an already-instantiated store.
 
-    async def _inner() -> list[dict]:
-        store = await create_run_store(database_url=database_url)
-        return await list_sessions(store=store, status=status, limit=limit)
+    Parameters
+    ----------
+    store:
+        An initialized ``RunStore`` instance.
+    status:
+        If provided, filter runs by this status value.
+    limit:
+        Maximum number of runs to return.
 
-    return anyio.from_thread.run(_inner)
-
-
-@click.group("sessions")
-def sessions() -> None:
-    """Manage local session/run data."""
-
-
-@sessions.command("list")
-@click.option("--status", default=None, help="Filter by run status (e.g. finished, failed).")
-@click.option("--limit", default=20, type=int, help="Maximum number of sessions to show.")
-@click.option(
-    "--format",
-    "output_format",
-    default="text",
-    type=click.Choice(["text", "json"]),
-    help="Output format.",
-)
-@click.pass_context
-def list_cmd(ctx: click.Context, status: str | None, limit: int, output_format: str) -> None:
-    """List recent pipeline runs/sessions."""
-    # Resolve database URL from project config if available.
-    database_url = _get_database_url(ctx)
-
-    runs = _run_list_sessions(status=status, limit=limit, database_url=database_url)
-
-    if output_format == "json":
-        click.echo(json.dumps(runs, indent=2))
-        return
-
-    if not runs:
-        click.echo("No sessions found.")
-        return
-
-    # Render text table.
-    header = f"{'RUN ID':<40} {'STATUS':<12} {'CREATED AT':<28}"
-    click.echo(header)
-    click.echo("-" * len(header))
-    for run in runs:
-        run_id = run.get("run_id", "unknown")
-        run_status = run.get("status", "unknown")
-        created_at = run.get("created_at", "N/A")
-        click.echo(f"{run_id:<40} {run_status:<12} {created_at:<28}")
-
-
-def _get_database_url(ctx: click.Context) -> str | None:
-    """Extract database URL from Click context or project config.
-
-    Tries to load from the project config (set by parent CLI group).
-    Falls back to None if not configured.
+    Returns
+    -------
+    list[dict]
+        List of run payload dicts.
     """
-    try:
-        config = ctx.obj
-        if config and hasattr(config, "database") and config.database:
-            return getattr(config.database, "url", None)
-    except Exception:
-        pass
-    return None
+    return await store.list_runs(status=status, limit=limit)
+
+
+async def list_sessions(
+    config_database: dict[str, Any] | None,
+    status: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """List sessions/runs from the project's configured store.
+
+    Creates the appropriate store backend based on config, initializes
+    it if needed (SQLAlchemy), and queries for runs.
+
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+    status:
+        If provided, filter by run status.
+    limit:
+        Maximum number of runs to return.
+
+    Returns
+    -------
+    list[dict]
+        List of run payload dicts.
+    """
+    store = create_run_store(config_database)
+    if hasattr(store, "init_db"):
+        await store.init_db()
+    return await list_sessions_from_store(
+        store=store, status=status, limit=limit
+    )
 ```
 
-**Step 4: Run tests to verify they pass**
+**Step 4: Run test to verify it passes**
 
-Run: `poetry run pytest tests/cli/commands/test_sessions.py -v`
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestListSessions -v`
 
 **Expected output:**
 ```
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_text_format
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_json_format
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_empty
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_with_status_filter
+PASSED tests/cli/services/test_session_ops.py::TestListSessions::test_list_sessions_empty_store
+PASSED tests/cli/services/test_session_ops.py::TestListSessions::test_list_sessions_returns_saved_runs
+PASSED tests/cli/services/test_session_ops.py::TestListSessions::test_list_sessions_filter_by_status
+PASSED tests/cli/services/test_session_ops.py::TestListSessions::test_list_sessions_respects_limit
 ```
 
-**Step 5: Commit**
+**Step 5: Run linter**
+
+Run: `poetry run ruff check miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py`
+
+**Expected output:** No errors.
+
+**Step 6: Commit**
 
 ```bash
-git add miniautogen/cli/commands/sessions.py tests/cli/commands/__init__.py tests/cli/commands/test_sessions.py
-git commit -m "feat: add sessions list CLI command with text and json output"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py
+git commit -m "feat(cli): add list_sessions service for querying run data"
 ```
 
 **If Task Fails:**
 
-1. **anyio.from_thread.run doesn't work in CliRunner:**
-   - This happens because CliRunner runs synchronously. The mock patches `_run_list_sessions` directly, so the async bridge doesn't execute in tests.
-   - For production use, the parent CLI group runs inside `anyio.run()` (from Chunk 1), so `from_thread.run` works.
-   - Fix: If tests fail due to anyio, ensure the mock patches the correct function path.
+1. **pytest-anyio not installed or `@pytest.mark.anyio` not recognized:**
+   - Try: `@pytest.mark.asyncio` instead (if using pytest-asyncio).
+   - Check: `poetry run python -c "import anyio; print('OK')"` -- if anyio is installed, the `anyio` marker should work with `pytest-anyio` or `anyio` pytest plugin.
+   - Alternative: If the project uses `pytest-asyncio`, change all `@pytest.mark.anyio` to `@pytest.mark.asyncio`.
 
-2. **Click import error:**
-   - Check: `poetry run python -c "import click"` -- is click installed?
-   - Fix: `poetry add click` (should exist from Chunk 1)
+2. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py`
+
+---
+
+## Task 4: Add `clean_sessions` Async Service Function
+
+**Why:** The deletion logic with safety invariant: NEVER delete active (status="started") runs. Only removes completed, failed, or cancelled runs, optionally filtered by age.
+
+**Files:**
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`
+
+**Prerequisites:**
+- Task 3 completed
+
+**Step 1: Write the failing tests**
+
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/services/test_session_ops.py`:
+
+```python
+from datetime import datetime, timedelta, timezone
+
+
+class TestCleanSessions:
+    """Tests for the clean_sessions async function."""
+
+    @pytest.mark.anyio
+    async def test_clean_removes_finished_runs(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        await store.save_run("run-1", {
+            "run_id": "run-1",
+            "status": "finished",
+            "started_at": "2026-03-01T10:00:00Z",
+        })
+
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=None,
+        )
+        assert deleted == 1
+
+        remaining = await store.list_runs()
+        assert len(remaining) == 0
+
+    @pytest.mark.anyio
+    async def test_clean_removes_failed_runs(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        await store.save_run("run-1", {
+            "run_id": "run-1",
+            "status": "failed",
+            "started_at": "2026-03-01T10:00:00Z",
+        })
+
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=None,
+        )
+        assert deleted == 1
+
+    @pytest.mark.anyio
+    async def test_clean_removes_cancelled_runs(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        await store.save_run("run-1", {
+            "run_id": "run-1",
+            "status": "cancelled",
+            "started_at": "2026-03-01T10:00:00Z",
+        })
+
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=None,
+        )
+        assert deleted == 1
+
+    @pytest.mark.anyio
+    async def test_clean_never_deletes_active_runs(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        await store.save_run("active-1", {
+            "run_id": "active-1",
+            "status": "started",
+            "started_at": "2026-01-01T10:00:00Z",
+        })
+        await store.save_run("done-1", {
+            "run_id": "done-1",
+            "status": "finished",
+            "started_at": "2026-01-01T10:00:00Z",
+        })
+
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=None,
+        )
+        assert deleted == 1
+
+        remaining = await store.list_runs()
+        assert len(remaining) == 1
+        assert remaining[0]["run_id"] == "active-1"
+
+    @pytest.mark.anyio
+    async def test_clean_respects_older_than_days(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        now = datetime.now(timezone.utc)
+        old_time = (now - timedelta(days=10)).isoformat()
+        recent_time = (now - timedelta(hours=1)).isoformat()
+
+        store = InMemoryRunStore()
+        await store.save_run("old-run", {
+            "run_id": "old-run",
+            "status": "finished",
+            "started_at": old_time,
+        })
+        await store.save_run("recent-run", {
+            "run_id": "recent-run",
+            "status": "finished",
+            "started_at": recent_time,
+        })
+
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=7,
+        )
+        assert deleted == 1
+
+        remaining = await store.list_runs()
+        assert len(remaining) == 1
+        assert remaining[0]["run_id"] == "recent-run"
+
+    @pytest.mark.anyio
+    async def test_clean_returns_zero_when_nothing_to_delete(self) -> None:
+        from miniautogen.api import InMemoryRunStore
+        from miniautogen.cli.services.session_ops import (
+            clean_sessions_from_store,
+        )
+
+        store = InMemoryRunStore()
+        deleted = await clean_sessions_from_store(
+            store=store,
+            older_than_days=None,
+        )
+        assert deleted == 0
+```
+
+**Step 2: Run test to verify it fails**
+
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestCleanSessions -v`
+
+**Expected output:**
+```
+FAILED ... - ImportError: cannot import name 'clean_sessions_from_store' from 'miniautogen.cli.services.session_ops'
+```
+
+**Step 3: Implement `clean_sessions_from_store` and `clean_sessions`**
+
+Add these imports at the top of `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/services/session_ops.py`, after the existing `from typing import Any` line:
+
+```python
+from datetime import datetime, timedelta, timezone
+```
+
+Then add to the **end** of the file:
+
+```python
+
+# Statuses that are safe to delete. "started" is explicitly excluded.
+_CLEANABLE_STATUSES = frozenset({"finished", "failed", "cancelled"})
+
+
+def _is_older_than(
+    run: dict[str, Any], older_than_days: int | None
+) -> bool:
+    """Check if a run's started_at is older than the threshold.
+
+    If ``older_than_days`` is None, all runs match (no age filter).
+    If the run has no ``started_at`` field or it cannot be parsed,
+    the run is considered old (safe to delete).
+    """
+    if older_than_days is None:
+        return True
+
+    started_at_raw = run.get("started_at")
+    if not started_at_raw:
+        return True
+
+    try:
+        started_at = datetime.fromisoformat(str(started_at_raw))
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return True
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    return started_at < cutoff
+
+
+async def clean_sessions_from_store(
+    store: RunStore,
+    older_than_days: int | None,
+) -> int:
+    """Delete non-active sessions from an already-instantiated store.
+
+    SAFETY: Runs with status="started" are NEVER deleted.
+
+    Parameters
+    ----------
+    store:
+        An initialized ``RunStore`` instance.
+    older_than_days:
+        If provided, only delete runs older than this many days.
+        If ``None``, all non-active runs are eligible for deletion.
+
+    Returns
+    -------
+    int
+        Number of runs deleted.
+    """
+    all_runs = await store.list_runs(status=None, limit=10_000)
+    deleted = 0
+
+    for run in all_runs:
+        status = run.get("status", "")
+        if status not in _CLEANABLE_STATUSES:
+            continue
+        if not _is_older_than(run, older_than_days):
+            continue
+
+        run_id = run.get("run_id")
+        if run_id and await store.delete_run(run_id):
+            deleted += 1
+
+    return deleted
+
+
+async def clean_sessions(
+    config_database: dict[str, Any] | None,
+    older_than_days: int | None,
+) -> int:
+    """Clean sessions/runs from the project's configured store.
+
+    Creates the appropriate store backend, initializes it, and
+    deletes non-active runs matching the age criteria.
+
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+    older_than_days:
+        If provided, only delete runs older than this many days.
+
+    Returns
+    -------
+    int
+        Number of runs deleted.
+    """
+    store = create_run_store(config_database)
+    if hasattr(store, "init_db"):
+        await store.init_db()
+    return await clean_sessions_from_store(
+        store=store, older_than_days=older_than_days
+    )
+```
+
+**Step 4: Run test to verify it passes**
+
+Run: `poetry run pytest tests/cli/services/test_session_ops.py::TestCleanSessions -v`
+
+**Expected output:**
+```
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_removes_finished_runs
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_removes_failed_runs
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_removes_cancelled_runs
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_never_deletes_active_runs
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_respects_older_than_days
+PASSED tests/cli/services/test_session_ops.py::TestCleanSessions::test_clean_returns_zero_when_nothing_to_delete
+```
+
+**Step 5: Run all session_ops tests together**
+
+Run: `poetry run pytest tests/cli/services/test_session_ops.py -v`
+
+**Expected output:** All tests PASSED (3 from Task 2 + 4 from Task 3 + 6 from Task 4 = 13 tests).
+
+**Step 6: Run linter**
+
+Run: `poetry run ruff check miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py`
+
+**Expected output:** No errors.
+
+**Step 7: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py
+git commit -m "feat(cli): add clean_sessions service with active-run safety guard"
+```
+
+**If Task Fails:**
+
+1. **datetime.fromisoformat fails on trailing 'Z':**
+   - Python 3.10 `fromisoformat` does not handle `Z` suffix.
+   - Fix: Replace `Z` with `+00:00` before parsing:
+     ```python
+     raw = str(started_at_raw).replace("Z", "+00:00")
+     started_at = datetime.fromisoformat(raw)
+     ```
+   - Update the implementation accordingly.
+
+2. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/cli/services/session_ops.py tests/cli/services/test_session_ops.py`
+
+---
+
+## Task 5: Create `commands/sessions.py` Click Group with `list` Subcommand
+
+**Why:** The user-facing CLI command. `sessions` is a Click group with `list` as its first subcommand. `list` loads project config, creates the store, queries sessions, and renders output.
+
+**Files:**
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/sessions.py`
+- Create: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_sessions.py`
+
+**Prerequisites:**
+- Tasks 1-4 completed
+- `miniautogen/cli/main.py` exists with `cli` group and `run_async` helper
+- `miniautogen/cli/config.py` exists with `load_project_config()` or `load_config()`
+- `miniautogen/cli/output.py` exists with output formatting
+- `miniautogen/cli/errors.py` exists with `CLIError`
+- `tests/cli/commands/__init__.py` exists (from Chunk 3)
+
+**Step 1: Verify test directory exists**
+
+Run:
+```bash
+ls /Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py
+```
+
+**Expected:** File listed. If missing:
+```bash
+mkdir -p /Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands
+touch /Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/__init__.py
+```
+
+**Step 2: Write the failing tests**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_sessions.py`:
+
+```python
+"""Integration tests for the 'sessions' CLI command group."""
+from __future__ import annotations
+
+import json
+import textwrap
+from pathlib import Path
+
+import pytest
+from click.testing import CliRunner
+
+from miniautogen.cli.main import cli
+
+
+@pytest.fixture()
+def project_dir(tmp_path: Path) -> Path:
+    """Create a minimal project with database config."""
+    db_path = tmp_path / "miniautogen.db"
+    config_content = textwrap.dedent(f"""\
+        project:
+          name: test-project
+          version: "0.1.0"
+
+        provider:
+          default: litellm
+          model: gpt-4o-mini
+
+        pipelines:
+          main:
+            target: pipelines.main:build_pipeline
+
+        database:
+          url: "sqlite+aiosqlite:///{db_path}"
+    """)
+    (tmp_path / "miniautogen.yaml").write_text(config_content)
+    return tmp_path
+
+
+@pytest.fixture()
+def project_dir_no_db(tmp_path: Path) -> Path:
+    """Create a minimal project without database config."""
+    config_content = textwrap.dedent("""\
+        project:
+          name: test-project
+          version: "0.1.0"
+
+        provider:
+          default: litellm
+          model: gpt-4o-mini
+
+        pipelines:
+          main:
+            target: pipelines.main:build_pipeline
+    """)
+    (tmp_path / "miniautogen.yaml").write_text(config_content)
+    return tmp_path
+
+
+class TestSessionsListCommand:
+    """Tests for 'miniautogen sessions list'."""
+
+    def test_list_empty(self, project_dir: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "list"],
+            catch_exceptions=False,
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert "no sessions" in result.output.lower() or result.output.strip() == ""
+
+    def test_list_json_format_empty(self, project_dir: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "list", "--format", "json"],
+            catch_exceptions=False,
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
+        data = json.loads(result.output)
+        assert isinstance(data, list)
+        assert len(data) == 0
+
+    def test_list_without_database_uses_in_memory(
+        self, project_dir_no_db: Path
+    ) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "list"],
+            catch_exceptions=False,
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir_no_db)},
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
+```
+
+**Step 3: Run test to verify it fails**
+
+Run: `poetry run pytest tests/cli/commands/test_sessions.py::TestSessionsListCommand -v`
+
+**Expected output:**
+```
+FAILED ... - (sessions command not registered or doesn't exist)
+```
+
+**Step 4: Implement the sessions command group and list subcommand**
+
+Create `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/sessions.py`:
+
+```python
+"""CLI command group: miniautogen sessions [list|clean].
+
+Manages session/run data stored by the project.
+"""
+from __future__ import annotations
+
+import json
+
+import click
+
+from miniautogen.cli.config import load_project_config
+from miniautogen.cli.errors import CLIError
+from miniautogen.cli.main import run_async
+
+
+@click.group("sessions")
+def sessions_group() -> None:
+    """Manage session/run data."""
+
+
+@sessions_group.command("list")
+@click.option(
+    "--status",
+    type=str,
+    default=None,
+    help="Filter by run status (e.g. finished, failed, started).",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=50,
+    help="Maximum number of sessions to show.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format: text (default) or json.",
+)
+def list_command(
+    status: str | None,
+    limit: int,
+    output_format: str,
+) -> None:
+    """List sessions/runs from the project store."""
+    from miniautogen.cli.services.session_ops import list_sessions
+
+    try:
+        config = load_project_config()
+    except CLIError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    config_database = config.database
+
+    try:
+        sessions = run_async(
+            list_sessions(
+                config_database=config_database,
+                status=status,
+                limit=limit,
+            )
+        )
+    except Exception as exc:
+        click.echo(f"Error listing sessions: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    if output_format == "json":
+        click.echo(json.dumps(sessions, indent=2, default=str))
+    elif not sessions:
+        click.echo("No sessions found.")
+    else:
+        for session in sessions:
+            run_id = session.get("run_id", "unknown")
+            run_status = session.get("status", "unknown")
+            started = session.get("started_at", "N/A")
+            click.echo(f"  {run_id}  {run_status:12s}  {started}")
+```
+
+**Step 5: Register the sessions group with the CLI**
+
+In `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/main.py`, add the import and registration following the same pattern as the `run` command. After the existing `cli.add_command(run_command)` line (or wherever commands are registered), add:
+
+```python
+from miniautogen.cli.commands.sessions import sessions_group
+
+cli.add_command(sessions_group)
+```
+
+**Note:** Look at how `run_command` and `check_command` are registered and follow the exact same pattern.
+
+**Step 6: Run test to verify it passes**
+
+Run: `poetry run pytest tests/cli/commands/test_sessions.py::TestSessionsListCommand -v`
+
+**Expected output:**
+```
+PASSED tests/cli/commands/test_sessions.py::TestSessionsListCommand::test_list_empty
+PASSED tests/cli/commands/test_sessions.py::TestSessionsListCommand::test_list_json_format_empty
+PASSED tests/cli/commands/test_sessions.py::TestSessionsListCommand::test_list_without_database_uses_in_memory
+```
+
+**Step 7: Run linter**
+
+Run: `poetry run ruff check miniautogen/cli/commands/sessions.py tests/cli/commands/test_sessions.py miniautogen/cli/main.py`
+
+**Expected output:** No errors.
+
+**Step 8: Commit**
+
+```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/commands/sessions.py tests/cli/commands/test_sessions.py miniautogen/cli/main.py
+git commit -m "feat(cli): add 'sessions list' command with status/limit/format options"
+```
+
+**If Task Fails:**
+
+1. **`load_project_config` is actually named `load_config` or has different signature:**
+   - Check Chunk 1 plan: it defines `load_config(path: Path)` not `load_project_config()`.
+   - If `load_project_config()` does not exist, you need a convenience wrapper. Check what the `run` command from Chunk 3 uses and follow the same pattern.
+   - The `run` command imports `load_project_config` from `miniautogen.cli.config`. If Chunk 1 only created `load_config(path)`, then a `load_project_config()` wrapper must have been added that finds the project root and calls `load_config`.
+
+2. **`run_async` has different signature:**
+   - Check: `poetry run python -c "from miniautogen.cli.main import run_async; print('OK')"`
+   - If it does not exist or has a different name, check `main.py` for the async bridge function.
+
+3. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/cli/commands/sessions.py miniautogen/cli/main.py`
 
 ---
 
 ## Task 6: Add `clean` Subcommand to Sessions Group
 
-**Why:** The `sessions clean` command enables safe cleanup of old terminal runs.
+**Why:** The `clean` subcommand deletes non-active runs with safety confirmation. It requires `--older-than` (in days) or `--yes` for explicit confirmation.
 
 **Files:**
-- Modify: `miniautogen/cli/commands/sessions.py`
-- Modify: `tests/cli/commands/test_sessions.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/sessions.py`
+- Modify: `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_sessions.py`
 
 **Prerequisites:**
-- Task 5 complete
+- Task 5 completed
 
-**Step 1: Write tests for `sessions clean`**
+**Step 1: Write the failing tests**
 
-Append to `tests/cli/commands/test_sessions.py`:
+Append to `/Users/brunocapelao/Projects/miniAutoGen/tests/cli/commands/test_sessions.py`:
 
 ```python
-def test_sessions_clean_with_older_than_and_yes() -> None:
-    """sessions clean --older-than 7 --yes deletes runs without prompt."""
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_clean_sessions",
-        return_value=3,
-    ):
-        result = runner.invoke(sessions, ["clean", "--older-than", "7", "--yes"])
+class TestSessionsCleanCommand:
+    """Tests for 'miniautogen sessions clean'."""
 
-    assert result.exit_code == 0
-    assert "3" in result.output
-    assert "deleted" in result.output.lower()
+    def test_clean_requires_confirmation(self, project_dir: Path) -> None:
+        """Without --yes, clean prompts for confirmation."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "clean"],
+            input="n\n",
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert result.exit_code == 0 or result.exit_code == 1
+        assert "confirm" in result.output.lower() or "abort" in result.output.lower()
 
+    def test_clean_with_yes_flag(self, project_dir: Path) -> None:
+        """With --yes, clean runs without prompting."""
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "clean", "--yes"],
+            catch_exceptions=False,
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
+        assert "deleted" in result.output.lower() or "0" in result.output
 
-def test_sessions_clean_requires_older_than_or_yes() -> None:
-    """sessions clean without --older-than shows error."""
-    runner = CliRunner()
-    result = runner.invoke(sessions, ["clean"])
+    def test_clean_with_older_than(self, project_dir: Path) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "clean", "--older-than", "7", "--yes"],
+            catch_exceptions=False,
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert result.exit_code == 0, f"Output: {result.output}"
 
-    assert result.exit_code != 0
-    assert "older-than" in result.output.lower() or "required" in result.output.lower()
-
-
-def test_sessions_clean_with_confirmation_prompt() -> None:
-    """sessions clean --older-than 7 asks for confirmation."""
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_count_cleanable_sessions",
-        return_value=5,
-    ), patch(
-        "miniautogen.cli.commands.sessions._run_clean_sessions",
-        return_value=5,
-    ):
-        result = runner.invoke(sessions, ["clean", "--older-than", "7"], input="y\n")
-
-    assert result.exit_code == 0
-    assert "5" in result.output
-
-
-def test_sessions_clean_confirmation_declined() -> None:
-    """sessions clean --older-than 7 with 'n' aborts."""
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_count_cleanable_sessions",
-        return_value=5,
-    ):
-        result = runner.invoke(sessions, ["clean", "--older-than", "7"], input="n\n")
-
-    assert result.exit_code == 0
-    assert "abort" in result.output.lower() or "cancel" in result.output.lower()
-
-
-def test_sessions_clean_zero_deletable() -> None:
-    """sessions clean with nothing to delete shows message."""
-    runner = CliRunner()
-    with patch(
-        "miniautogen.cli.commands.sessions._run_count_cleanable_sessions",
-        return_value=0,
-    ):
-        result = runner.invoke(sessions, ["clean", "--older-than", "7"])
-
-    assert result.exit_code == 0
-    assert "nothing" in result.output.lower() or "0" in result.output
+    def test_clean_aborted_on_no_confirmation(
+        self, project_dir: Path
+    ) -> None:
+        runner = CliRunner()
+        result = runner.invoke(
+            cli,
+            ["sessions", "clean"],
+            input="n\n",
+            env={"MINIAUTOGEN_PROJECT_DIR": str(project_dir)},
+        )
+        assert "abort" in result.output.lower() or result.exit_code == 1
 ```
 
-**Step 2: Run tests to verify they fail**
+**Step 2: Run test to verify it fails**
 
-Run: `poetry run pytest tests/cli/commands/test_sessions.py -v -k "clean"`
+Run: `poetry run pytest tests/cli/commands/test_sessions.py::TestSessionsCleanCommand -v`
 
 **Expected output:**
 ```
-FAILED - AttributeError: 'Group' object has no attribute ... (or similar, since clean subcommand doesn't exist)
+FAILED ... - (clean subcommand not found)
 ```
 
-**Step 3: Add helper functions and `count_cleanable_sessions` to session_ops.py**
+**Step 3: Implement the clean subcommand**
 
-Add to `miniautogen/cli/services/session_ops.py`:
-
-```python
-async def count_cleanable_sessions(
-    *,
-    store: RunStore,
-    older_than_days: int,
-) -> int:
-    """Count how many terminal runs would be deleted by clean_sessions.
-
-    Uses the same filtering logic as clean_sessions but does not delete.
-    Used for confirmation prompts.
-    """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
-    all_runs = await store.list_runs(limit=10_000)
-
-    count = 0
-    for run in all_runs:
-        status = run.get("status", "")
-        if status in _ACTIVE_STATUSES:
-            continue
-        if status not in _TERMINAL_STATUSES:
-            continue
-
-        created_at_str = run.get("created_at")
-        if not created_at_str:
-            continue
-
-        try:
-            created_at = datetime.fromisoformat(created_at_str)
-        except (ValueError, TypeError):
-            continue
-
-        if created_at < cutoff:
-            count += 1
-
-    return count
-```
-
-**Step 4: Add bridge functions and clean subcommand to sessions.py**
-
-Add to `miniautogen/cli/commands/sessions.py`, after the existing `_run_list_sessions` function:
+Add to the **end** of `/Users/brunocapelao/Projects/miniAutoGen/miniautogen/cli/commands/sessions.py`:
 
 ```python
-def _run_count_cleanable_sessions(
-    older_than_days: int,
-    database_url: str | None,
-) -> int:
-    """Bridge async count_cleanable_sessions into sync Click context."""
-    from miniautogen.cli.services.session_ops import (
-        count_cleanable_sessions,
-        create_run_store,
-    )
-
-    async def _inner() -> int:
-        store = await create_run_store(database_url=database_url)
-        return await count_cleanable_sessions(store=store, older_than_days=older_than_days)
-
-    return anyio.from_thread.run(_inner)
 
 
-def _run_clean_sessions(
-    older_than_days: int,
-    database_url: str | None,
-) -> int:
-    """Bridge async clean_sessions into sync Click context."""
-    from miniautogen.cli.services.session_ops import clean_sessions, create_run_store
-
-    async def _inner() -> int:
-        store = await create_run_store(database_url=database_url)
-        return await clean_sessions(store=store, older_than_days=older_than_days)
-
-    return anyio.from_thread.run(_inner)
-```
-
-Add the `clean` subcommand after the `list_cmd` function:
-
-```python
-@sessions.command("clean")
+@sessions_group.command("clean")
 @click.option(
     "--older-than",
     "older_than_days",
-    required=True,
     type=int,
-    help="Delete terminal runs older than this many days.",
+    default=None,
+    help="Only delete runs older than this many days.",
 )
 @click.option(
     "--yes",
@@ -1262,129 +1229,91 @@ Add the `clean` subcommand after the `list_cmd` function:
     default=False,
     help="Skip confirmation prompt.",
 )
-@click.pass_context
-def clean_cmd(ctx: click.Context, older_than_days: int, yes: bool) -> None:
-    """Remove completed/failed/cancelled runs older than N days.
+def clean_command(
+    older_than_days: int | None,
+    yes: bool,
+) -> None:
+    """Remove completed/failed/cancelled sessions.
 
-    SAFETY: Active runs (status=started) are NEVER deleted.
+    Active runs (status=started) are NEVER deleted.
     """
-    database_url = _get_database_url(ctx)
+    from miniautogen.cli.services.session_ops import clean_sessions
+
+    try:
+        config = load_project_config()
+    except CLIError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    config_database = config.database
 
     if not yes:
-        count = _run_count_cleanable_sessions(
-            older_than_days=older_than_days,
-            database_url=database_url,
-        )
-        if count == 0:
-            click.echo("Nothing to clean. No terminal runs older than "
-                        f"{older_than_days} days found.")
-            return
-
-        if not click.confirm(
-            f"Found {count} session(s) older than {older_than_days} days. Delete them?"
-        ):
+        msg = "Delete all non-active sessions"
+        if older_than_days is not None:
+            msg += f" older than {older_than_days} days"
+        msg += "?"
+        if not click.confirm(msg):
             click.echo("Aborted.")
             return
 
-    deleted = _run_clean_sessions(
-        older_than_days=older_than_days,
-        database_url=database_url,
-    )
+    try:
+        deleted = run_async(
+            clean_sessions(
+                config_database=config_database,
+                older_than_days=older_than_days,
+            )
+        )
+    except Exception as exc:
+        click.echo(f"Error cleaning sessions: {exc}", err=True)
+        raise SystemExit(1) from exc
+
     click.echo(f"Deleted {deleted} session(s).")
 ```
 
-**Step 5: Run tests to verify they pass**
+**Step 4: Run test to verify it passes**
+
+Run: `poetry run pytest tests/cli/commands/test_sessions.py::TestSessionsCleanCommand -v`
+
+**Expected output:**
+```
+PASSED tests/cli/commands/test_sessions.py::TestSessionsCleanCommand::test_clean_requires_confirmation
+PASSED tests/cli/commands/test_sessions.py::TestSessionsCleanCommand::test_clean_with_yes_flag
+PASSED tests/cli/commands/test_sessions.py::TestSessionsCleanCommand::test_clean_with_older_than
+PASSED tests/cli/commands/test_sessions.py::TestSessionsCleanCommand::test_clean_aborted_on_no_confirmation
+```
+
+**Step 5: Run all sessions tests**
 
 Run: `poetry run pytest tests/cli/commands/test_sessions.py -v`
 
-**Expected output:**
-```
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_text_format
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_json_format
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_empty
-PASSED tests/cli/commands/test_sessions.py::test_sessions_list_with_status_filter
-PASSED tests/cli/commands/test_sessions.py::test_sessions_clean_with_older_than_and_yes
-PASSED tests/cli/commands/test_sessions.py::test_sessions_clean_requires_older_than_or_yes
-PASSED tests/cli/commands/test_sessions.py::test_sessions_clean_with_confirmation_prompt
-PASSED tests/cli/commands/test_sessions.py::test_sessions_clean_confirmation_declined
-PASSED tests/cli/commands/test_sessions.py::test_sessions_clean_zero_deletable
-```
+**Expected output:** All 7 tests PASSED (3 list + 4 clean).
 
-**Step 6: Commit**
+**Step 6: Run linter**
+
+Run: `poetry run ruff check miniautogen/cli/commands/sessions.py tests/cli/commands/test_sessions.py`
+
+**Expected output:** No errors.
+
+**Step 7: Commit**
 
 ```bash
-git add miniautogen/cli/commands/sessions.py miniautogen/cli/services/session_ops.py tests/cli/commands/test_sessions.py
-git commit -m "feat: add sessions clean command with confirmation and safety invariant"
+cd /Users/brunocapelao/Projects/miniAutoGen
+git add miniautogen/cli/commands/sessions.py tests/cli/commands/test_sessions.py
+git commit -m "feat(cli): add 'sessions clean' command with safety guard and confirmation"
 ```
 
 **If Task Fails:**
 
-1. **`--older-than` not recognized as required:**
-   - Check: Click uses `required=True` on options
-   - Fix: Ensure the option decorator has `required=True`
+1. **click.confirm does not work in CliRunner:**
+   - CliRunner handles `input=` for confirmation. Make sure `input="n\n"` is passed.
+   - If `click.confirm` still fails, check that the CliRunner `input` stream is being read.
 
-2. **Confirmation prompt test hangs:**
-   - Check: `input="y\n"` must be passed to `runner.invoke`
-   - Fix: Ensure CliRunner input parameter is set
-
----
-
-## Task 7: Register Sessions Group with Main CLI
-
-**Why:** The sessions group needs to be added to the main CLI group so `miniautogen sessions list` and `miniautogen sessions clean` work.
-
-**Files:**
-- Modify: `miniautogen/cli/main.py`
-
-**Prerequisites:**
-- Task 6 complete
-- `miniautogen/cli/main.py` exists (Chunk 1 prerequisite) with a `cli` Click group
-
-**Step 1: Add the sessions group import and registration**
-
-In `miniautogen/cli/main.py`, add the import:
-
-```python
-from miniautogen.cli.commands.sessions import sessions
-```
-
-And register it with the main group (near where other commands like `init`, `check`, `run` are registered):
-
-```python
-cli.add_command(sessions)
-```
-
-**Step 2: Verify registration**
-
-Run: `poetry run python -m miniautogen sessions --help`
-
-**Expected output:**
-```
-Usage: miniautogen sessions [OPTIONS] COMMAND [ARGS]...
-
-  Manage local session/run data.
-
-Commands:
-  clean  Remove completed/failed/cancelled runs older than N days.
-  list   List recent pipeline runs/sessions.
-```
-
-**Step 3: Commit**
-
-```bash
-git add miniautogen/cli/main.py
-git commit -m "feat: register sessions command group with main CLI"
-```
-
-**If Task Fails:**
-
-1. **Import error:**
-   - Check: Does `miniautogen/cli/commands/sessions.py` exist?
-   - Fix: Verify Task 5-6 completed successfully
+2. **Can't recover:**
+   - Rollback: `git checkout -- miniautogen/cli/commands/sessions.py tests/cli/commands/test_sessions.py`
 
 ---
 
-## Task 8: Run Code Review (Commands)
+## Task 7: Run Code Review
 
 1. **Dispatch all 3 reviewers in parallel:**
    - REQUIRED SUB-SKILL: Use requesting-code-review
@@ -1401,362 +1330,475 @@ git commit -m "feat: register sessions command group with main CLI"
 **Low Issues:**
 - Add `TODO(review):` comments in code at the relevant location
 - Format: `TODO(review): [Issue description] (reported by [reviewer] on [date], severity: Low)`
+- This tracks tech debt for future resolution
 
 **Cosmetic/Nitpick Issues:**
 - Add `FIXME(nitpick):` comments in code at the relevant location
 - Format: `FIXME(nitpick): [Issue description] (reported by [reviewer] on [date], severity: Cosmetic)`
+- Low-priority improvements tracked inline
 
 3. **Proceed only when:**
    - Zero Critical/High/Medium issues remain
    - All Low issues have TODO(review): comments added
    - All Cosmetic issues have FIXME(nitpick): comments added
 
+**Files to review:**
+- `miniautogen/api.py` (changes from Task 1)
+- `miniautogen/cli/services/session_ops.py` (Tasks 2-4)
+- `miniautogen/cli/commands/sessions.py` (Tasks 5-6)
+- `miniautogen/cli/main.py` (registration change from Task 5)
+- `tests/cli/services/test_session_ops.py` (Tasks 2-4)
+- `tests/cli/commands/test_sessions.py` (Tasks 5-6)
+
 ---
 
-## Task 9: End-to-End Integration Test
+## Task 8: D3 Import Boundary Verification and Full Regression
 
-**Why:** Verify the entire sessions workflow from store creation through listing and cleaning, exercised through the service layer (not Click, to avoid async bridge complexity in tests).
+**Why:** Verify that all new code respects the D3 import boundary and integrates cleanly with the existing codebase.
 
-**Files:**
-- Create: `tests/cli/services/test_session_ops_integration.py`
+**Files:** No files to create or modify.
 
-**Prerequisites:**
-- Tasks 0-7 complete
+**Prerequisites:** Tasks 1-7 completed.
 
-**Step 1: Write the integration test**
+**Step 1: Verify D3 import boundary on session_ops.py**
 
-Create `tests/cli/services/test_session_ops_integration.py`:
-
-```python
-"""End-to-end integration test for sessions workflow.
-
-Exercises: create store -> save runs -> list -> clean -> verify.
-Uses InMemoryRunStore to avoid database setup in CI.
-"""
-
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
-
-import pytest
-
-from miniautogen.api import InMemoryRunStore
-from miniautogen.cli.services.session_ops import (
-    clean_sessions,
-    count_cleanable_sessions,
-    list_sessions,
-)
-
-
-@pytest.mark.asyncio
-async def test_full_session_lifecycle() -> None:
-    """Simulate: pipeline runs -> list sessions -> clean old ones."""
-    store = InMemoryRunStore()
-    now = datetime.now(timezone.utc)
-
-    # Simulate pipeline runs saved by PipelineRunner.
-    await store.save_run(
-        "run-recent-ok",
-        {
-            "run_id": "run-recent-ok",
-            "status": "finished",
-            "correlation_id": "corr-1",
-            "created_at": now.isoformat(),
-        },
-    )
-    await store.save_run(
-        "run-old-failed",
-        {
-            "run_id": "run-old-failed",
-            "status": "failed",
-            "correlation_id": "corr-2",
-            "created_at": (now - timedelta(days=15)).isoformat(),
-        },
-    )
-    await store.save_run(
-        "run-old-cancelled",
-        {
-            "run_id": "run-old-cancelled",
-            "status": "cancelled",
-            "correlation_id": "corr-3",
-            "created_at": (now - timedelta(days=20)).isoformat(),
-        },
-    )
-    await store.save_run(
-        "run-active",
-        {
-            "run_id": "run-active",
-            "status": "started",
-            "correlation_id": "corr-4",
-            "created_at": (now - timedelta(days=30)).isoformat(),
-        },
-    )
-
-    # --- List all sessions ---
-    all_sessions = await list_sessions(store=store, status=None, limit=100)
-    assert len(all_sessions) == 4
-
-    # --- List only finished ---
-    finished = await list_sessions(store=store, status="finished", limit=100)
-    assert len(finished) == 1
-    assert finished[0]["run_id"] == "run-recent-ok"
-
-    # --- Count cleanable (older than 10 days) ---
-    cleanable = await count_cleanable_sessions(store=store, older_than_days=10)
-    assert cleanable == 2  # run-old-failed + run-old-cancelled (NOT run-active!)
-
-    # --- Clean sessions older than 10 days ---
-    deleted = await clean_sessions(store=store, older_than_days=10)
-    assert deleted == 2
-
-    # --- Verify remaining ---
-    remaining = await list_sessions(store=store, status=None, limit=100)
-    assert len(remaining) == 2
-
-    remaining_ids = {r["run_id"] for r in remaining}
-    assert "run-recent-ok" in remaining_ids  # Recent, not cleaned
-    assert "run-active" in remaining_ids      # Active, NEVER cleaned
-    assert "run-old-failed" not in remaining_ids
-    assert "run-old-cancelled" not in remaining_ids
-
-
-@pytest.mark.asyncio
-async def test_clean_then_list_shows_consistent_state() -> None:
-    """After cleaning, list should reflect the deletion."""
-    store = InMemoryRunStore()
-    old_date = (datetime.now(timezone.utc) - timedelta(days=100)).isoformat()
-
-    for i in range(10):
-        await store.save_run(
-            f"run-{i}",
-            {
-                "run_id": f"run-{i}",
-                "status": "finished",
-                "created_at": old_date,
-            },
-        )
-
-    deleted = await clean_sessions(store=store, older_than_days=1)
-    assert deleted == 10
-
-    remaining = await list_sessions(store=store, status=None, limit=100)
-    assert remaining == []
-```
-
-**Step 2: Run the integration test**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops_integration.py -v`
-
-**Expected output:**
-```
-PASSED tests/cli/services/test_session_ops_integration.py::test_full_session_lifecycle
-PASSED tests/cli/services/test_session_ops_integration.py::test_clean_then_list_shows_consistent_state
-```
-
-**Step 3: Run the full test suite**
-
-Run: `poetry run pytest tests/ -v --no-header`
-
-**Expected output:** All tests pass, including the new ones.
-
-**Step 4: Commit**
-
+Run:
 ```bash
-git add tests/cli/services/test_session_ops_integration.py
-git commit -m "test: add end-to-end integration tests for sessions workflow"
+poetry run python -c "
+import ast, sys
+with open('miniautogen/cli/services/session_ops.py') as f:
+    tree = ast.parse(f.read())
+forbidden = [
+    'miniautogen.core', 'miniautogen.stores', 'miniautogen.policies',
+    'miniautogen.backends', 'miniautogen.observability',
+]
+violations = []
+for node in ast.walk(tree):
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for prefix in forbidden:
+                if node.module.startswith(prefix):
+                    violations.append(node.module)
+if violations:
+    print(f'FAIL: D3 import boundary violations: {violations}')
+    sys.exit(1)
+else:
+    print('PASS: No import boundary violations in session_ops.py')
+"
 ```
 
-**If Task Fails:**
+**Expected output:** `PASS: No import boundary violations in session_ops.py`
 
-1. **Test fails on count_cleanable_sessions:**
-   - Check: Import `count_cleanable_sessions` exists in session_ops.py (added in Task 6 Step 3)
-   - Fix: Verify Task 6 Step 3 was implemented
+**Step 2: Verify D3 import boundary on commands/sessions.py**
 
-2. **Unexpected run count after clean:**
-   - Debug: Print `remaining` to see what's left
-   - Check: Active runs must survive cleaning
-
----
-
-## Task 10: SQLAlchemy Integration Test (Optional but Recommended)
-
-**Why:** Verify the sessions workflow works with a real SQLAlchemy database, not just InMemory.
-
-**Files:**
-- Create: `tests/cli/services/test_session_ops_sqlalchemy.py`
-
-**Prerequisites:**
-- Task 9 complete
-- `aiosqlite` installed
-
-**Step 1: Write the SQLAlchemy integration test**
-
-Create `tests/cli/services/test_session_ops_sqlalchemy.py`:
-
-```python
-"""Integration test for sessions with SQLAlchemy backend."""
-
-from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
-
-import pytest
-
-from miniautogen.cli.services.session_ops import (
-    clean_sessions,
-    create_run_store,
-    list_sessions,
-)
-
-
-@pytest.mark.asyncio
-async def test_sessions_with_sqlalchemy_store(tmp_path) -> None:
-    """Full lifecycle test with a real SQLite database."""
-    db_url = f"sqlite+aiosqlite:///{tmp_path / 'sessions_test.db'}"
-    store = await create_run_store(database_url=db_url)
-
-    now = datetime.now(timezone.utc)
-
-    await store.save_run(
-        "run-1",
-        {
-            "run_id": "run-1",
-            "status": "finished",
-            "created_at": (now - timedelta(days=10)).isoformat(),
-        },
-    )
-    await store.save_run(
-        "run-2",
-        {
-            "run_id": "run-2",
-            "status": "started",
-            "created_at": (now - timedelta(days=10)).isoformat(),
-        },
-    )
-
-    # List all
-    all_runs = await list_sessions(store=store, status=None, limit=100)
-    assert len(all_runs) == 2
-
-    # Clean older than 5 days
-    deleted = await clean_sessions(store=store, older_than_days=5)
-    assert deleted == 1  # Only run-1 (finished), NOT run-2 (started)
-
-    # Verify
-    remaining = await list_sessions(store=store, status=None, limit=100)
-    assert len(remaining) == 1
-    assert remaining[0]["run_id"] == "run-2"
-```
-
-**Step 2: Run the test**
-
-Run: `poetry run pytest tests/cli/services/test_session_ops_sqlalchemy.py -v`
-
-**Expected output:**
-```
-PASSED tests/cli/services/test_session_ops_sqlalchemy.py::test_sessions_with_sqlalchemy_store
-```
-
-**Step 3: Commit**
-
+Run:
 ```bash
-git add tests/cli/services/test_session_ops_sqlalchemy.py
-git commit -m "test: add SQLAlchemy integration test for sessions workflow"
+poetry run python -c "
+import ast, sys
+with open('miniautogen/cli/commands/sessions.py') as f:
+    tree = ast.parse(f.read())
+forbidden = [
+    'miniautogen.core', 'miniautogen.stores', 'miniautogen.policies',
+    'miniautogen.backends', 'miniautogen.observability',
+]
+violations = []
+for node in ast.walk(tree):
+    if isinstance(node, (ast.Import, ast.ImportFrom)):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            for prefix in forbidden:
+                if node.module.startswith(prefix):
+                    violations.append(node.module)
+if violations:
+    print(f'FAIL: D3 import boundary violations: {violations}')
+    sys.exit(1)
+else:
+    print('PASS: No import boundary violations in commands/sessions.py')
+"
 ```
 
-**If Task Fails:**
-
-1. **aiosqlite not installed:**
-   - Fix: `poetry add aiosqlite` (should already be a dependency)
-
-2. **Database file permission error:**
-   - Check: `tmp_path` should be writable
-   - Fix: Use a different temp directory
-
----
-
-## Task 11: Lint and Final Verification
-
-**Why:** Ensure all new code passes ruff linting and the full test suite.
-
-**Files:** None (verification only)
-
-**Step 1: Run ruff**
-
-Run: `poetry run ruff check miniautogen/cli/ tests/cli/ --fix`
-
-**Expected output:** No errors, or only auto-fixed formatting issues.
-
-**Step 2: Run ruff format**
-
-Run: `poetry run ruff format miniautogen/cli/ tests/cli/`
-
-**Expected output:** Files formatted (or already formatted).
+**Expected output:** `PASS: No import boundary violations in commands/sessions.py`
 
 **Step 3: Run full test suite**
 
-Run: `poetry run pytest tests/ -v --no-header`
+Run: `poetry run pytest -v --tb=short`
 
-**Expected output:** All tests pass.
+**Expected output:** All tests pass. Zero failures, zero errors.
 
-**Step 4: Commit any lint fixes**
+**Step 4: Run linter on all changed files**
+
+Run: `poetry run ruff check miniautogen/api.py miniautogen/cli/services/session_ops.py miniautogen/cli/commands/sessions.py miniautogen/cli/main.py tests/cli/services/test_session_ops.py tests/cli/commands/test_sessions.py`
+
+**Expected output:** No errors.
+
+**Step 5: Final commit if any review/lint fixes were made**
+
+If Task 7 or this task produced fixes not yet committed:
 
 ```bash
+cd /Users/brunocapelao/Projects/miniAutoGen
 git add -u
-git commit -m "style: apply ruff formatting to sessions command"
+git commit -m "fix(cli): address review and lint findings in sessions command"
 ```
 
-(Only if there were changes from Step 1-2.)
+**If Task Fails:**
+
+1. **D3 import boundary violation:**
+   - The service or command imports from internal modules.
+   - Fix: Change to import from `miniautogen.api` instead. Task 1 ensured the stores are exported there.
+
+2. **Regression test failure:**
+   - Run: `poetry run pytest --tb=long -x` to see the first failure.
+   - If pre-existing, document and proceed.
+   - If introduced by this chunk, fix the issue.
+
+3. **Can't recover:**
+   - Document what failed and why.
+   - Return to human partner.
 
 ---
 
-## Task 12: Final Code Review
+## Appendix A: Complete `session_ops.py` Reference
 
-1. **Dispatch all 3 reviewers in parallel:**
-   - REQUIRED SUB-SKILL: Use requesting-code-review
-   - All reviewers run simultaneously (code-reviewer, business-logic-reviewer, security-reviewer)
-   - Wait for all to complete
+The final file after Tasks 2-4 should look like this:
 
-2. **Handle findings by severity (MANDATORY):**
+```python
+"""Session/run management service for the CLI.
 
-**Critical/High/Medium Issues:**
-- Fix immediately (do NOT add TODO comments for these severities)
-- Re-run all 3 reviewers in parallel after fixes
-- Repeat until zero Critical/High/Medium issues remain
+Provides operations to list, inspect, and clean session/run data
+via the public SDK surface (miniautogen.api).
+"""
+from __future__ import annotations
 
-**Low Issues:**
-- Add `TODO(review):` comments in code at the relevant location
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-**Cosmetic/Nitpick Issues:**
-- Add `FIXME(nitpick):` comments in code at the relevant location
+from miniautogen.api import InMemoryRunStore, RunStore, SQLAlchemyRunStore
 
-3. **Proceed only when:**
-   - Zero Critical/High/Medium issues remain
-   - All Low/Cosmetic issues have appropriate comments added
 
----
+def create_run_store(
+    config_database: dict[str, Any] | None,
+) -> RunStore:
+    """Create a RunStore based on project database configuration.
 
-## Summary of Files Created/Modified
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+        If ``None`` or missing ``url`` key, returns ``InMemoryRunStore``.
+        Otherwise returns ``SQLAlchemyRunStore`` connected to the URL.
 
-**Created:**
-- `miniautogen/cli/services/session_ops.py` -- Store factory, list_sessions, clean_sessions, count_cleanable_sessions
-- `miniautogen/cli/commands/sessions.py` -- Click group with list and clean subcommands
-- `tests/cli/__init__.py` -- Package marker
-- `tests/cli/services/__init__.py` -- Package marker
-- `tests/cli/services/test_session_ops.py` -- Unit tests for service functions
-- `tests/cli/services/test_session_ops_integration.py` -- End-to-end integration test
-- `tests/cli/services/test_session_ops_sqlalchemy.py` -- SQLAlchemy integration test
-- `tests/cli/commands/__init__.py` -- Package marker
-- `tests/cli/commands/test_sessions.py` -- Click command tests via CliRunner
-- `tests/stores/test_run_store_payload_enrichment.py` -- Enriched payload tests
+    Returns
+    -------
+    RunStore
+        The appropriate store implementation.
+    """
+    if config_database and "url" in config_database:
+        return SQLAlchemyRunStore(config_database["url"])
+    return InMemoryRunStore()
 
-**Modified:**
-- `miniautogen/api.py` -- Added RunStore, InMemoryRunStore, SQLAlchemyRunStore exports
-- `miniautogen/core/runtime/pipeline_runner.py` -- Added run_id and created_at to payloads
-- `miniautogen/cli/main.py` -- Registered sessions command group
 
-## Safety Invariants
+async def list_sessions_from_store(
+    store: RunStore,
+    status: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """Query sessions from an already-instantiated store.
 
-1. **NEVER delete active runs** -- `clean_sessions` explicitly skips runs with status `"started"` (the only active status). This is tested in `test_clean_sessions_never_deletes_active_runs`.
-2. **Runs without `created_at` are never deleted** -- Missing timestamps cause a skip, not a crash. Tested in `test_clean_sessions_skips_runs_without_created_at`.
-3. **Import boundary respected** -- `session_ops.py` imports only from `miniautogen.api`, never from internal modules like `miniautogen.stores` directly.
+    Parameters
+    ----------
+    store:
+        An initialized ``RunStore`` instance.
+    status:
+        If provided, filter runs by this status value.
+    limit:
+        Maximum number of runs to return.
+
+    Returns
+    -------
+    list[dict]
+        List of run payload dicts.
+    """
+    return await store.list_runs(status=status, limit=limit)
+
+
+async def list_sessions(
+    config_database: dict[str, Any] | None,
+    status: str | None,
+    limit: int,
+) -> list[dict[str, Any]]:
+    """List sessions/runs from the project's configured store.
+
+    Creates the appropriate store backend based on config, initializes
+    it if needed (SQLAlchemy), and queries for runs.
+
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+    status:
+        If provided, filter by run status.
+    limit:
+        Maximum number of runs to return.
+
+    Returns
+    -------
+    list[dict]
+        List of run payload dicts.
+    """
+    store = create_run_store(config_database)
+    if hasattr(store, "init_db"):
+        await store.init_db()
+    return await list_sessions_from_store(
+        store=store, status=status, limit=limit
+    )
+
+
+# Statuses that are safe to delete. "started" is explicitly excluded.
+_CLEANABLE_STATUSES = frozenset({"finished", "failed", "cancelled"})
+
+
+def _is_older_than(
+    run: dict[str, Any], older_than_days: int | None
+) -> bool:
+    """Check if a run's started_at is older than the threshold.
+
+    If ``older_than_days`` is None, all runs match (no age filter).
+    If the run has no ``started_at`` field or it cannot be parsed,
+    the run is considered old (safe to delete).
+    """
+    if older_than_days is None:
+        return True
+
+    started_at_raw = run.get("started_at")
+    if not started_at_raw:
+        return True
+
+    try:
+        raw = str(started_at_raw).replace("Z", "+00:00")
+        started_at = datetime.fromisoformat(raw)
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+    except (ValueError, TypeError):
+        return True
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    return started_at < cutoff
+
+
+async def clean_sessions_from_store(
+    store: RunStore,
+    older_than_days: int | None,
+) -> int:
+    """Delete non-active sessions from an already-instantiated store.
+
+    SAFETY: Runs with status="started" are NEVER deleted.
+
+    Parameters
+    ----------
+    store:
+        An initialized ``RunStore`` instance.
+    older_than_days:
+        If provided, only delete runs older than this many days.
+        If ``None``, all non-active runs are eligible for deletion.
+
+    Returns
+    -------
+    int
+        Number of runs deleted.
+    """
+    all_runs = await store.list_runs(status=None, limit=10_000)
+    deleted = 0
+
+    for run in all_runs:
+        status = run.get("status", "")
+        if status not in _CLEANABLE_STATUSES:
+            continue
+        if not _is_older_than(run, older_than_days):
+            continue
+
+        run_id = run.get("run_id")
+        if run_id and await store.delete_run(run_id):
+            deleted += 1
+
+    return deleted
+
+
+async def clean_sessions(
+    config_database: dict[str, Any] | None,
+    older_than_days: int | None,
+) -> int:
+    """Clean sessions/runs from the project's configured store.
+
+    Creates the appropriate store backend, initializes it, and
+    deletes non-active runs matching the age criteria.
+
+    Parameters
+    ----------
+    config_database:
+        The ``database`` section from ``ProjectConfig``.
+    older_than_days:
+        If provided, only delete runs older than this many days.
+
+    Returns
+    -------
+    int
+        Number of runs deleted.
+    """
+    store = create_run_store(config_database)
+    if hasattr(store, "init_db"):
+        await store.init_db()
+    return await clean_sessions_from_store(
+        store=store, older_than_days=older_than_days
+    )
+```
+
+## Appendix B: Complete `commands/sessions.py` Reference
+
+```python
+"""CLI command group: miniautogen sessions [list|clean].
+
+Manages session/run data stored by the project.
+"""
+from __future__ import annotations
+
+import json
+
+import click
+
+from miniautogen.cli.config import load_project_config
+from miniautogen.cli.errors import CLIError
+from miniautogen.cli.main import run_async
+
+
+@click.group("sessions")
+def sessions_group() -> None:
+    """Manage session/run data."""
+
+
+@sessions_group.command("list")
+@click.option(
+    "--status",
+    type=str,
+    default=None,
+    help="Filter by run status (e.g. finished, failed, started).",
+)
+@click.option(
+    "--limit",
+    type=int,
+    default=50,
+    help="Maximum number of sessions to show.",
+)
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format: text (default) or json.",
+)
+def list_command(
+    status: str | None,
+    limit: int,
+    output_format: str,
+) -> None:
+    """List sessions/runs from the project store."""
+    from miniautogen.cli.services.session_ops import list_sessions
+
+    try:
+        config = load_project_config()
+    except CLIError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    config_database = config.database
+
+    try:
+        sessions = run_async(
+            list_sessions(
+                config_database=config_database,
+                status=status,
+                limit=limit,
+            )
+        )
+    except Exception as exc:
+        click.echo(f"Error listing sessions: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    if output_format == "json":
+        click.echo(json.dumps(sessions, indent=2, default=str))
+    elif not sessions:
+        click.echo("No sessions found.")
+    else:
+        for session in sessions:
+            run_id = session.get("run_id", "unknown")
+            run_status = session.get("status", "unknown")
+            started = session.get("started_at", "N/A")
+            click.echo(f"  {run_id}  {run_status:12s}  {started}")
+
+
+@sessions_group.command("clean")
+@click.option(
+    "--older-than",
+    "older_than_days",
+    type=int,
+    default=None,
+    help="Only delete runs older than this many days.",
+)
+@click.option(
+    "--yes",
+    is_flag=True,
+    default=False,
+    help="Skip confirmation prompt.",
+)
+def clean_command(
+    older_than_days: int | None,
+    yes: bool,
+) -> None:
+    """Remove completed/failed/cancelled sessions.
+
+    Active runs (status=started) are NEVER deleted.
+    """
+    from miniautogen.cli.services.session_ops import clean_sessions
+
+    try:
+        config = load_project_config()
+    except CLIError as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    config_database = config.database
+
+    if not yes:
+        msg = "Delete all non-active sessions"
+        if older_than_days is not None:
+            msg += f" older than {older_than_days} days"
+        msg += "?"
+        if not click.confirm(msg):
+            click.echo("Aborted.")
+            return
+
+    try:
+        deleted = run_async(
+            clean_sessions(
+                config_database=config_database,
+                older_than_days=older_than_days,
+            )
+        )
+    except Exception as exc:
+        click.echo(f"Error cleaning sessions: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    click.echo(f"Deleted {deleted} session(s).")
+```
+
+## Appendix C: Assumptions About Chunks 1-3 Functions
+
+This plan depends on these functions from previous chunks:
+
+| Function | Module | Expected Signature |
+|---|---|---|
+| `load_project_config()` | `miniautogen.cli.config` | `() -> ProjectConfig` (finds project root via env var or cwd) |
+| `run_async(coro)` | `miniautogen.cli.main` | `(coro) -> Any` (bridges async into Click sync) |
+| `cli` | `miniautogen.cli.main` | Click group (root command) |
+| `CLIError` | `miniautogen.cli.errors` | Base exception for CLI errors |
+
+If `load_project_config` does not exist and only `load_config(path: Path)` exists, follow the pattern from `commands/run.py` (Chunk 3) which uses `load_project_config`. If Chunk 3 had to create a `load_project_config` wrapper, it should already exist.
