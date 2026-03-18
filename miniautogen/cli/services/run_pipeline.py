@@ -11,11 +11,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+import click
+
 from miniautogen.api import (
     ExecutionPolicy,
     InMemoryEventSink,
     PipelineRunner,
-    SessionRecovery,
 )
 from miniautogen.cli.config import ProjectConfig
 
@@ -128,15 +129,13 @@ async def execute_pipeline(
 
         # Handle resume from checkpoint
         if resume_run_id is not None:
-            try:
-                recovery = SessionRecovery()
-                checkpoint = await recovery.load_checkpoint(resume_run_id)
-                if checkpoint is not None:
-                    context["resume_from"] = checkpoint
-                    context["original_run_id"] = resume_run_id
-            except Exception:
-                # If recovery fails, proceed as fresh run but note it
-                context["resume_failed"] = True
+            from miniautogen.cli.errors import ExecutionError
+
+            raise ExecutionError(
+                "Resume requires a configured checkpoint store. "
+                "Ensure your project has persistence configured.",
+                hint="Check your miniautogen.yml for store configuration.",
+            )
 
         result = await runner.run_pipeline(pipeline, context)
 
@@ -153,6 +152,8 @@ async def execute_pipeline(
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
+    except click.ClickException:
+        raise
     except Exception:
         return {
             "status": "failed",

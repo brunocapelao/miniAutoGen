@@ -6,11 +6,24 @@ existing files. Falls back to PyYAML for simple writes.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from typing import Any
 
 import yaml
+
+_VALID_RESOURCE_NAME = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
+
+
+def validate_resource_name(name: str, resource_type: str) -> None:
+    """Validate resource name to prevent path traversal."""
+    if not name or not _VALID_RESOURCE_NAME.match(name):
+        msg = (
+            f"Invalid {resource_type} name '{name}': must start with a letter "
+            "and contain only letters, digits, hyphens, or underscores."
+        )
+        raise ValueError(msg)
 
 try:
     from ruamel.yaml import YAML as RuamelYAML

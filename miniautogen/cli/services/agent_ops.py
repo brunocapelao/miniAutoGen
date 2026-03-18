@@ -12,6 +12,7 @@ from miniautogen.api import AgentSpec
 from miniautogen.cli.services.yaml_ops import (
     read_yaml,
     update_yaml_preserving,
+    validate_resource_name,
     write_yaml,
 )
 
@@ -58,6 +59,7 @@ def create_agent(
 
     Returns the created agent config dict.
     """
+    validate_resource_name(name, "agent")
     agents = _agents_dir(project_root)
     agent_path = agents / f"{name}.yaml"
 
@@ -126,6 +128,7 @@ def show_agent(
     name: str,
 ) -> dict[str, Any]:
     """Get detailed info for a single agent."""
+    validate_resource_name(name, "agent")
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
         msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."
@@ -147,6 +150,7 @@ def update_agent(
 
     Returns a dict with 'before' and 'after' states.
     """
+    validate_resource_name(name, "agent")
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
         msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."
@@ -154,6 +158,18 @@ def update_agent(
 
     before = read_yaml(agent_path)
     after = dict(before)
+
+    if "engine_profile" in updates:
+        cfg_data = read_yaml(_config_path(project_root))
+        engine_profiles = cfg_data.get("engine_profiles", {})
+        if updates["engine_profile"] not in engine_profiles:
+            available = ", ".join(engine_profiles) or "(none)"
+            msg = (
+                f"Engine profile '{updates['engine_profile']}' not found. "
+                f"Available: {available}"
+            )
+            raise ValueError(msg)
+
     for k, v in updates.items():
         if v is not None:
             after[k] = v
@@ -176,6 +192,7 @@ def delete_agent(
     Returns info about the deletion. Raises ValueError if agent
     is referenced by any pipeline config.
     """
+    validate_resource_name(name, "agent")
     agent_path = project_root / "agents" / f"{name}.yaml"
     if not agent_path.is_file():
         msg = f"Agent '{name}' not found. Run 'miniautogen agent list' to see available agents."

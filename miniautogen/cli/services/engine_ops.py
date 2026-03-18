@@ -11,6 +11,7 @@ from miniautogen.cli.config import EngineProfileConfig
 from miniautogen.cli.services.yaml_ops import (
     read_yaml,
     update_yaml_preserving,
+    validate_resource_name,
     write_yaml,
 )
 
@@ -59,6 +60,7 @@ def create_engine(
 
     Returns the created engine config dict.
     """
+    validate_resource_name(name, "engine")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
 
@@ -113,6 +115,7 @@ def show_engine(
     name: str,
 ) -> dict[str, Any]:
     """Get detailed info for a single engine profile."""
+    validate_resource_name(name, "engine")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
     engines = data.get("engine_profiles", {})
@@ -140,6 +143,7 @@ def update_engine(
     Returns a dict with 'before' and 'after' states.
     If dry_run is True, does not write changes.
     """
+    validate_resource_name(name, "engine")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
     engines = data.get("engine_profiles", {})
@@ -150,6 +154,14 @@ def update_engine(
 
     before = dict(engines[name])
     after = dict(before)
+
+    api_key = updates.get("api_key")
+    if api_key is not None and not (api_key.startswith("${") and api_key.endswith("}")):
+        msg = (
+            "API keys must be environment variable references in ${VAR_NAME} format. "
+            "Never store plain-text credentials in configuration files."
+        )
+        raise ValueError(msg)
 
     for k, v in updates.items():
         if v is not None:
@@ -179,6 +191,7 @@ def delete_engine(
     Returns info about the deletion. Raises ValueError if engine
     is referenced by any agent config.
     """
+    validate_resource_name(name, "engine")
     import yaml as _yaml
 
     cfg_path = _config_path(project_root)

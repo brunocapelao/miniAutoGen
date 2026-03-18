@@ -6,6 +6,8 @@ import sys
 import threading
 import time
 
+from pathlib import Path
+
 import click
 
 from miniautogen.cli.config import require_project_config
@@ -18,7 +20,12 @@ def _resolve_input(input_value: str | None) -> str | None:
     """Resolve input from --input flag, @file reference, or stdin."""
     if input_value is not None:
         if input_value.startswith("@"):
-            file_path = input_value[1:]
+            file_path = Path(input_value[1:]).resolve()
+            # Restrict to project directory
+            project_root = Path.cwd().resolve()
+            if not str(file_path).startswith(str(project_root)):
+                msg = f"Input file must be within the project directory: {file_path}"
+                raise click.BadParameter(msg)
             try:
                 with open(file_path) as f:
                     return f.read()

@@ -8,6 +8,7 @@ from typing import Any
 from miniautogen.cli.services.yaml_ops import (
     read_yaml,
     update_yaml_preserving,
+    validate_resource_name,
     write_yaml,
 )
 
@@ -31,6 +32,7 @@ def create_pipeline(
 
     Returns the created pipeline config dict.
     """
+    validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
     pipelines = data.setdefault("pipelines", {})
@@ -127,6 +129,7 @@ def show_pipeline(
     name: str,
 ) -> dict[str, Any]:
     """Get detailed info for a single pipeline."""
+    validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
     pipelines = data.get("pipelines", {})
@@ -157,6 +160,7 @@ def update_pipeline(
 
     Returns a dict with 'before' and 'after' states.
     """
+    validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
     pipelines = data.get("pipelines", {})
@@ -190,6 +194,14 @@ def update_pipeline(
         if remove_p in current:
             current.remove(remove_p)
         after["participants"] = current
+
+    if "participants" in updates and updates["participants"] is not None:
+        agents_dir = project_root / "agents"
+        for agent_name in updates["participants"]:
+            agent_file = agents_dir / f"{agent_name}.yaml"
+            if not agent_file.is_file():
+                msg = f"Agent '{agent_name}' not found in agents/"
+                raise ValueError(msg)
 
     for k, v in updates.items():
         if v is not None:

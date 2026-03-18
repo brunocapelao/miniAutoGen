@@ -56,6 +56,6 @@ class PipelineNotFoundError(CLIError):
     exit_code = 3
 
 
-class IOError(CLIError):
+class CLIIOError(CLIError):
     """File or network I/O error."""
     exit_code = 4

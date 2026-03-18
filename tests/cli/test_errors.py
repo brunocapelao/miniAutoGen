@@ -4,7 +4,7 @@ from miniautogen.cli.errors import (
     CLIError,
     ConfigurationError,
     ExecutionError,
-    IOError,
+    CLIIOError,
     PipelineNotFoundError,
     ProjectNotFoundError,
     ValidationError,
@@ -37,7 +37,7 @@ def test_pipeline_not_found_exit_code() -> None:
 
 
 def test_io_error_exit_code() -> None:
-    assert IOError.exit_code == 4
+    assert CLIIOError.exit_code == 4
 
 
 def test_cli_error_message() -> None:
@@ -54,5 +54,5 @@ def test_cli_error_message_with_hint() -> None:
 def test_all_errors_inherit_from_cli_error() -> None:
     for cls in [ProjectNotFoundError, ConfigurationError,
                 PipelineNotFoundError, ValidationError,
-                ExecutionError, IOError]:
+                ExecutionError, CLIIOError]:
         assert issubclass(cls, CLIError)

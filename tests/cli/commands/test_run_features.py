@@ -46,5 +46,6 @@ def test_run_with_resume_flag(tmp_path, monkeypatch) -> None:
     result = runner.invoke(cli, [
         "run", "--resume", "run-abc123",
     ])
-    # Should attempt to run (resume may fail gracefully)
-    assert result.exit_code == 0, result.output
+    # Resume should fail explicitly when checkpoint store is not configured
+    assert result.exit_code != 0
+    assert "checkpoint" in result.output.lower() or "resume" in result.output.lower()

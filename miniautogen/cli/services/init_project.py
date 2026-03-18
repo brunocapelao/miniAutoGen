@@ -65,6 +65,8 @@ def scaffold_project(
 
     project_dir = target_dir / name
 
+    created_new = not project_dir.exists()
+
     if project_dir.exists() and not force:
         # Check if directory is non-empty
         if any(project_dir.iterdir()):
@@ -73,8 +75,6 @@ def scaffold_project(
         # Empty directory is fine — proceed
     elif not project_dir.exists():
         project_dir.mkdir(parents=True)
-
-    created_new = not project_dir.exists()
     try:
         env = Environment(
             loader=FileSystemLoader(str(_TEMPLATES_DIR)),

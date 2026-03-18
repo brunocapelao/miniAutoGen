@@ -40,8 +40,7 @@ def _check_dependency(name: str, import_name: str | None = None) -> tuple[bool, 
 def _check_api_key(env_var: str, provider: str) -> tuple[bool, str]:
     val = os.environ.get(env_var)
     if val:
-        masked = val[:4] + "..." + val[-4:] if len(val) > 8 else "***"
-        return True, f"{provider}: {env_var} set ({masked})"
+        return True, f"{provider}: {env_var} is set"
     return False, f"{provider}: {env_var} not set"
 
 

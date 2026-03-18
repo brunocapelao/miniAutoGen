@@ -93,14 +93,15 @@ def start_server(
 
     if daemon:
         log_path = _logfile(project_root)
-        log_fd = log_path.open("a")
-        proc = subprocess.Popen(
-            cmd,
-            stdout=log_fd,
-            stderr=log_fd,
-            start_new_session=True,
-            cwd=str(project_root),
-        )
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a") as log_fd:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=log_fd,
+                stderr=log_fd,
+                start_new_session=True,
+                cwd=str(project_root),
+            )
         _pidfile(project_root).write_text(str(proc.pid))
         _portfile(project_root).write_text(str(port))
         return {
