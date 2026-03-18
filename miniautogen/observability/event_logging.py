@@ -43,11 +43,11 @@ class LoggingEventSink:
             correlation_id=event.correlation_id,
         )
         if event.type in _ERROR_TYPES:
-            bound.error("execution_event", **event.payload)
+            bound.error("execution_event", **event.payload_dict())
         elif event.type in _WARNING_TYPES:
-            bound.warning("execution_event", **event.payload)
+            bound.warning("execution_event", **event.payload_dict())
         else:
-            bound.info("execution_event", **event.payload)
+            bound.info("execution_event", **event.payload_dict())
 
     async def __aenter__(self) -> LoggingEventSink:
         return self

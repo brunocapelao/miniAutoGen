@@ -55,7 +55,7 @@ class TerminalNotifier:
     @staticmethod
     def format_event(event: ExecutionEvent) -> tuple[str, str]:
         """Format an event into (title, body) for notification."""
-        agent_id = event.payload.get("agent_id", "Agent")
+        agent_id = event.get_payload("agent_id", "Agent")
         etype = event.type
 
         if etype == EventType.APPROVAL_REQUESTED.value:

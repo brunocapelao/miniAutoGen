@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from miniautogen.core.contracts.run_context import RunContext
+from miniautogen.core.contracts.run_context import FrozenState, RunContext
 
 RUNTIME_RUNNER_CUTOVER_READY = True
 
@@ -23,9 +23,10 @@ def bridge_chat_pipeline_state_to_run_context(
     correlation_id: str,
 ) -> RunContext:
     """Lift legacy chat pipeline state into the typed run context."""
+    legacy_state = bridge_chat_pipeline_state(state)
     return RunContext(
         run_id=run_id,
         started_at=started_at,
         correlation_id=correlation_id,
-        execution_state=bridge_chat_pipeline_state(state),
+        state=FrozenState(**legacy_state),
     )
