@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timezone
 from typing import Any
 
@@ -27,9 +28,11 @@ class ExecutionEvent(MiniAutoGenBaseModel):
 
     def __init__(self, **data: Any) -> None:
         # Convert dict payload to tuple-of-tuples before freezing
-        raw_payload = data.get("payload", {})
+        raw_payload = data.get("payload") or {}
         if isinstance(raw_payload, dict):
-            data["payload"] = tuple(sorted(raw_payload.items()))
+            data["payload"] = tuple(sorted(
+                (k, copy.deepcopy(v)) for k, v in raw_payload.items()
+            ))
             # Infer run_id from payload before freezing
             if data.get("run_id") is None and "run_id" in raw_payload:
                 candidate = raw_payload["run_id"]
