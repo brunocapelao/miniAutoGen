@@ -1,7 +1,8 @@
+import copy
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict, Field, model_serializer
+from pydantic import ConfigDict, Field, PrivateAttr, model_serializer
 
 from miniautogen.core.contracts.base import MiniAutoGenBaseModel
 
@@ -15,12 +16,31 @@ class FrozenState(MiniAutoGenBaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    _data: tuple[tuple[str, Any], ...] = ()
+    _data: tuple[tuple[str, Any], ...] = PrivateAttr(default=())
 
     def __init__(self, **kwargs: Any) -> None:
-        pairs = tuple(sorted(kwargs.items()))
+        if "_data" in kwargs:
+            raise ValueError("'_data' is a reserved key")
         super().__init__()
-        object.__setattr__(self, '_data', pairs)
+        pairs = tuple(sorted((k, copy.deepcopy(v)) for k, v in kwargs.items()))
+        self.__pydantic_private__["_data"] = pairs
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        raise AttributeError("FrozenState is immutable")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError("FrozenState is immutable")
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, FrozenState):
+            return NotImplemented
+        return self._data == other._data
+
+    def __hash__(self) -> int:
+        try:
+            return hash(self._data)
+        except TypeError:
+            return hash(tuple((k, id(v)) for k, v in self._data))
 
     def get(self, key: str, default: Any = None) -> Any:
         """Look up a key, returning default if not found."""
@@ -33,7 +53,7 @@ class FrozenState(MiniAutoGenBaseModel):
         """Return a new FrozenState with the given updates applied."""
         current = dict(self._data)
         current.update(updates)
-        return FrozenState(**current)
+        return FrozenState(**current)  # __init__ will deep-copy
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain dict copy of the state."""
@@ -53,11 +73,23 @@ class RunContext(MiniAutoGenBaseModel):
     run_id: str
     started_at: datetime
     correlation_id: str
-    state: FrozenState = FrozenState()
+    state: FrozenState = Field(default_factory=FrozenState)
     input_payload: Any = None
     timeout_seconds: float | None = None
     namespace: str | None = None
     metadata: tuple[tuple[str, Any], ...] = ()
+
+    def model_copy(self, *, update: dict[str, Any] | None = None, **kwargs: Any) -> "RunContext":  # type: ignore[override]
+        """Override model_copy to restrict updates to allowed fields only."""
+        allowed = {"state", "metadata", "input_payload"}
+        if update:
+            disallowed = set(update.keys()) - allowed
+            if disallowed:
+                raise ValueError(
+                    f"RunContext.model_copy only allows updating: {allowed}. "
+                    f"Got disallowed fields: {disallowed}"
+                )
+        return super().model_copy(update=update, **kwargs)
 
     def with_state(self, **updates: Any) -> "RunContext":
         """Return a new RunContext with state evolved by the given updates."""
