@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from miniautogen.core.contracts.run_context import RunContext
+from miniautogen.core.contracts.run_context import FrozenState, RunContext
 
 
 def test_run_context_requires_core_operational_fields():
@@ -11,7 +11,7 @@ def test_run_context_requires_core_operational_fields():
         run_id="run-1",
         started_at=datetime.now(UTC),
         correlation_id="corr-1",
-        execution_state={},
+        state=FrozenState(),
         input_payload={"message": "hello"},
     )
 
@@ -24,6 +24,6 @@ def test_run_context_rejects_missing_run_id():
         RunContext(
             started_at=datetime.now(UTC),
             correlation_id="corr-1",
-            execution_state={},
+            state=FrozenState(),
             input_payload={},
         )

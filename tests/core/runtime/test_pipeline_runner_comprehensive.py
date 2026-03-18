@@ -155,7 +155,7 @@ async def test_runner_failed_event_contains_error_type() -> None:
 
     failed_events = [e for e in sink.events if e.type == "run_failed"]
     assert len(failed_events) == 1
-    assert failed_events[0].payload["error_type"] == "RuntimeError"
+    assert failed_events[0].get_payload("error_type") == "RuntimeError"
 
 
 # --- Timeout ---

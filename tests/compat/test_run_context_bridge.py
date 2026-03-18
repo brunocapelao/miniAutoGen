@@ -18,4 +18,4 @@ def test_bridge_chat_pipeline_state_to_run_context():
 
     assert isinstance(context, RunContext)
     assert context.run_id == "run-1"
-    assert context.execution_state["group_chat"] == "chat"
+    assert context.state.get("group_chat") == "chat"

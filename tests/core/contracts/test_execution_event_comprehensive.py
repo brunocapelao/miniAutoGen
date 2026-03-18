@@ -10,7 +10,7 @@ def test_event_creation_minimal() -> None:
     assert event.type == "run_started"
     assert event.run_id == "run-1"
     assert event.correlation_id is None
-    assert event.payload == {}
+    assert event.payload == ()
 
 
 def test_event_creation_full() -> None:
@@ -21,7 +21,7 @@ def test_event_creation_full() -> None:
         payload={"status": "completed"},
     )
     assert event.correlation_id == "corr-1"
-    assert event.payload["status"] == "completed"
+    assert event.get_payload("status") == "completed"
 
 
 def test_event_has_timestamp() -> None:
@@ -49,9 +49,9 @@ def test_event_allows_arbitrary_payload() -> None:
         run_id="r1",
         payload={"nested": {"deep": [1, 2, 3]}},
     )
-    assert event.payload["nested"]["deep"] == [1, 2, 3]
+    assert event.get_payload("nested") == {"deep": [1, 2, 3]}
 
 
 def test_event_with_empty_payload() -> None:
     event = ExecutionEvent(type="test", run_id="r1", payload={})
-    assert event.payload == {}
+    assert event.payload == ()
