@@ -48,6 +48,10 @@ dist/
 #Ignore vscode AI rules
 .github/instructions/codacy.instructions.md
 .venv/
+
+# Claude Code session markers
+.claude/.session-start-commit
+
 output/
 !output/jupyter-notebook/
 !output/jupyter-notebook/*.ipynb

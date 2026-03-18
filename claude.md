@@ -51,4 +51,29 @@ O seu Pull Request ou sequência de Commits será imediatamente **REJEITADO** se
 4.  Omitir a submissão de um `ExecutionEvent` após adicionar um novo componente ao ciclo de vida de execução.
 
 ---
+
+## 📐 5. Convenções Git
+
+### Branches
+- `feat/nome-descritivo` — nova funcionalidade
+- `fix/nome-descritivo` — correção de bug
+- `chore/nome-descritivo` — manutenção, refactor, tooling
+- `docs/nome-descritivo` — documentação
+
+### Commits
+Formato: `type(scope): descrição concisa`
+
+Tipos válidos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`
+Scopes válidos: `core`, `runtime`, `policies`, `stores`, `adapters`, `cli`, `tui`, `backends`, `events`
+
+Exemplos:
+- `feat(runtime): add checkpoint recovery to PipelineRunner`
+- `fix(policies): handle timeout edge case in BudgetTracker`
+- `test(stores): add SQLAlchemy integration tests`
+
+### Merge Strategy
+- **Squash merge** para branches de feature (histórico limpo)
+- **Merge commit** para releases (preservar histórico completo)
+
+---
 **Declaração de Autonomia:** *Se a sua janela de contexto começar a ficar saturada de erros ou loops de debugging infinitos, PARE. Faça um sumário do estado atual, crie um checkpoint de código e solicite ao operador humano um reset da sessão.*

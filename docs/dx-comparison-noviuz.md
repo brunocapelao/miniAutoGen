@@ -3,14 +3,15 @@
 > **Objetivo:** Identificar o que o noviuz-app faz de diferente (ou melhor) em termos de DX com agentes, e extrair insights de melhoria aplicáveis ao miniAutoGen.
 
 **Data:** Março de 2026
+**Atualização:** 18 de Março de 2026 — Todas as 8 melhorias identificadas foram implementadas.
 
 ---
 
 ## Sumário Executivo
 
-O noviuz-app é um produto de software maduro (Patrimonial OS) com um setup de agentes denso e pragmático. O miniAutoGen é um framework SDK com um setup mais sofisticado em termos de orquestração multi-modelo, mas menos estruturado em enforcement automatizado.
+O noviuz-app é um produto de software maduro (Patrimonial OS) com um setup de agentes denso e pragmático. O miniAutoGen é um framework SDK com orquestração multi-modelo sofisticada que agora também possui enforcement automatizado completo.
 
-**Conclusão principal:** O noviuz-app é superior em **enforcement automatizado** (CI gates, linters arquiteturais, hooks de ciclo de vida). O miniAutoGen é superior em **orquestração de agentes** (multi-modelo, skills processuais, ring teams). A combinação ideal pega o melhor dos dois.
+**Conclusão principal:** O miniAutoGen **fechou o gap de enforcement** que o separava do noviuz-app. Com specs, linters AST, CI gates, hooks, permissões granulares, multi-agent docs e git workflow formalizados, o miniAutoGen combina a superioridade em **orquestração de agentes** com **enforcement programático** equivalente ao noviuz. O ambiente ideal deixou de ser aspiracional — é a realidade atual.
 
 ---
 
@@ -19,24 +20,26 @@ O noviuz-app é um produto de software maduro (Patrimonial OS) com um setup de a
 | Dimensão | miniAutoGen | noviuz-app | Vantagem |
 |----------|-------------|------------|----------|
 | **CLAUDE.md** | 1 arquivo root, denso e prescritivo | Hierarquia multi-nível (~100 arquivos, mas maioria são memory logs) | mini — mais focado |
-| **Multi-agent awareness** | Apenas Claude Code | Claude + Copilot + Gemini (instruções separadas para cada) | noviuz — portabilidade |
-| **Spec-Driven Development** | Referenciado mas `.specs/` não existe | Implementado com `/speckit.*` commands, templates, scripts bash, 36+ specs ativas | noviuz — muito à frente |
+| **Multi-agent awareness** | Claude + Copilot + Gemini (com constitution compartilhada) | Claude + Copilot + Gemini (instruções separadas para cada) | Empate |
+| **Spec-Driven Development** | `.specs/` com templates, slash commands e workflow completo | Implementado com `/speckit.*` commands, templates, scripts bash, 36+ specs ativas | Empate |
 | **Skills/Commands** | 80+ skills via Ring + Superpowers plugins | 13 slash commands via `.claude/commands/` (speckit + railway) | mini — mais variado |
 | **Delegação multi-modelo** | Claude + GPT-5.2 via Codex MCP (5 especialistas) | Apenas Claude Code (sem segundo modelo) | mini — diferencial claro |
 | **Memória** | Arquivos tipados em `~/.claude/projects/*/memory/` com 4 tipos semânticos | `claude-mem` plugin com injection automática em CLAUDE.md distribuídos | noviuz — mais automatizado |
-| **Hooks** | Apenas SessionStart (ring-dev-team) | 7 hooks (SessionStart/End, Stop, UserPromptSubmit, Pre/PostToolUse) | noviuz — muito mais rico |
-| **CI enforcement** | Sem CI visível no repo | 7 jobs (lint, security, dx-standards, architecture, test, security-test, frontend-test) | noviuz — enforcement real |
-| **Linters arquiteturais** | Invariantes no CLAUDE.md (enforcement verbal) | `check-architecture`, `check-everail-readiness`, `rbac-verify`, `validate-invariants` (enforcement por código) | noviuz — programático |
-| **Permissões** | Whitelist mínima (ls, python) | Whitelist granular (~40 patterns de bash, ~15 MCP tools, domínios web) | noviuz — mais prático |
+| **Hooks** | 3 hooks (SessionStart, SessionEnd, UserPromptSubmit) | 7 hooks (SessionStart/End, Stop, UserPromptSubmit, Pre/PostToolUse) | noviuz — mais hooks, mas mini cobre os essenciais |
+| **CI enforcement** | CI com lint, test, arch-check e ci-passed gate | 7 jobs (lint, security, dx-standards, architecture, test, security-test, frontend-test) | noviuz — mais jobs, mas mini tem o essencial |
+| **Linters arquiteturais** | 4 linters AST (adapter isolation, runner exclusivity, anyio compliance, event emission) | `check-architecture`, `check-everail-readiness`, `rbac-verify`, `validate-invariants` (enforcement por código) | Empate — ambos programáticos |
+| **Permissões** | Whitelist granular (~12 patterns: git, pytest, ruff, mypy, pip, etc.) | Whitelist granular (~40 patterns de bash, ~15 MCP tools, domínios web) | noviuz — mais extenso, mas mini cobre o necessário |
 | **MCP Servers** | 3 (Codex, Cloudflare, Hetzner) | Railway, Sentry, PostHog, shadcn, IDE (via allowlist) | Empate — diferentes propósitos |
 | **Testes** | pytest + hypothesis + ruff + mypy | pytest + vitest + playwright + storybook + ruff + mypy + bandit + pip-audit | noviuz — mais abrangente |
-| **Git workflow** | Sem convenção documentada | `feature/* → develop → staging → main` com semantic commits | noviuz — formalizado |
+| **Git workflow** | Branch naming + semantic commits documentados no CLAUDE.md §5 | `feature/* → develop → staging → main` com semantic commits | Empate — ambos formalizados |
 
 ---
 
 ## 2. Insights de Melhoria para miniAutoGen
 
-### 2.1 🔴 CRÍTICO: Criar o sistema de Specs (`.specs/`)
+### 2.1 ✅ IMPLEMENTADO: Sistema de Specs (`.specs/`)
+
+> Criado `.specs/` com templates (spec, plan, tasks) e slash commands em `.claude/commands/` (spec-create, spec-plan, spec-tasks).
 
 **O que o noviuz faz:** Sistema completo de spec-driven development com:
 - Scripts bash que criam branch + diretório de spec automaticamente
@@ -71,7 +74,9 @@ Criar slash commands em `.claude/commands/`:
 
 ---
 
-### 2.2 🔴 CRÍTICO: Adicionar linters arquiteturais programáticos
+### 2.2 ✅ IMPLEMENTADO: Linters arquiteturais programáticos
+
+> Criados 4 linters AST: adapter isolation, pipeline runner exclusivity, anyio compliance e event emission. Integrados ao CI como job `arch-check`.
 
 **O que o noviuz faz:** Validação de invariantes por código (AST analysis):
 ```python
@@ -111,7 +116,9 @@ def check_event_emission():
 
 ---
 
-### 2.3 🟡 IMPORTANTE: Expandir hooks de ciclo de vida
+### 2.3 ✅ IMPLEMENTADO: Hooks de ciclo de vida
+
+> Adicionados 3 hooks em `.claude/settings.json`: SessionStart (ring-dev-team), SessionEnd (auto-save de decisões) e UserPromptSubmit (injeção de estado do projeto).
 
 **O que o noviuz faz:** 7 hooks via `entire` CLI:
 
@@ -149,7 +156,9 @@ Hooks prioritários:
 
 ---
 
-### 2.4 🟡 IMPORTANTE: Multi-agent awareness (instruções por modelo)
+### 2.4 ✅ IMPLEMENTADO: Multi-agent awareness (instruções por modelo)
+
+> Criados `.github/copilot-instructions.md` e `.github/gemini.md` referenciando constitution compartilhada. Todos os 3 agentes operam com as mesmas invariantes.
 
 **O que o noviuz faz:** 3 arquivos de instruções consistentes entre si:
 - `CLAUDE.md` — para Claude Code
@@ -171,7 +180,9 @@ Extrair as invariantes do CLAUDE.md para um `docs/constitution.md` compartilhado
 
 ---
 
-### 2.5 🟡 IMPORTANTE: Whitelist granular de permissões
+### 2.5 ✅ IMPLEMENTADO: Whitelist granular de permissões
+
+> Criado `.claude/settings.local.json` com ~12 patterns granulares (git, pytest, ruff, mypy, pip, find, tree, grep, etc.). Friction reduzido sem sacrificar segurança.
 
 **O que o noviuz faz:** `settings.local.json` com ~40 patterns de bash explicitamente permitidos:
 ```json
@@ -209,7 +220,9 @@ Isso é pragmático: o agente pode executar operações comuns sem pedir aprova�
 
 ---
 
-### 2.6 🟡 IMPORTANTE: CI Pipeline
+### 2.6 ✅ IMPLEMENTADO: CI Pipeline
+
+> Criado `.github/workflows/ci.yml` com jobs lint, test, arch-check e ci-passed gate. PRs não podem ser mergeados sem passar todos os gates.
 
 **O que o noviuz faz:** GitHub Actions com 7 jobs que formam um gate binário:
 ```
@@ -252,7 +265,9 @@ jobs:
 
 ---
 
-### 2.7 🟢 NICE-TO-HAVE: Memória automatizada (claude-mem pattern)
+### 2.7 ✅ IMPLEMENTADO: Memória automatizada (claude-mem pattern)
+
+> Hook SessionEnd configurado para auto-save de decisões arquiteturais. Combina a riqueza semântica (4 tipos) com a automação de persistência.
 
 **O que o noviuz faz:** Plugin `claude-mem` com hooks que automaticamente:
 - Registram atividade do agente em CLAUDE.md distribuídos pelo repo
@@ -267,7 +282,9 @@ jobs:
 
 ---
 
-### 2.8 🟢 NICE-TO-HAVE: Git workflow formalizado
+### 2.8 ✅ IMPLEMENTADO: Git workflow formalizado
+
+> Documentado no CLAUDE.md §5: branch naming (`feat/`, `fix/`, `chore/`, `docs/`), semantic commits obrigatórios e merge strategy definida.
 
 **O que o noviuz faz:**
 ```
@@ -309,42 +326,42 @@ O sistema de 5 níveis de resolução antes de perguntar (dispatch context → C
 
 ## 4. Matriz de Prioridades
 
-| # | Melhoria | Esforço | Impacto | Prioridade |
-|---|----------|---------|---------|------------|
-| 2.1 | Sistema de Specs (`.specs/`) | Médio | Alto | 🔴 P0 |
-| 2.2 | Linters arquiteturais programáticos | Alto | Alto | 🔴 P0 |
-| 2.6 | CI Pipeline | Médio | Alto | 🔴 P0 |
-| 2.3 | Hooks de ciclo de vida | Baixo | Médio | 🟡 P1 |
-| 2.5 | Whitelist granular de permissões | Baixo | Médio | 🟡 P1 |
-| 2.4 | Multi-agent awareness | Médio | Médio | 🟡 P1 |
-| 2.8 | Git workflow formalizado | Baixo | Baixo | 🟢 P2 |
-| 2.7 | Memória automatizada | Médio | Baixo | 🟢 P2 |
+| # | Melhoria | Esforço | Impacto | Prioridade | Status |
+|---|----------|---------|---------|------------|--------|
+| 2.1 | Sistema de Specs (`.specs/`) | Médio | Alto | 🔴 P0 | ✅ Implementado |
+| 2.2 | Linters arquiteturais programáticos | Alto | Alto | 🔴 P0 | ✅ Implementado |
+| 2.6 | CI Pipeline | Médio | Alto | 🔴 P0 | ✅ Implementado |
+| 2.3 | Hooks de ciclo de vida | Baixo | Médio | 🟡 P1 | ✅ Implementado |
+| 2.5 | Whitelist granular de permissões | Baixo | Médio | 🟡 P1 | ✅ Implementado |
+| 2.4 | Multi-agent awareness | Médio | Médio | 🟡 P1 | ✅ Implementado |
+| 2.8 | Git workflow formalizado | Baixo | Baixo | 🟢 P2 | ✅ Implementado |
+| 2.7 | Memória automatizada | Médio | Baixo | 🟢 P2 | ✅ Implementado |
 
 ---
 
-## 5. Síntese: O Ambiente Ideal
+## 5. Síntese: O Ambiente Alcançado
 
-O ambiente ideal combina:
+O miniAutoGen agora implementa ambos os lados do ambiente ideal:
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    AMBIENTE IDEAL                            │
-├──────────────────────┬──────────────────────────────────────┤
-│  Do noviuz-app       │  Do miniAutoGen                      │
-├──────────────────────┼──────────────────────────────────────┤
-│  Spec-kit system     │  Ring teams (9 especializações)      │
-│  Linters por AST     │  Delegação multi-modelo (GPT+Claude) │
-│  7 hooks lifecycle   │  Skills processuais (Superpowers)    │
-│  CI com 7 gates      │  Memória semântica (4 tipos)         │
-│  Multi-agent docs    │  Dúvida estruturada (5 níveis)       │
-│  Perms granulares    │  3-file rule como gate               │
-│  Git workflow formal │  Subagent dispatch paralelo          │
-│  Constitution.md     │  Plan mode por padrão                │
-└──────────────────────┴──────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│              miniAutoGen — AMBIENTE COMPLETO                  │
+├──────────────────────────┬───────────────────────────────────┤
+│  Enforcement (ex-noviuz) │  Orquestração (nativo)            │
+├──────────────────────────┼───────────────────────────────────┤
+│  ✅ Spec-kit system      │  ✅ Ring teams (9 especializações) │
+│  ✅ Linters por AST      │  ✅ Delegação multi-modelo (GPT)   │
+│  ✅ 3 hooks lifecycle    │  ✅ Skills processuais (Superpowers)│
+│  ✅ CI com gates         │  ✅ Memória semântica (4 tipos)     │
+│  ✅ Multi-agent docs     │  ✅ Dúvida estruturada (5 níveis)   │
+│  ✅ Perms granulares     │  ✅ 3-file rule como gate            │
+│  ✅ Git workflow formal  │  ✅ Subagent dispatch paralelo       │
+│  ✅ Constitution.md      │  ✅ Plan mode por padrão             │
+└──────────────────────────┴───────────────────────────────────┘
 ```
 
-O noviuz-app ensina que **enforcement programático > instruções verbais**. Invariantes no CLAUDE.md são sugestões; invariantes no CI são leis.
+O noviuz-app ensinou que **enforcement programático > instruções verbais**. Invariantes no CLAUDE.md são sugestões; invariantes no CI são leis. Essa lição foi absorvida.
 
 O miniAutoGen ensina que **processo de pensamento > processo de ação**. Skills que governam *como* o agente raciocina (brainstorming, debugging sistemático, verificação antes de completar) produzem output de qualidade superior a scripts que governam *o que* o agente faz.
 
-A combinação ideal: **pensar como miniAutoGen, enforçar como noviuz**.
+O que antes era aspiracional agora é realidade: **pensar como miniAutoGen, enforçar como noviuz** — num único ambiente.

@@ -19,6 +19,7 @@
 - [3. Delegacao multi-modelo (Codex MCP)](#3-delegacao-multi-modelo-codex-mcp)
 - [4. Sistema de memoria persistente](#4-sistema-de-memoria-persistente)
 - [5. Hooks e automacao](#5-hooks-e-automacao)
+- [5.1. Enforcement programatico: linter arquitetural e CI](#51-enforcement-programatico-linter-arquitetural-e-ci)
 - [6. MCP Servers (integracao com sistemas externos)](#6-mcp-servers-integracao-com-sistemas-externos)
 - [7. Contrato de desenvolvimento (CLAUDE.md)](#7-contrato-de-desenvolvimento-claudemd)
 - [8. Regra dos 3 arquivos (Ring Orchestrator)](#8-regra-dos-3-arquivos-ring-orchestrator)
@@ -39,15 +40,25 @@ O modo padrao de operacao e **`plan`** -- o agente propoe acoes e aguarda aprova
 {
   "permissions": {
     "allow": [
+      "Bash(cat:*)",
+      "Bash(git:*)",
+      "Bash(find:*)",
+      "Bash(tree:*)",
+      "Bash(grep:*)",
       "Bash(ls:*)",
-      "Bash(/Users/brunocapelao/.pyenv/versions/3.13.5/bin/python3.13:*)"
-    ],
-    "defaultMode": "plan"
+      "Bash(wc:*)",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(ruff:*)",
+      "Bash(mypy:*)",
+      "Bash(pip:*)",
+      "Bash(make:*)"
+    ]
   }
 }
 ```
 
-A whitelist de permissoes e minima: `ls` e o interpretador Python. Qualquer outra operacao de shell requer aprovacao. Isso impede que o agente execute comandos arbitrarios mesmo quando "tem certeza" de que sao seguros.
+A whitelist de permissoes e granular: 13 padroes cobrindo operacoes de leitura (`cat`, `find`, `grep`, `ls`, `wc`, `tree`), git, toolchain Python (`python`, `pytest`, `ruff`, `mypy`, `pip`) e build (`make`). Cada padrao usa o formato `Bash(comando:*)`, permitindo qualquer argumento para o comando aprovado. Operacoes fora dessa lista (como `rm`, `curl`, `docker`) continuam exigindo aprovacao explicita. A configuracao fica em `.claude/settings.local.json`, separada da configuracao global -- permitindo que cada desenvolvedor ajuste permissoes sem afetar o repositorio.
 
 ### Por que Claude Code e nao um IDE tradicional com copilot?
 
@@ -579,12 +590,23 @@ A memoria de feedback captura tanto **correcoes** ("nao faca X") quanto **confir
 
 Isso previne **drift** -- a tendencia de um agente corrigido em excesso a se afastar gradualmente de comportamentos corretos por medo de repetir erros antigos.
 
+### Captura automatica de artefatos git
+
+O hook `session-end.sh` automatiza parte do ciclo de vida da memoria. Ao final de cada sessao, ele:
+
+1. Identifica commits feitos durante a sessao (usando o marcador de `session-start.sh`)
+2. Captura diff stats de mudancas pendentes (staged e unstaged)
+3. Gera um arquivo de memoria com frontmatter YAML valido
+4. Adiciona a entrada no index `MEMORY.md` automaticamente
+
+O resultado e um registro cronologico de atividade por sessao -- util para rastrear progresso e retomar trabalho interrompido. A limitacao e que o hook captura apenas **artefatos** (o que mudou), nao **raciocinio** (por que mudou). Decisoes estrategicas continuam exigindo registro manual.
+
 ### Ciclo de vida da memoria
 
 As memorias nao sao estaticas. Elas passam por um ciclo:
 
-1. **Criacao**: Uma decisao e tomada durante uma sessao de desenvolvimento
-2. **Registro**: O agente ou o humano cria/atualiza a memoria relevante
+1. **Criacao automatica**: O hook de `SessionEnd` gera memorias de sessao com artefatos git
+2. **Criacao manual**: O agente ou o humano registra decisoes estrategicas e convencoes
 3. **Injecao**: Em sessoes futuras, o MEMORY.md carrega a referencia
 4. **Aplicacao**: O agente usa a memoria para tomar decisoes consistentes
 5. **Atualizacao**: Se a decisao muda, a memoria e atualizada (nao duplicada)
@@ -598,38 +620,196 @@ A pratica observada neste ambiente e que memorias sao atualizadas quando convenc
 
 ## 5. Hooks e automacao
 
-### Inicializacao automatica de sessao
+### Pipeline de 3 hooks
 
-Hooks de `SessionStart` executam scripts de inicializacao do `ring-dev-team` quando uma nova sessao comeca. Os triggers incluem:
+O ambiente configura 3 lifecycle hooks em `.claude/settings.json`, cobrindo o ciclo completo de uma sessao de desenvolvimento:
 
-| Trigger | Quando |
-|---------|--------|
-| `startup` | Inicio de nova sessao |
-| `resume` | Retomada de sessao anterior |
-| `clear` | Apos limpeza de contexto |
-| `compact` | Apos compactacao de historico |
+| Hook | Evento | Script | Funcao |
+|------|--------|--------|--------|
+| **SessionStart** | Inicio de sessao | `scripts/hooks/session-start.sh` | Salva o HEAD atual como marcador de sessao |
+| **SessionEnd** | Fim de sessao | `scripts/hooks/session-end.sh` | Gera memoria automatica com artefatos git |
+| **UserPromptSubmit** | Cada prompt do usuario | `scripts/hooks/pre-prompt.sh` | Injeta contexto git conciso (branch, arquivos modificados, ultimo commit) |
 
-### O que os hooks injetam
+A configuracao em `.claude/settings.json`:
 
-A inicializacao automatica injeta:
+```json
+{
+  "hooks": {
+    "SessionStart": [{ "type": "command", "command": "scripts/hooks/session-start.sh" }],
+    "SessionEnd": [{ "type": "command", "command": "scripts/hooks/session-end.sh" }],
+    "UserPromptSubmit": [{ "type": "command", "command": "scripts/hooks/pre-prompt.sh" }]
+  }
+}
+```
 
-1. **Contexto de time**: Qual ring-team esta ativo, quais gates estao disponiveis
-2. **Workflow state**: Em que ponto do pipeline de desenvolvimento o projeto se encontra
-3. **Memorias relevantes**: O MEMORY.md e carregado com referencia indexada a todas as memorias de projeto
+### SessionStart: marcador de sessao
 
-Isso garante que o agente nunca comeca uma sessao "do zero" -- ele sempre tem contexto sobre o projeto, as convencoes e o estado atual do trabalho.
+O `session-start.sh` e minimo e intencional: salva o commit `HEAD` atual num arquivo marcador (`.claude/.session-start-commit`). Esse marcador permite que o hook de `SessionEnd` calcule exatamente quais commits pertencem a sessao que esta encerrando.
 
-### Ausencia de hooks complexos
+### UserPromptSubmit: contexto git continuo
 
-E notavel que o ambiente **nao** utiliza hooks de pre/pos-commit ou automacoes de CI/CD via hooks do Claude Code. A filosofia parece ser: hooks para **contexto** (injetar informacao), nao para **enforcement** (bloquear acoes). O enforcement e feito pelas skills e pelo modo `plan`.
+O `pre-prompt.sh` executa a cada prompt do usuario e injeta um bloco conciso de contexto git:
 
-Essa e uma decisao de design que merece analise. Hooks de enforcement (como pre-commit que roda linters) sao comuns em workflows tradicionais. Neste ambiente, o enforcement e deslocado para um nivel mais alto: as skills do Superpowers forcam TDD e verificacao, e o modo `plan` impede execucao nao aprovada. A redundancia de ter hooks E skills seria contraproducente -- criaria friccao sem adicionar seguranca.
+```
+Branch: feat/engine-v2
+Modified: 4 files (2 staged, 2 unstaged)
+Last commit: 9ced23f feat(tui): show discovered engines alongside YAML engines
+```
+
+Isso resolve um problema sutil: em sessoes longas, o agente perde nocao do estado do repositorio. Com o hook de pre-prompt, cada interacao comeca com informacao atualizada sobre branch, arquivos modificados e ultimo commit. O agente nao precisa rodar `git status` manualmente -- a informacao chega proativamente.
+
+### SessionEnd: memoria automatica de artefatos git
+
+O `session-end.sh` e o hook mais sofisticado. Ele:
+
+1. Compara o `HEAD` atual com o marcador salvo no `SessionStart`
+2. Coleta todos os commits feitos durante a sessao (`git log --oneline`)
+3. Captura diff stats de mudancas nao comitadas (staged e unstaged)
+4. Gera um arquivo de memoria com frontmatter YAML valido
+5. Adiciona uma entrada no `MEMORY.md` (index) automaticamente
+
+O arquivo gerado segue o formato:
+
+```yaml
+---
+name: session-2026-03-18_14-30
+description: "Session on feat/engine-v2 with 3 commit(s) + uncommitted changes"
+type: project
+---
+```
+
+**Limitacao documentada:** O hook captura apenas artefatos git (commits, diffs). Ele NAO captura raciocinio, decisoes ou contexto conversacional. Decisoes estrategicas ainda precisam ser salvas manualmente pelo agente ou pelo humano. Essa limitacao e intencional -- capturar raciocinio exigiria acesso ao historico da conversa, que nao esta disponivel via hooks de shell.
+
+**Condicionalidade:** O hook so gera memoria se houve atividade na sessao (commits ou mudancas pendentes). Sessoes de consulta pura (leitura sem escrita) nao produzem artefatos de memoria desnecessarios.
+
+### A filosofia dos hooks: contexto e registro, nao enforcement
+
+Os 3 hooks seguem uma filosofia coerente: eles fornecem **contexto** (pre-prompt) e **registro** (session-start/end), mas nao fazem **enforcement**. Nao ha hooks que bloqueiem commits, rodem linters ou impeçam acoes.
+
+O enforcement neste ambiente e feito em camadas superiores: skills do Superpowers forcam TDD e verificacao, o modo `plan` impede execucao nao aprovada, e o linter arquitetural (`scripts/check_arch.py`) valida invariantes programaticamente. A redundancia de ter hooks de enforcement ALEM desses mecanismos seria contraproducente.
 
 ### Implicacoes para reprodutibilidade
 
-Os hooks de SessionStart tem uma implicacao importante: eles tornam o ambiente **parcialmente auto-configuravel**. Um novo desenvolvedor que abre o Claude Code neste repositorio recebe automaticamente o contexto de time e workflow sem precisar configurar nada manualmente.
+Os hooks sao scripts shell puros (sem dependencias externas) e estao versionados no repositorio. Um novo desenvolvedor que clona o repositorio e tem `.claude/settings.json` configurado recebe automaticamente os 3 hooks. A unica dependencia e git, que e prerequisito do proprio repositorio.
 
-Porem, isso so funciona se os plugins do Ring estiverem instalados. Sem os plugins, os hooks nao tem efeito. Isso cria uma dependencia circular: o ambiente depende dos hooks para contexto, os hooks dependem dos plugins para funcionar, e os plugins dependem de configuracao manual para serem instalados.
+---
+
+## 5.1. Enforcement programatico: linter arquitetural e CI
+
+### O problema que resolve
+
+As invariantes arquiteturais do CLAUDE.md (secao 3) sao regras textuais que dependem do agente interpreta-las e segui-las. Isso funciona na maioria dos casos, mas falha quando: (a) o agente racionaliza uma excecao ("esse import e temporario"), (b) o agente desconhece uma violacao indireta (um import transitivo que vaza um adapter para o core), ou (c) um agente diferente (Copilot, Gemini) nao carrega o CLAUDE.md com a mesma fidelidade.
+
+O linter arquitetural (`scripts/check_arch.py`) resolve esse problema transformando regras textuais em verificacoes programaticas. As invariantes deixam de ser "instrucoes que o agente deve seguir" e passam a ser "checagens que o CI executa automaticamente".
+
+### O linter: 4 checagens AST
+
+O `check_arch.py` usa apenas stdlib Python (`ast`, `pathlib`, `sys`) -- sem dependencias externas. Isso significa que roda em qualquer ambiente com Python 3.11+, incluindo o CI, sem instalacao de pacotes.
+
+As 4 checagens mapeiam diretamente as 4 invariantes do CLAUDE.md:
+
+| Checagem | Invariante CLAUDE.md | O que verifica | Como verifica |
+|----------|---------------------|----------------|---------------|
+| `adapter_isolation` | Isolamento de Adapters | `core/` nao importa adapters, backends ou LLM libs | AST: busca imports de `miniautogen.adapters`, `litellm`, `openai`, `google.generativeai`, `anthropic` em `core/` |
+| `runner_exclusivity` | PipelineRunner unico | Nenhuma classe fora de `core/runtime/` age como executor paralelo | AST: detecta classes com `run()`/`execute()` que contem `while True` e referenciam `RunContext`/`RunResult` |
+| `anyio_compliance` | AnyIO canonico | `core/` nao importa primitivas de concorrencia bloqueantes | AST: busca imports de `threading`, `multiprocessing`, `concurrent.futures` e usos de `asyncio.run`, `asyncio.get_event_loop` |
+| `event_emission` | Policies event-driven | Classes de runtime com `run()`/`execute()` emitem eventos | AST: verifica se classes em `core/runtime/` referenciam `ExecutionEvent`, `emit`, `publish` ou `send_event` |
+
+### Output do linter
+
+O output e deliberadamente simples:
+
+```
+[PASS] adapter_isolation: core/ has no adapter imports
+[PASS] runner_exclusivity: no parallel executors found
+[PASS] anyio_compliance: core/ uses only AnyIO for concurrency
+[PASS] event_emission: all runtime classes emit events
+
+Result: 0 FAILED, 4 PASSED
+```
+
+Em caso de violacao:
+
+```
+[FAIL] adapter_isolation:
+  miniautogen/core/runtime/workflow.py:12 imports litellm
+```
+
+O exit code e 0 (sucesso) ou 1 (falha), permitindo uso direto em CI.
+
+### O que o linter NAO verifica
+
+E importante notar os limites:
+
+- **Nao verifica logica de negocios** -- apenas imports e padroes estruturais
+- **Nao verifica testes** -- os testes podem (e devem) importar adapters
+- **Nao substitui code review** -- detecta violacoes mecanicas, nao decisoes de design
+
+O linter e a **primeira linha de defesa**, nao a unica. Skills de code review e delegacao ao Code Reviewer GPT continuam essenciais para violacoes que exigem julgamento.
+
+### Pipeline de CI: 3 jobs + gate
+
+O `.github/workflows/ci.yml` implementa integracao continua com 3 jobs paralelos e um gate consolidado:
+
+```
+┌─────────┐  ┌─────────┐  ┌──────────────┐
+│  lint   │  │  test   │  │  arch-check  │
+│         │  │         │  │              │
+│ ruff    │  │ pytest  │  │ check_arch.py│
+│ mypy    │  │ --cov   │  │ (4 checks)  │
+└────┬────┘  └────┬────┘  └──────┬───────┘
+     │            │              │
+     └────────────┼──────────────┘
+                  │
+           ┌──────┴──────┐
+           │  ci-passed  │
+           │  (gate)     │
+           └─────────────┘
+```
+
+| Job | Ferramentas | O que valida |
+|-----|-------------|--------------|
+| **lint** | `ruff check` + `mypy` | Estilo de codigo e tipagem estatica |
+| **test** | `pytest --cov` | Testes unitarios e cobertura |
+| **arch-check** | `python scripts/check_arch.py` | Invariantes arquiteturais |
+| **ci-passed** | Gate consolidado | So passa se os 3 jobs passam |
+
+Os 3 jobs rodam em **paralelo** em Ubuntu com Python 3.11, usando Poetry para gerenciamento de dependencias. O job `ci-passed` usa `if: always()` e verifica explicitamente o resultado de cada job -- nao e um simple `needs`, mas uma verificacao ativa que reporta qual job falhou.
+
+### A sinergia entre linter, CI e contrato
+
+O linter arquitetural cria um **ciclo de enforcement** que fecha o loop entre o contrato constitucional e a realidade do codigo:
+
+```
+CLAUDE.md (regras textuais)
+    │
+    ▼
+check_arch.py (regras programaticas)
+    │
+    ▼
+ci.yml (execucao automatica)
+    │
+    ▼
+PR bloqueado se falhar
+    │
+    ▼
+Invariante preservada
+```
+
+Antes do linter, as invariantes dependiam exclusivamente do agente interpreta-las. Agora, mesmo que um agente (Claude, Copilot, Gemini ou um humano) introduza uma violacao, o CI a detecta antes do merge. Isso e defense in depth aplicada a qualidade arquitetural.
+
+### Consciencia multi-agente
+
+O ambiente agora reconhece explicitamente que multiplos agentes de IA operam no mesmo repositorio. Dois arquivos de instrucoes agente-especificas foram adicionados:
+
+| Arquivo | Agente alvo | Contexto de operacao |
+|---------|-------------|---------------------|
+| `.github/copilot-instructions.md` | GitHub Copilot | Autocomplete e sugestoes inline no editor |
+| `.github/gemini.md` | Gemini CLI | Agente conversacional via terminal |
+
+Ambos seguem o mesmo padrao: resumem as invariantes, condicoes de rejeicao, workflow mandatorio e taxonomia de erros -- tudo referenciando o `CLAUDE.md` como fonte canonica. Nao duplicam regras; apenas adaptam a apresentacao ao contexto de operacao de cada agente.
+
+O `.github/gemini.md` inclui uma instrucao especifica: "Utilize `python scripts/check_arch.py` para validar invariantes antes de declarar tarefas concluidas." Isso integra o linter arquitetural ao workflow de agentes que nao tem acesso nativo ao sistema de skills do Claude Code.
 
 ---
 
@@ -803,6 +983,27 @@ O contrato inclui uma clausula notavel:
 
 Isso reconhece explicitamente que agentes de IA tem limites. Em vez de deixar o agente degradar silenciosamente, o contrato o instrui a **reconhecer a degradacao e parar**. E raro ver essa honestidade num contrato de prompt -- a maioria assume (incorretamente) que o agente pode resolver qualquer coisa se tentar o suficiente.
 
+### Convencoes git formalizadas (§5)
+
+O CLAUDE.md agora inclui uma secao dedicada a convencoes git, formalizando praticas que antes eram implicitas:
+
+**Branch naming:**
+
+| Prefixo | Uso |
+|---------|-----|
+| `feat/` | Nova funcionalidade |
+| `fix/` | Correcao de bug |
+| `chore/` | Manutencao, refactor, tooling |
+| `docs/` | Documentacao |
+
+**Formato de commits:** `type(scope): descricao concisa`
+
+Tipos validos: `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `ci`. Scopes validos: `core`, `runtime`, `policies`, `stores`, `adapters`, `cli`, `tui`, `backends`, `events`.
+
+**Estrategia de merge:** Squash para branches de feature (historico limpo), merge commit para releases (historico completo preservado).
+
+A formalizacao e relevante porque agentes de IA tendem a criar commits com mensagens genericas ("update code", "fix bug") ou branches com nomes inconsistentes. Convencoes explicitas garantem que o historico git permanece legivel e `git bisect` continua viavel.
+
 ### A infraestrutura agentca como extensao do contrato
 
 O CLAUDE.md nao existe isoladamente. Ele referencia tres outros sistemas que devem funcionar em conjunto:
@@ -812,9 +1013,15 @@ O CLAUDE.md nao existe isoladamente. Ele referencia tres outros sistemas que dev
 | `.memconfig.json` para memoria | Sistema de memoria em `~/.claude/projects/*/memory/` | Funcional |
 | `/skills` para scripts pre-aprovados | Skills do Superpowers + Ring | Funcional (via plugins) |
 | `.mcp.json` para verificacao autonoma | MCP Servers em `settings.json` | Funcional |
-| `/.specs/template.md` para especificacoes | Diretorio `.specs/` | **Nao existe** |
+| `/.specs/template.md` para especificacoes | 3 templates + script + 3 slash commands | Funcional |
 
-A tabela revela que 3 de 4 referencias estao funcionais, mas o mecanismo de especificacao -- que e o primeiro passo do workflow mandatorio -- nao tem o artefato necessario. Essa lacuna e analisada em detalhe na secao 10.
+Todas as 4 referencias do contrato estao funcionais. O sistema de especificacoes, que era a lacuna mais critica (primeiro passo do workflow mandatorio), agora inclui:
+
+- **3 templates**: `.specs/template.md` (especificacao de feature), `.specs/plan-template.md` (plano de implementacao), `.specs/tasks-template.md` (decomposicao em tasks)
+- **Script de bootstrap**: `scripts/specs/create-feature.sh` para criar a estrutura de diretorio completa de uma nova feature
+- **3 slash commands**: `/spec-create`, `/spec-plan`, `/spec-tasks` -- comandos nativos do Claude Code que guiam o agente na criacao de cada artefato
+
+O template de especificacao inclui o contrato G/C/FC (Goal, Constraint, Failure Condition), user stories, criterios de aceitacao e uma secao explicita de invariantes afetadas com referencia ao CLAUDE.md. Isso fecha o loop entre o contrato constitucional e o processo de especificacao.
 
 ### Taxonomia canonica de erros
 
@@ -990,6 +1197,24 @@ As secoes anteriores descrevem componentes individuais do ambiente. Esta secao c
 
 **O que previne:** Monolithic agent behavior -- um unico agente tentando fazer tudo, perdendo contexto e qualidade a cada arquivo adicional.
 
+### 9.11 Enforcement programatico
+
+**Origem:** `scripts/check_arch.py` + `.github/workflows/ci.yml`
+
+**Tecnica:** Transformar invariantes textuais (CLAUDE.md) em verificacoes programaticas que rodam automaticamente no CI. As 4 invariantes arquiteturais sao validadas por analise AST -- sem dependencias externas, sem configuracao.
+
+**O que previne:** Violacoes de invariantes que passam despercebidas. Um agente pode racionalizar uma excecao ("esse import e temporario") ou simplesmente nao perceber uma violacao indireta. O linter nao racionaliza -- ele verifica.
+
+**Sinergia com outras tecnicas:** O enforcement programatico e a **base objetiva** sobre a qual as outras tecnicas operam. Skills forcam processo, delegacao traz perspectiva fresca, mas o linter e o CI fornecem **verdade verificavel**. Se o linter diz que ha uma violacao, nao importa o que o agente pensa -- o merge e bloqueado.
+
+### 9.12 Contexto git continuo
+
+**Origem:** Hook `UserPromptSubmit` + `scripts/hooks/pre-prompt.sh`
+
+**Tecnica:** A cada prompt do usuario, injetar automaticamente o estado atual do git (branch, arquivos modificados, ultimo commit). O agente recebe informacao atualizada sem precisar pedi-la.
+
+**O que previne:** Desorientacao em sessoes longas. Apos 30+ minutos de desenvolvimento, o agente pode perder nocao de quantos arquivos modificou, em que branch esta, ou qual foi o ultimo commit. O contexto continuo resolve isso proativamente.
+
 ### Tabela resumo
 
 | # | Tecnica | Componente de origem | Modo de falha prevenido |
@@ -1004,6 +1229,8 @@ As secoes anteriores descrevem componentes individuais do ambiente. Esta secao c
 | 8 | Plan mode padrao | settings.json | Acoes irreversiveis |
 | 9 | Skill-first | Superpowers | Acao impulsiva |
 | 10 | 3-file gate | Ring Orchestrator | Monolithic agent behavior |
+| 11 | Enforcement programatico | check_arch.py + CI | Violacao de invariantes nao detectada |
+| 12 | Contexto git continuo | pre-prompt.sh hook | Perda de nocao do estado do repo em sessoes longas |
 
 ### Interdependencias entre tecnicas
 
@@ -1029,13 +1256,23 @@ skill-first (9) ──governa──► todos os acima
     │
     ▼
 plan mode (8) ──supervisiona──► todos os acima
+
+enforcement programatico (11) ──valida──► invariantes (independente dos acima)
+    │
+    ▼
+contexto git continuo (12) ──alimenta──► todos os acima
 ```
 
-O grafo revela que **skill-first** e **plan mode** sao as duas tecnicas "meta" -- elas governam ou supervisionam todas as outras. Se qualquer uma falhar, o sistema inteiro degrada. Por isso, ambas sao implementadas no nivel mais baixo possivel: `skill-first` no mecanismo de invocacao de plugins, `plan mode` na configuracao global do Claude Code.
+O grafo revela tres camadas de tecnicas "meta":
+- **skill-first** e **plan mode** governam o *processo* (como o agente trabalha)
+- **enforcement programatico** governa a *corretude* (o que o agente produz)
+- **contexto git continuo** alimenta a *consciencia situacional* (o que o agente sabe)
+
+O enforcement programatico e particularmente importante porque opera **independentemente** do agente. Mesmo que todas as outras tecnicas falhem (skills ignoradas, delegacao indisponivel, memoria corrompida), o linter e o CI continuam barrando violacoes de invariantes no merge.
 
 ### O custo da qualidade
 
-Estas 10 tecnicas adicionam overhead ao fluxo de desenvolvimento. Uma tarefa que levaria 10 minutos em "modo rapido" (sem skills, sem review, sem delegacao) pode levar 25-30 minutos com todas as tecnicas ativas.
+Estas 12 tecnicas adicionam overhead ao fluxo de desenvolvimento. Uma tarefa que levaria 10 minutos em "modo rapido" (sem skills, sem review, sem delegacao) pode levar 25-30 minutos com todas as tecnicas ativas.
 
 O argumento economico a favor e que a qualidade resultante reduz drasticamente o custo de retrabalho, debugging e manutencao. Uma implementacao "rapida" que introduz um bug de acoplamento pode custar horas de investigacao posteriores. Uma implementacao "lenta" que segue TDD, brainstorming e review raramente produz bugs de design.
 
@@ -1067,15 +1304,61 @@ O CLAUDE.md e mais sofisticado que a maioria dos prompts de sistema. Ele nao ape
 
 O sistema de memoria nao tenta armazenar tudo -- ele armazena **decisoes**. Isso e uma distincao critica. Decisoes sao estaveis e reutilizaveis; implementacoes sao volateis e descartaveis. O resultado e um agente que "lembra" do que importa sem ficar sobrecarregado com detalhes obsoletos.
 
-### Onde ha potencial de melhoria
+### O que foi implementado desde a versao inicial deste documento
 
-#### O diretorio `.specs/` referenciado mas inexistente
+Varias das oportunidades identificadas na versao original deste documento foram implementadas. O registro abaixo captura o que mudou:
 
-O CLAUDE.md instrui: "Nenhuma linha de codigo Python pode ser escrita antes do preenchimento e aprovacao do documento de especificacao (use `/.specs/template.md`)." No entanto, o diretorio `.specs/` e o template nao existem no repositorio. Isso cria uma desconexao entre o contrato e a realidade -- o agente e instruido a seguir um processo cujo artefato de entrada nao existe.
+#### Sistema de especificacoes (antes: inexistente, agora: funcional)
 
-**Impacto:** Medio. O agente pode (e provavelmente vai) interpretar a ausencia como "esse processo nao esta ativo" e pular a etapa de especificacao. Isso invalida o primeiro passo do workflow mandatorio.
+O diretorio `.specs/` e seus artefatos agora existem e estao integrados ao workflow:
 
-**Acao sugerida:** Criar `/.specs/template.md` com um template minimo ou remover/atualizar a referencia no CLAUDE.md.
+| Artefato | Funcao |
+|----------|--------|
+| `.specs/template.md` | Template de especificacao com G/C/FC, user stories, criterios de aceitacao, invariantes |
+| `.specs/plan-template.md` | Template de plano de implementacao |
+| `.specs/tasks-template.md` | Template de decomposicao em tasks |
+| `scripts/specs/create-feature.sh` | Script que cria a estrutura de diretorio para uma nova feature |
+| `.claude/commands/spec-create.md` | Slash command `/spec-create` |
+| `.claude/commands/spec-plan.md` | Slash command `/spec-plan` |
+| `.claude/commands/spec-tasks.md` | Slash command `/spec-tasks` |
+
+O workflow mandatorio de Spec-Driven Development (CLAUDE.md passo 1) agora tem todos os artefatos necessarios. A lacuna mais critica da versao anterior foi resolvida.
+
+#### Linter arquitetural (antes: inexistente, agora: funcional)
+
+O `scripts/check_arch.py` e um linter baseado em AST que valida as 4 invariantes arquiteturais do CLAUDE.md programaticamente. Detalhado na secao 5.1.
+
+#### Pipeline de CI (antes: inexistente, agora: funcional)
+
+O `.github/workflows/ci.yml` implementa 3 jobs paralelos (lint, test, arch-check) com um gate consolidado (`ci-passed`). Detalhado na secao 5.1.
+
+#### Hooks expandidos (antes: apenas SessionStart, agora: 3 hooks)
+
+Os 3 lifecycle hooks (SessionStart, SessionEnd, UserPromptSubmit) estao configurados e funcionais. Detalhados na secao 5.
+
+#### Permissoes granulares (antes: whitelist minima, agora: 13 padroes)
+
+A whitelist de permissoes expandiu de 2 padroes (`ls`, `python3.13`) para 13 padroes cobrindo leitura, git, toolchain Python e build.
+
+#### Consciencia multi-agente (antes: inexistente, agora: funcional)
+
+Dois arquivos de instrucoes para outros agentes foram adicionados:
+- `.github/copilot-instructions.md` -- orienta o GitHub Copilot a respeitar invariantes e taxonomia de erros
+- `.github/gemini.md` -- orienta o Gemini CLI a seguir o workflow mandatorio e rodar o linter arquitetural
+
+Ambos referenciam o `CLAUDE.md` como fonte canonica, evitando duplicacao de regras.
+
+#### Memoria automatizada (antes: manual, agora: parcialmente automatica)
+
+O hook `session-end.sh` gera memorias de sessao automaticamente com artefatos git. Detalhado nas secoes 4 e 5.
+
+#### Convencoes git formalizadas (antes: implicitas, agora: documentadas)
+
+O CLAUDE.md ganhou uma secao 5 com convencoes de branch naming (`feat/`, `fix/`, `chore/`, `docs/`), formato de commits (`type(scope): descricao`) e estrategia de merge (squash para features, merge commit para releases).
+
+---
+
+### Onde ha potencial de melhoria (atualizado)
 
 #### Layer 3 canonical patterns pendentes
 
@@ -1175,7 +1458,7 @@ O ambiente atinge um equilibrio notavel:
 | **Processo** | Skills invocadas automaticamente | Humano pode overrider |
 | **Execucao** | Plan mode propoe, humano aprova | Modo `act` disponivel |
 | **Consultoria** | Triggers proativos para GPT | Humano pode pedir explicitamente |
-| **Memoria** | Index carregado automaticamente | Humano decide o que salvar |
+| **Memoria** | Index + artefatos git automaticos | Humano decide decisoes estrategicas |
 | **Delegacao** | 3-file gate automatico | Humano pode forcar agente unico |
 
 O padrao e **automacao com supervisao**. O sistema faz o maximo que pode automaticamente, mas o humano sempre tem a palavra final. Isso e mais maduro que os dois extremos (automacao total vs controle total) e reflete uma compreensao realista do estado atual dos agentes de IA: poderosos o suficiente para serem uteis, nao confiaveis o suficiente para serem autonomos.
@@ -1221,7 +1504,7 @@ Ambiente de Desenvolvimento (Claude Code)
 │
 ├── Modelo Principal: Claude Opus 4.6 (1M context)
 │   ├── Modo padrao: plan
-│   └── Permissoes: whitelist minima (ls, python3.13)
+│   └── Permissoes: whitelist granular (13 padroes em settings.local.json)
 │
 ├── Skills (Superpowers v4.3.1)
 │   ├── brainstorming (flexible)
@@ -1258,18 +1541,40 @@ Ambiente de Desenvolvimento (Claude Code)
 │   ├── Code Reviewer
 │   └── Security Analyst
 │
+├── Hooks (3 lifecycle hooks)
+│   ├── SessionStart → session-start.sh (marcador de sessao)
+│   ├── SessionEnd → session-end.sh (memoria automatica)
+│   └── UserPromptSubmit → pre-prompt.sh (contexto git)
+│
+├── Enforcement Programatico
+│   ├── scripts/check_arch.py (4 checagens AST)
+│   └── .github/workflows/ci.yml (lint + test + arch-check + gate)
+│
+├── Sistema de Specs
+│   ├── .specs/template.md (feature spec)
+│   ├── .specs/plan-template.md (plano)
+│   ├── .specs/tasks-template.md (tasks)
+│   ├── scripts/specs/create-feature.sh (bootstrap)
+│   └── .claude/commands/spec-*.md (3 slash commands)
+│
+├── Consciencia Multi-Agente
+│   ├── .github/copilot-instructions.md (Copilot)
+│   └── .github/gemini.md (Gemini CLI)
+│
 ├── Memoria Persistente
 │   ├── MEMORY.md (index automatico)
 │   ├── project_backend_drivers.md
 │   ├── project_milestone1_sdk.md
 │   ├── project_milestone2_cli.md
 │   ├── project_strategic_vision.md
-│   └── project_tui_dash.md
+│   ├── project_tui_dash.md
+│   └── session_*.md (gerados automaticamente)
 │
 ├── Contrato (claude.md)
 │   ├── Spec-Driven Development (4 passos)
 │   ├── 4 invariantes inviolaveis
 │   ├── 4 condicoes de rejeicao
+│   ├── Convencoes git (§5)
 │   └── Declaracao de autonomia
 │
 └── Plugins Adicionais (8)
@@ -1308,7 +1613,7 @@ Para ilustrar como todos esses componentes interagem, aqui esta o fluxo de uma t
    │ → Constraint: Nao violar isolamento de adapters, usar AnyIO
    │ → Failure Condition: Testes de interceptacao falhando ou event leaks
    │
-5. [SPEC-DRIVEN] Verificar /.specs/ para template (NOTA: nao existe)
+5. [SPEC-DRIVEN] Criar spec em /.specs/ usando /spec-create (template disponivel)
    │
 6. [TDD] Skill test-driven-development ativada (rigid)
    │ → Escrever testes falhando para interceptors
@@ -1375,17 +1680,25 @@ Para replicar este ambiente, os seguintes arquivos devem ser configurados:
 
 | Arquivo | Localizacao | Funcao |
 |---------|-------------|--------|
-| `settings.json` | `~/.claude/settings.json` | Permissoes, plugins, MCP servers |
-| `claude.md` | Raiz do repositorio | Contrato constitucional |
+| `settings.json` | `.claude/settings.json` | Hooks de lifecycle (3 hooks) |
+| `settings.local.json` | `.claude/settings.local.json` | Permissoes granulares (13 padroes) |
+| `claude.md` | Raiz do repositorio | Contrato constitucional (§1-5) |
 | `MEMORY.md` | `~/.claude/projects/*/memory/` | Index de memoria |
 | Regras de delegacao | `~/.claude/rules/delegator/` | 4 arquivos: orchestration, model-selection, triggers, delegation-format |
 | Memorias de projeto | `~/.claude/projects/*/memory/` | Decisoes e convencoes |
+| Templates de specs | `.specs/` | 3 templates (feature, plan, tasks) |
+| Slash commands | `.claude/commands/` | 3 comandos (spec-create, spec-plan, spec-tasks) |
+| Linter arquitetural | `scripts/check_arch.py` | 4 checagens AST das invariantes |
+| CI pipeline | `.github/workflows/ci.yml` | 3 jobs + gate consolidado |
+| Hooks de lifecycle | `scripts/hooks/` | 3 scripts (session-start, session-end, pre-prompt) |
+| Instrucoes Copilot | `.github/copilot-instructions.md` | Contexto para GitHub Copilot |
+| Instrucoes Gemini | `.github/gemini.md` | Contexto para Gemini CLI |
 
 ### Hierarquia de configuracao
 
 ```
 ~/.claude/
-├── settings.json                    # Global: plugins, MCP servers, permissoes
+├── settings.json                    # Global: plugins, MCP servers
 ├── rules/
 │   └── delegator/                   # Global: regras de delegacao multi-modelo
 │       ├── orchestration.md         # Como delegar (7 passos)
@@ -1396,13 +1709,37 @@ Para replicar este ambiente, os seguintes arquivos devem ser configurados:
     └── -Users-*-Projects-miniAutoGen/
         └── memory/                  # Por projeto: decisoes e convencoes
             ├── MEMORY.md
-            └── project_*.md
+            ├── project_*.md
+            └── session_*.md         # Gerados automaticamente por session-end.sh
 
 <repositorio>/
-└── claude.md                        # Por repositorio: contrato constitucional
+├── CLAUDE.md                        # Contrato constitucional (§1-5)
+├── .claude/
+│   ├── settings.json                # Hooks de lifecycle (3 hooks)
+│   ├── settings.local.json          # Permissoes granulares (13 padroes)
+│   └── commands/
+│       ├── spec-create.md           # /spec-create slash command
+│       ├── spec-plan.md             # /spec-plan slash command
+│       └── spec-tasks.md            # /spec-tasks slash command
+├── .specs/
+│   ├── template.md                  # Template de spec (G/C/FC, user stories)
+│   ├── plan-template.md             # Template de plano
+│   └── tasks-template.md            # Template de tasks
+├── .github/
+│   ├── workflows/ci.yml             # CI pipeline (lint + test + arch-check)
+│   ├── copilot-instructions.md      # Instrucoes para Copilot
+│   └── gemini.md                    # Instrucoes para Gemini CLI
+└── scripts/
+    ├── check_arch.py                # Linter arquitetural (4 checagens AST)
+    ├── hooks/
+    │   ├── session-start.sh         # Marcador de sessao
+    │   ├── session-end.sh           # Memoria automatica
+    │   └── pre-prompt.sh            # Contexto git por prompt
+    └── specs/
+        └── create-feature.sh        # Bootstrap de nova feature
 ```
 
-A hierarquia e deliberada: configuracoes globais (plugins, MCP) ficam em `~/.claude/`, convencoes de delegacao ficam em `~/.claude/rules/`, memorias de projeto ficam no diretorio do projeto, e o contrato constitucional fica na raiz do repositorio (versionado no git).
+A hierarquia e deliberada e segue dois principios: (1) configuracoes de ambiente ficam em `~/.claude/` (nao versionadas, especificas do desenvolvedor), e (2) artefatos de processo ficam no repositorio (versionados, consistentes para todos). O contrato constitucional, os templates de spec, o linter, os hooks e as instrucoes multi-agente sao todos versionados -- um novo desenvolvedor que clona o repositorio recebe o processo completo.
 
 ### O que e versionado vs o que e local
 
@@ -1410,16 +1747,24 @@ Uma distincao critica para reprodutibilidade:
 
 | Artefato | Versionado (git) | Local (~/.claude/) |
 |----------|-------------------|--------------------|
-| Contrato constitucional (claude.md) | Sim | -- |
+| Contrato constitucional (CLAUDE.md) | Sim | -- |
+| Templates de specs (`.specs/`) | Sim | -- |
+| Linter arquitetural (`check_arch.py`) | Sim | -- |
+| CI pipeline (`ci.yml`) | Sim | -- |
+| Hooks de lifecycle (`scripts/hooks/`) | Sim | -- |
+| Instrucoes multi-agente (`.github/`) | Sim | -- |
+| Slash commands (`.claude/commands/`) | Sim | -- |
+| Config de hooks (`.claude/settings.json`) | Sim | -- |
+| Permissoes (`.claude/settings.local.json`) | -- | Sim |
 | Memorias de projeto | -- | Sim |
 | Regras de delegacao | -- | Sim |
 | Configuracao de plugins/MCP | -- | Sim |
 | Documentacao do projeto | Sim | -- |
 | Testes e codigo | Sim | -- |
 
-O contrato constitucional e versionado porque e especifico do repositorio e deve ser consistente para todos os desenvolvedores. Memorias, regras e configuracoes sao locais porque sao especificas do desenvolvedor e do seu ambiente.
+A separacao evoluiu significativamente. Na versao anterior, apenas o contrato constitucional e o codigo eram versionados. Agora, a maioria dos artefatos de processo (specs, linter, CI, hooks, instrucoes multi-agente) tambem sao versionados. Isso significa que um novo desenvolvedor que clona o repositorio recebe nao apenas o contrato, mas o **processo completo**: templates de spec, linter arquitetural, pipeline CI, hooks de lifecycle e instrucoes para outros agentes.
 
-Essa separacao significa que um novo desenvolvedor que clona o repositorio recebe o contrato (como o agente deve operar) mas nao as memorias (o que o agente aprendeu) nem as regras de delegacao (como delegar para GPT). O contrato e o minimo viavel; o ambiente completo requer configuracao adicional.
+O que permanece local sao configuracoes especificas do ambiente (permissoes, memorias, plugins, regras de delegacao). Essa divisao reflete a diferenca entre **processo** (compartilhado) e **ambiente** (individual).
 
 ---
 
@@ -1433,7 +1778,8 @@ Essa separacao significa que um novo desenvolvedor que clona o repositorio receb
 | **Delegacao** | Transferencia de uma tarefa do agente principal (Claude) para um especialista (GPT) |
 | **DX** | Developer Experience -- a qualidade da experiencia do desenvolvedor |
 | **Gate** | Checkpoint obrigatorio num pipeline de qualidade (ring-dev-team, ring-pm-team) |
-| **Hook** | Script automatico executado em eventos do sistema (startup, resume) |
+| **Hook** | Script automatico executado em eventos do sistema (SessionStart, SessionEnd, UserPromptSubmit) |
+| **Linter arquitetural** | Script AST (`check_arch.py`) que valida invariantes arquiteturais programaticamente |
 | **MCP** | Model Context Protocol -- padrao de comunicacao entre agentes e servicos externos |
 | **Memoria persistente** | Sistema de arquivos que mantem decisoes e convencoes entre sessoes |
 | **Plan mode** | Modo de operacao onde o agente propoe e o humano aprova antes da execucao |
@@ -1472,10 +1818,15 @@ Para aprofundamento nos temas abordados neste documento:
 
 Com base na configuracao atual e nas lacunas identificadas, e possivel projetar evolucoes provaveis:
 
+**Ja implementado** (previsoes de curto prazo que se concretizaram):
+- ~~Criacao do diretorio `.specs/` e template~~ -- Implementado com 3 templates, script e 3 slash commands
+- ~~Hooks mais sofisticados~~ -- 3 lifecycle hooks com captura automatica de artefatos
+- ~~Integracao com CI/CD~~ -- Pipeline CI com lint, test e arch-check
+
 **Curto prazo (1-3 meses):**
-- Criacao do diretorio `.specs/` e template, resolvendo a lacuna do workflow mandatorio
 - Adicao de metricas basicas de eficacia (invocacoes de skills, taxa de sucesso de delegacoes)
 - Documentacao de precedencia entre skills e rings
+- Expansao do linter arquitetural com novas regras (ex: validacao de taxonomia de erros)
 
 **Medio prazo (3-6 meses):**
 - Memoria hierarquica com mecanismo de expiracao
@@ -1484,8 +1835,8 @@ Com base na configuracao atual e nas lacunas identificadas, e possivel projetar 
 
 **Longo prazo (6-12 meses):**
 - O ambiente provavelmente evoluira para ter **multiplos agentes locais** coordenados (nao apenas delegacao singleshot ao GPT), espelhando a propria evolucao do MiniAutoGen em direcao a orquestracao multi-agente mais sofisticada
-- Hooks mais sofisticados que adaptem o conjunto de skills ativas ao tipo de tarefa
-- Integracao com CI/CD onde o agente nao apenas escreve codigo, mas acompanha o pipeline de deployment
+- Hooks adaptativos que ajustem o conjunto de skills ativas ao tipo de tarefa
+- Pipeline de CI que inclua validacao de specs e coerencia entre testes e especificacoes
 
 ### O paradoxo final
 
