@@ -216,6 +216,10 @@ def server_logs(
     if not log_path.is_file():
         return "(no log file found)"
 
-    content = log_path.read_text()
-    all_lines = content.splitlines()
-    return "\n".join(all_lines[-lines:])
+    import collections
+
+    tail: collections.deque[str] = collections.deque(maxlen=lines)
+    with log_path.open() as f:
+        for line in f:
+            tail.append(line.rstrip("\n"))
+    return "\n".join(tail)

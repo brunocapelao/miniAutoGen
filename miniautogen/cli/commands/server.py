@@ -34,6 +34,12 @@ def server_start(
 
     root, _config = require_project_config()
 
+    if host != "127.0.0.1":
+        echo_warning(
+            f"Binding to {host} exposes the gateway on the network. "
+            "Use 127.0.0.1 for local-only access."
+        )
+
     result = start_server(
         root,
         host=host,
