@@ -98,11 +98,42 @@ class DashDataProvider:
             return {}
 
     def get_engines(self) -> list[dict[str, Any]]:
-        """List all engine profiles."""
+        """List all engine profiles (explicit YAML + discovered).
+
+        Returns engines from 3 sources (priority: yaml > env > local):
+        - YAML config (miniautogen.yaml)
+        - Environment variables (OPENAI_API_KEY, etc.)
+        - Local servers (Ollama, LMStudio)
+
+        Each engine dict includes a "source" field: "yaml", "env", or "local".
+        """
         try:
-            return _list_engines(self._root)
+            from miniautogen.backends.engine_resolver import EngineResolver
+
+            yaml_engines = _list_engines(self._root)
+
+            # Mark YAML engines with source
+            for eng in yaml_engines:
+                eng.setdefault("source", "yaml")
+
+            # Get discovered engines
+            resolver = EngineResolver()
+            config = load_config(self._config_path)
+            available = resolver.list_available_engines(config)
+
+            # Merge: YAML engines first, then discovered (skip duplicates)
+            yaml_names = {e.get("name") for e in yaml_engines}
+            for eng in available:
+                if eng["name"] not in yaml_names:
+                    yaml_engines.append(eng)
+
+            return yaml_engines
         except Exception:
-            return []
+            # Fallback to YAML-only if discovery fails
+            try:
+                return _list_engines(self._root)
+            except Exception:
+                return []
 
     def get_agents(self) -> list[dict[str, Any]]:
         """List all agents."""
