@@ -37,6 +37,9 @@ class EngineProfileConfig(BaseModel):
     model: str | None = None
     command: str | None = None
     temperature: float = 0.2
+    endpoint: str | None = None
+    api_key: str | None = None
+    capabilities: list[str] = Field(default_factory=list)
 
 
 class MemoryProfileConfig(BaseModel):

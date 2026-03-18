@@ -23,7 +23,7 @@ def _resolve_input(input_value: str | None) -> str | None:
             file_path = Path(input_value[1:]).resolve()
             # Restrict to project directory
             project_root = Path.cwd().resolve()
-            if not str(file_path).startswith(str(project_root)):
+            if not file_path.is_relative_to(project_root):
                 msg = f"Input file must be within the project directory: {file_path}"
                 raise click.BadParameter(msg)
             try:

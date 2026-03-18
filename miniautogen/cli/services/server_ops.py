@@ -13,6 +13,7 @@ from typing import Any
 def _pidfile(project_root: Path) -> Path:
     d = project_root / ".miniautogen"
     d.mkdir(parents=True, exist_ok=True)
+    d.chmod(0o700)
     return d / "server.pid"
 
 
@@ -102,8 +103,12 @@ def start_server(
                 start_new_session=True,
                 cwd=str(project_root),
             )
-        _pidfile(project_root).write_text(str(proc.pid))
-        _portfile(project_root).write_text(str(port))
+        pid_path = _pidfile(project_root)
+        pid_path.write_text(str(proc.pid))
+        pid_path.chmod(0o600)
+        port_path = _portfile(project_root)
+        port_path.write_text(str(port))
+        port_path.chmod(0o600)
         return {
             "status": "started",
             "pid": proc.pid,

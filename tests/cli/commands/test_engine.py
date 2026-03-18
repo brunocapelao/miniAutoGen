@@ -1,22 +1,17 @@
 """Tests for engine CLI command group."""
 
 import yaml
-from click.testing import CliRunner
+from pathlib import Path
 
 from miniautogen.cli.main import cli
 
 
-def _init_project(tmp_path, monkeypatch):
-    """Helper: init a project and chdir into it."""
-    monkeypatch.chdir(tmp_path)
-    runner = CliRunner()
-    runner.invoke(cli, ["init", "proj"])
-    monkeypatch.chdir(tmp_path / "proj")
-    return runner
+def _cfg():
+    return yaml.safe_load((Path.cwd() / "miniautogen.yaml").read_text())
 
 
-def test_engine_create_silent(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_create_silent(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "create", "gpt4",
         "--provider", "openai",
@@ -29,14 +24,14 @@ def test_engine_create_silent(tmp_path, monkeypatch) -> None:
     assert "created" in result.output.lower()
 
     # Verify written to YAML
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert "gpt4" in cfg["engine_profiles"]
     assert cfg["engine_profiles"]["gpt4"]["model"] == "gpt-4o"
     assert cfg["engine_profiles"]["gpt4"]["api_key"] == "${OPENAI_API_KEY}"
 
 
-def test_engine_create_with_capabilities(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_create_with_capabilities(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "create", "gemini",
         "--provider", "gemini",
@@ -46,13 +41,13 @@ def test_engine_create_with_capabilities(tmp_path, monkeypatch) -> None:
         "--capabilities", "chat,embedding",
     ], input="y\n")
     assert result.exit_code == 0, result.output
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert cfg["engine_profiles"]["gemini"]["capabilities"] == ["chat", "embedding"]
 
 
-def test_engine_create_interactive(tmp_path, monkeypatch) -> None:
+def test_engine_create_interactive(init_project) -> None:
     """Test interactive wizard prompts for missing fields."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(
         cli,
         ["engine", "create", "myengine"],
@@ -62,9 +57,9 @@ def test_engine_create_interactive(tmp_path, monkeypatch) -> None:
     assert "created" in result.output.lower()
 
 
-def test_engine_create_cancelled(tmp_path, monkeypatch) -> None:
+def test_engine_create_cancelled(init_project) -> None:
     """Test wizard cancellation at confirmation prompt."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "create", "gpt4",
         "--provider", "openai",
@@ -76,12 +71,12 @@ def test_engine_create_cancelled(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "cancelled" in result.output.lower()
     # Engine should NOT be created
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert "gpt4" not in cfg.get("engine_profiles", {})
 
 
-def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_create_duplicate_fails(init_project) -> None:
+    runner = init_project
     # default_api already exists from init
     result = runner.invoke(cli, [
         "engine", "create", "default_api",
@@ -94,9 +89,9 @@ def test_engine_create_duplicate_fails(tmp_path, monkeypatch) -> None:
     assert result.exit_code != 0
 
 
-def test_engine_create_validates_schema(tmp_path, monkeypatch) -> None:
+def test_engine_create_validates_schema(init_project) -> None:
     """Engine create validates against EngineProfileConfig."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "create", "valid",
         "--provider", "openai",
@@ -108,9 +103,9 @@ def test_engine_create_validates_schema(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
 
 
-def test_engine_create_credential_safety(tmp_path, monkeypatch) -> None:
+def test_engine_create_credential_safety(init_project) -> None:
     """Engine create stores only env var references, not keys."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "create", "safe",
         "--provider", "openai",
@@ -120,46 +115,46 @@ def test_engine_create_credential_safety(tmp_path, monkeypatch) -> None:
         "--capabilities", "chat",
     ], input="y\n")
     assert result.exit_code == 0
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert cfg["engine_profiles"]["safe"]["api_key"] == "${MY_SECRET_KEY}"
 
 
-def test_engine_list(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_list(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["engine", "list"])
     assert result.exit_code == 0
     assert "default_api" in result.output
 
 
-def test_engine_list_json(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_list_json(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["engine", "list", "--format", "json"])
     assert result.exit_code == 0
     assert '"name"' in result.output
 
 
-def test_engine_show(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_show(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["engine", "show", "default_api"])
     assert result.exit_code == 0
     assert "provider:" in result.output or "litellm" in result.output
 
 
-def test_engine_show_json(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_show_json(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["engine", "show", "default_api", "--format", "json"])
     assert result.exit_code == 0
     assert '"provider"' in result.output
 
 
-def test_engine_show_not_found(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_show_not_found(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["engine", "show", "nonexistent"])
     assert result.exit_code != 0
 
 
-def test_engine_update(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_update(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "update", "default_api",
         "--model", "gpt-4o-mini",
@@ -167,13 +162,13 @@ def test_engine_update(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "updated" in result.output.lower()
 
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert cfg["engine_profiles"]["default_api"]["model"] == "gpt-4o-mini"
 
 
-def test_engine_update_dry_run(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
-    cfg_before = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+def test_engine_update_dry_run(init_project) -> None:
+    runner = init_project
+    cfg_before = _cfg()
     original_model = cfg_before["engine_profiles"]["default_api"]["model"]
 
     result = runner.invoke(cli, [
@@ -184,12 +179,12 @@ def test_engine_update_dry_run(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "dry run" in result.output.lower()
 
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert cfg["engine_profiles"]["default_api"]["model"] == original_model
 
 
-def test_engine_update_not_found(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_engine_update_not_found(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "engine", "update", "nonexistent",
         "--model", "x",
@@ -197,9 +192,9 @@ def test_engine_update_not_found(tmp_path, monkeypatch) -> None:
     assert result.exit_code != 0
 
 
-def test_engine_delete(tmp_path, monkeypatch) -> None:
+def test_engine_delete(init_project) -> None:
     """Test engine deletion with confirmation."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     # Create a non-default engine first
     runner.invoke(cli, [
         "engine", "create", "extra",
@@ -214,13 +209,13 @@ def test_engine_delete(tmp_path, monkeypatch) -> None:
     assert result.exit_code == 0
     assert "deleted" in result.output.lower()
 
-    cfg = yaml.safe_load((tmp_path / "proj" / "miniautogen.yaml").read_text())
+    cfg = _cfg()
     assert "extra" not in cfg.get("engine_profiles", {})
 
 
-def test_engine_delete_default_blocked(tmp_path, monkeypatch) -> None:
+def test_engine_delete_default_blocked(init_project) -> None:
     """Cannot delete the default engine profile."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, ["engine", "delete", "default_api", "--yes"])
     assert result.exit_code != 0
     assert "default" in result.output.lower()

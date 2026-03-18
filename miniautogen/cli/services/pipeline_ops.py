@@ -45,12 +45,14 @@ def create_pipeline(
     agents_dir = project_root / "agents"
     if participants:
         for agent_name in participants:
+            validate_resource_name(agent_name, "agent")
             agent_file = agents_dir / f"{agent_name}.yaml"
             if not agent_file.is_file():
                 msg = f"Agent '{agent_name}' not found in agents/"
                 raise ValueError(msg)
 
     if leader:
+        validate_resource_name(leader, "agent")
         leader_file = agents_dir / f"{leader}.yaml"
         if not leader_file.is_file():
             msg = f"Leader agent '{leader}' not found in agents/"
@@ -178,6 +180,7 @@ def update_pipeline(
     remove_p = updates.pop("remove_participant", None)
 
     if add_p is not None:
+        validate_resource_name(add_p, "agent")
         current = list(after.get("participants", []))
         # Validate agent exists
         agents_dir = project_root / "agents"
@@ -198,10 +201,19 @@ def update_pipeline(
     if "participants" in updates and updates["participants"] is not None:
         agents_dir = project_root / "agents"
         for agent_name in updates["participants"]:
+            validate_resource_name(agent_name, "agent")
             agent_file = agents_dir / f"{agent_name}.yaml"
             if not agent_file.is_file():
                 msg = f"Agent '{agent_name}' not found in agents/"
                 raise ValueError(msg)
+
+    if "leader" in updates and updates["leader"] is not None:
+        validate_resource_name(updates["leader"], "agent")
+        agents_dir = project_root / "agents"
+        leader_file = agents_dir / f"{updates['leader']}.yaml"
+        if not leader_file.is_file():
+            msg = f"Leader agent '{updates['leader']}' not found in agents/"
+            raise ValueError(msg)
 
     for k, v in updates.items():
         if v is not None:
@@ -209,7 +221,6 @@ def update_pipeline(
 
     result = {"before": before, "after": after}
     if not dry_run:
-        pipelines[name] = after
-        write_yaml(cfg_path, data)
+        update_yaml_preserving(cfg_path, {name: after}, section="pipelines")
 
     return result

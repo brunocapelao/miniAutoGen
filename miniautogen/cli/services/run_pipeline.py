@@ -54,7 +54,7 @@ def resolve_pipeline_target(
         raise ImportError(msg)
 
     project_resolved = project_root.resolve()
-    if not str(resolved_file).startswith(str(project_resolved)):
+    if not resolved_file.is_relative_to(project_resolved):
         msg = (
             f"Module '{module_path}' resolves outside project "
             f"directory: {resolved_file}"
@@ -154,11 +154,11 @@ async def execute_pipeline(
         }
     except click.ClickException:
         raise
-    except Exception:
+    except Exception as exc:
         return {
             "status": "failed",
-            "error": "Pipeline execution failed unexpectedly",
-            "error_type": "InternalError",
+            "error": f"Pipeline execution failed: {exc}",
+            "error_type": type(exc).__name__,
         }
     finally:
         if added_to_path and project_str in sys.path:

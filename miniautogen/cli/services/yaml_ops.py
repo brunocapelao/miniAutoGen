@@ -47,7 +47,7 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 def _read_ruamel(path: Path) -> Any:
     """Read YAML preserving comments via ruamel.yaml."""
-    ry = RuamelYAML()
+    ry = RuamelYAML(typ='rt')  # round-trip mode: preserves comments, safe from arbitrary object instantiation
     ry.preserve_quotes = True
     with path.open() as f:
         return ry.load(f)
@@ -55,7 +55,7 @@ def _read_ruamel(path: Path) -> Any:
 
 def _write_ruamel(path: Path, data: Any) -> None:
     """Write YAML preserving comments via ruamel.yaml."""
-    ry = RuamelYAML()
+    ry = RuamelYAML(typ='rt')  # round-trip mode: preserves comments, safe from arbitrary object instantiation
     ry.preserve_quotes = True
     ry.default_flow_style = False
     tmp = path.with_suffix(".yaml.tmp")

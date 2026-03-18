@@ -1,22 +1,17 @@
 """Tests for agent CLI command group."""
 
 import yaml
-from click.testing import CliRunner
+from pathlib import Path
 
 from miniautogen.cli.main import cli
 
 
-def _init_project(tmp_path, monkeypatch):
-    """Helper: init a project and chdir into it."""
-    monkeypatch.chdir(tmp_path)
-    runner = CliRunner()
-    runner.invoke(cli, ["init", "proj"])
-    monkeypatch.chdir(tmp_path / "proj")
-    return runner
+def _agents_dir():
+    return Path.cwd() / "agents"
 
 
-def test_agent_create_silent(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_create_silent(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
@@ -25,12 +20,12 @@ def test_agent_create_silent(tmp_path, monkeypatch) -> None:
     ], input="\n\ny\n")
     assert result.exit_code == 0, result.output
     assert "created" in result.output.lower()
-    assert (tmp_path / "proj" / "agents" / "writer.yaml").is_file()
+    assert (_agents_dir() / "writer.yaml").is_file()
 
 
-def test_agent_create_interactive(tmp_path, monkeypatch) -> None:
+def test_agent_create_interactive(init_project) -> None:
     """Test interactive wizard prompts for all fields."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(
         cli,
         ["agent", "create", "myagent"],
@@ -40,8 +35,8 @@ def test_agent_create_interactive(tmp_path, monkeypatch) -> None:
     assert "created" in result.output.lower()
 
 
-def test_agent_create_with_temperature(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_create_with_temperature(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
@@ -51,14 +46,14 @@ def test_agent_create_with_temperature(tmp_path, monkeypatch) -> None:
     ], input="\ny\n")
     assert result.exit_code == 0, result.output
     data = yaml.safe_load(
-        (tmp_path / "proj" / "agents" / "writer.yaml").read_text()
+        (_agents_dir() / "writer.yaml").read_text()
     )
     assert data.get("temperature") == 0.8
 
 
-def test_agent_create_validates_schema(tmp_path, monkeypatch) -> None:
+def test_agent_create_validates_schema(init_project) -> None:
     """Agent create validates against AgentSpec before writing."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "create", "valid-agent",
         "--role", "Tester",
@@ -66,13 +61,13 @@ def test_agent_create_validates_schema(tmp_path, monkeypatch) -> None:
         "--engine", "default_api",
     ], input="\n\ny\n")
     assert result.exit_code == 0, result.output
-    agent_path = tmp_path / "proj" / "agents" / "valid-agent.yaml"
+    agent_path = _agents_dir() / "valid-agent.yaml"
     assert agent_path.is_file()
 
 
-def test_agent_create_cancelled(tmp_path, monkeypatch) -> None:
+def test_agent_create_cancelled(init_project) -> None:
     """Test wizard cancellation at confirmation prompt."""
-    runner = _init_project(tmp_path, monkeypatch)
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
@@ -81,11 +76,11 @@ def test_agent_create_cancelled(tmp_path, monkeypatch) -> None:
     ], input="\n\nn\n")
     assert result.exit_code == 0
     assert "cancelled" in result.output.lower()
-    assert not (tmp_path / "proj" / "agents" / "writer.yaml").exists()
+    assert not (_agents_dir() / "writer.yaml").exists()
 
 
-def test_agent_create_duplicate_fails(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_create_duplicate_fails(init_project) -> None:
+    runner = init_project
     runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
@@ -101,8 +96,8 @@ def test_agent_create_duplicate_fails(tmp_path, monkeypatch) -> None:
     assert result.exit_code != 0
 
 
-def test_agent_create_bad_engine(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_create_bad_engine(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "create", "writer",
         "--role", "Writer",
@@ -112,42 +107,42 @@ def test_agent_create_bad_engine(tmp_path, monkeypatch) -> None:
     assert result.exit_code != 0
 
 
-def test_agent_list(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_list(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["agent", "list"])
     assert result.exit_code == 0
     assert "researcher" in result.output.lower()
 
 
-def test_agent_list_json(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_list_json(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["agent", "list", "--format", "json"])
     assert result.exit_code == 0
     assert '"name"' in result.output
 
 
-def test_agent_show(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_show(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["agent", "show", "researcher"])
     assert result.exit_code == 0
     assert "role:" in result.output.lower() or "research" in result.output.lower()
 
 
-def test_agent_show_json(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_show_json(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["agent", "show", "researcher", "--format", "json"])
     assert result.exit_code == 0
     assert '"role"' in result.output
 
 
-def test_agent_show_not_found(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_show_not_found(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, ["agent", "show", "nonexistent"])
     assert result.exit_code != 0
 
 
-def test_agent_update(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_update(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "update", "researcher",
         "--role", "Senior Researcher",
@@ -156,13 +151,13 @@ def test_agent_update(tmp_path, monkeypatch) -> None:
     assert "updated" in result.output.lower()
 
     data = yaml.safe_load(
-        (tmp_path / "proj" / "agents" / "researcher.yaml").read_text()
+        (_agents_dir() / "researcher.yaml").read_text()
     )
     assert data["role"] == "Senior Researcher"
 
 
-def test_agent_update_dry_run(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_update_dry_run(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "update", "researcher",
         "--role", "Senior Researcher",
@@ -172,23 +167,23 @@ def test_agent_update_dry_run(tmp_path, monkeypatch) -> None:
     assert "dry run" in result.output.lower()
 
     data = yaml.safe_load(
-        (tmp_path / "proj" / "agents" / "researcher.yaml").read_text()
+        (_agents_dir() / "researcher.yaml").read_text()
     )
     assert data["role"] != "Senior Researcher"
 
 
-def test_agent_delete(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_delete(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "delete", "researcher", "--yes",
     ])
     assert result.exit_code == 0
     assert "deleted" in result.output.lower()
-    assert not (tmp_path / "proj" / "agents" / "researcher.yaml").exists()
+    assert not (_agents_dir() / "researcher.yaml").exists()
 
 
-def test_agent_delete_not_found(tmp_path, monkeypatch) -> None:
-    runner = _init_project(tmp_path, monkeypatch)
+def test_agent_delete_not_found(init_project) -> None:
+    runner = init_project
     result = runner.invoke(cli, [
         "agent", "delete", "nonexistent", "--yes",
     ])

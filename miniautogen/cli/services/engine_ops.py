@@ -25,13 +25,8 @@ def _validate_engine(data: dict[str, Any]) -> None:
 
     Raises ValueError with details if invalid.
     """
-    # Strip non-schema keys for validation
-    validatable = {
-        k: v for k, v in data.items()
-        if k in {"kind", "provider", "model", "command", "temperature"}
-    }
     try:
-        EngineProfileConfig.model_validate(validatable)
+        EngineProfileConfig.model_validate(data)
     except ValidationError as exc:
         errors = "; ".join(
             f"{'.'.join(str(x) for x in e['loc'])}: {e['msg']}"
