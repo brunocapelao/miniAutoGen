@@ -143,6 +143,14 @@ class RunContext(BaseModel):
             },
         )
 
+    def evolve_metadata(self, **updates: Any) -> "RunContext":
+        """Return a new RunContext with metadata evolved by the given updates."""
+        current = dict(self.metadata)
+        current.update(updates)
+        return self.model_copy(
+            update={"metadata": tuple(sorted(current.items()))},
+        )
+
     def get_metadata(self, key: str, default: Any = None) -> Any:
         """Look up a metadata key without exposing the internal tuple."""
         for k, v in self.metadata:
@@ -160,6 +168,33 @@ class RunContext(BaseModel):
 - `get_metadata()` provides ergonomic read access without dict unpacking.
 - The `execution_state` field name is retired. `state` is shorter and the type (`FrozenState`) communicates intent.
 
+**`evolve_metadata()` helper:**
+
+`RunContext` also provides an `evolve_metadata()` method symmetric with `with_state()`, so callers do not need to manually construct metadata tuples:
+
+```python
+def evolve_metadata(self, **updates: Any) -> "RunContext":
+    """Return a new RunContext with metadata evolved by the given updates."""
+    current = dict(self.metadata)
+    current.update(updates)
+    return self.model_copy(
+        update={"metadata": tuple(sorted(current.items()))},
+    )
+```
+
+Usage:
+
+```python
+# Instead of manual tuple construction:
+ctx2 = ctx.evolve_metadata(source="cli", retry_count=3)
+
+# Equivalent to (but much more ergonomic than):
+md = dict(ctx.metadata)
+md["source"] = "cli"
+md["retry_count"] = 3
+ctx2 = ctx.model_copy(update={"metadata": tuple(sorted(md.items()))})
+```
+
 **Migration path for `execution_state` consumers:**
 
 | Current code | Replacement |
@@ -168,7 +203,7 @@ class RunContext(BaseModel):
 | `ctx.execution_state["key"] = val` | `ctx = ctx.with_state(key=val)` |
 | `RunContext(execution_state={"k": "v"})` | `RunContext(state=FrozenState(k="v"))` |
 | `ctx.metadata["key"]` | `ctx.get_metadata("key")` |
-| `{**ctx.metadata, "k": "v"}` | `tuple(sorted({**dict(ctx.metadata), "k": "v"}.items()))` |
+| `{**ctx.metadata, "k": "v"}` | `ctx.evolve_metadata(k="v")` |
 
 ### 2. Frozen ExecutionEvent
 
@@ -316,16 +351,113 @@ The main trade-off is ergonomics: `dict(ctx.metadata)` is needed for dict-like a
 
 **Nested mutability caveat:** The `Any` in `tuple[str, Any]` means inner values could be mutable (e.g., a list). For Phase 1, we accept this and rely on convention. Phase 2 could introduce a `freeze()` utility that deep-freezes values, but this adds complexity and is not required for the primary invariant (no shared mutable *references* between actors).
 
+### 5. Serialization Contract
+
+Pydantic's `model_dump()` and `model_validate()` must round-trip correctly for persistence (checkpoint stores, event replay, run stores). This section defines the canonical JSON representation.
+
+**`FrozenState` serialization:**
+
+`FrozenState._data` is a private attribute (prefixed with `_`). By default, Pydantic excludes private attributes from `model_dump()`. To ensure serialization works, `FrozenState` must either:
+
+1. Use `to_dict()` explicitly at serialization boundaries, or
+2. Override `model_dump()` / implement a custom serializer.
+
+**Recommended approach:** Add a Pydantic `model_serializer` to `FrozenState`:
+
+```python
+from pydantic import model_serializer
+
+class FrozenState(BaseModel):
+    # ... existing code ...
+
+    @model_serializer
+    def ser_model(self) -> dict[str, Any]:
+        return dict(self._data)
+```
+
+This ensures `FrozenState(key="value").model_dump()` produces `{"key": "value"}` -- a plain dict, the same shape as the old `execution_state`.
+
+**Round-trip invariant:** `model_validate(model_dump())` must reconstruct an equivalent object.
+
+```python
+# FrozenState round-trip
+fs = FrozenState(step=1, agent="writer")
+assert FrozenState(**fs.model_dump()) == fs
+
+# RunContext round-trip
+ctx = RunContext(
+    run_id="r1",
+    started_at=datetime(2026, 3, 18, tzinfo=timezone.utc),
+    correlation_id="c1",
+    state=FrozenState(group_chat="chat"),
+    metadata=(("source", "cli"),),
+    input_payload={"text": "hello"},
+)
+dumped = ctx.model_dump()
+restored = RunContext.model_validate(dumped)
+assert restored.state.get("group_chat") == "chat"
+assert restored.get_metadata("source") == "cli"
+```
+
+**Concrete `RunContext.model_dump()` output:**
+
+```json
+{
+  "run_id": "r1",
+  "started_at": "2026-03-18T00:00:00Z",
+  "correlation_id": "c1",
+  "state": {"group_chat": "chat"},
+  "input_payload": {"text": "hello"},
+  "timeout_seconds": null,
+  "namespace": null,
+  "metadata": [["source", "cli"]]
+}
+```
+
+Note: `metadata` serializes as an array of 2-element arrays (JSON representation of `tuple[tuple[str, Any], ...]`). `RunContext.model_validate()` must accept this form. Pydantic handles this natively for `tuple` types.
+
+**`ExecutionEvent` round-trip:**
+
+```python
+event = ExecutionEvent(
+    type="run_started",
+    run_id="r1",
+    payload={"status": "ok", "count": 3},
+)
+dumped = event.model_dump()
+restored = ExecutionEvent.model_validate(dumped)
+assert restored.get_payload("status") == "ok"
+```
+
+The `__init__` override converts dict payloads to tuples on construction. For `model_validate()`, the serialized form (array of pairs) is passed directly as a tuple -- no dict conversion needed. However, for backward compatibility with persisted events that stored `payload` as a dict, the `__init__` override handles both forms transparently.
+
+### 6. PipelineRunner Compatibility
+
+**Source:** `miniautogen/core/runtime/pipeline_runner.py`
+
+Detailed trace of how `state: Any` flows through PipelineRunner:
+
+1. `run_pipeline(pipeline, state, *, timeout_seconds)` receives `state: Any` (line 80).
+2. `run_id` is extracted via `getattr(state, "run_id", None)` (line 84) -- a read-only attribute access. If `state` is a frozen `RunContext`, `getattr` works identically. No mutation.
+3. `state` is passed unchanged to `_execute_pipeline(pipeline, state)` (lines 171, 174).
+4. `_execute_pipeline` calls `pipeline.run(state)` (line 49) -- pure pass-through. PipelineRunner never indexes into, assigns to, or modifies `state`.
+5. PipelineRunner constructs `ExecutionEvent` instances with dict `payload` literals (e.g., `payload={"error_type": error_type}` at line 73). These are converted by the frozen `ExecutionEvent.__init__` transparently.
+6. PipelineRunner writes to `self.last_run_id` (line 87, 224) -- this is runner-level mutable state, not `RunContext` state. Unaffected by this workstream.
+
+**Verdict:** PipelineRunner is fully compatible with frozen `RunContext` and frozen `ExecutionEvent`. Zero code changes required. The runner never reads `execution_state`, `metadata`, or `payload` via dict subscript. Its `ExecutionEvent` construction sites all pass dict literals, which the `__init__` override handles.
+
 ---
 
 ## Breaking Changes
 
-| Change | Severity | Affected code |
+**Note on `RunResult.metadata`:** Several test files access `result.metadata["key"]` (e.g., `result.metadata["stop_reason"]` in agentic loop tests, `result.metadata["final_document"]` in deliberation tests). These are **not affected** by this workstream -- `RunResult.metadata` remains `dict[str, Any]` as stated in the table below.
+
+| Change | Severity | Affected code (codebase audit) |
 |---|---|---|
-| `execution_state` field renamed to `state` (type `FrozenState`) | **High** | `compat/state_bridge.py`, all tests referencing `execution_state`, user code |
-| `metadata` field type changes from `dict` to `tuple[tuple[str, Any], ...]` | **Medium** | `RunContext.with_previous_result()` (internal, updated), user code that reads `ctx.metadata["key"]` |
-| `ExecutionEvent.payload` type changes from `dict` to `tuple[tuple[str, Any], ...]` | **Medium** | EventSink subscribers that read `event.payload["key"]` |
-| `RunContext` and `ExecutionEvent` become frozen (attribute assignment raises) | **Medium** | Any code that assigns `ctx.some_field = value` or `event.run_id = value` |
+| `execution_state` field renamed to `state` (type `FrozenState`) | **High** | **4 files, 8 sites:** `miniautogen/core/contracts/run_context.py` (1 field def), `miniautogen/compat/state_bridge.py` (1 construction site), `tests/core/contracts/test_run_context.py` (2 construction sites), `tests/core/contracts/test_run_context_comprehensive.py` (2 sites: construction + assertion), `tests/compat/test_run_context_bridge.py` (1 assertion) |
+| `metadata` field type changes from `dict` to `tuple[tuple[str, Any], ...]` | **Medium** | **2 files, 2 sites:** `tests/core/contracts/test_run_context_comprehensive.py:28` (`new_ctx.metadata["previous_result"]`), `miniautogen/core/contracts/run_context.py` (internal `with_previous_result`, updated) |
+| `ExecutionEvent.payload` type changes from `dict` to `tuple[tuple[str, Any], ...]` | **Medium** | **8 files, 13 sites:** `tests/backends/google_genai/test_driver.py:71`, `tests/backends/test_transformer.py:41`, `tests/backends/anthropic_sdk/test_driver.py:77`, `tests/backends/test_models.py:151`, `tests/backends/openai_sdk/test_driver.py:91`, `tests/backends/agentapi/test_mapper.py:27-28`, `tests/backends/agentapi/test_driver.py:101`, `tests/core/runtime/test_pipeline_runner_comprehensive.py:158`, `tests/core/runtime/test_agentic_loop_runtime.py:570`, `tests/core/contracts/test_execution_event_comprehensive.py:24,52`, `docs/pt/guides/gemini-cli-gateway.md:93` (documentation example) |
+| `RunContext` and `ExecutionEvent` become frozen (attribute assignment raises) | **Medium** | Any code that assigns `ctx.some_field = value` or `event.run_id = value` (no direct assignment sites found in current codebase outside `events.py` model_validator) |
 | `RunResult.metadata` remains `dict[str, Any]` (mutable) | **None** | `RunResult` is a terminal value, not shared across concurrent actors. Freezing it is a Phase 2 concern. |
 
 ---
@@ -364,16 +496,22 @@ ctx.execution_state["step"] = 2
 ctx = ctx.with_state(step=2)
 ```
 
-### Step 3: Replace metadata reads
+### Step 3: Replace metadata reads and writes
 
 ```python
-# Before
+# Before (read)
 value = ctx.metadata["previous_result"]
 
-# After
+# After (read)
 value = ctx.get_metadata("previous_result")
 # or
 value = dict(ctx.metadata)["previous_result"]
+
+# Before (write)
+ctx.metadata["source"] = "cli"
+
+# After (write -- copy-on-write)
+ctx = ctx.evolve_metadata(source="cli")
 ```
 
 ### Step 4: Update compat bridge
@@ -425,16 +563,62 @@ All tests that construct `RunContext` with `execution_state=` must use `state=Fr
 
 ---
 
+## Backward Compatibility
+
+### External code deserializing old `execution_state` dicts
+
+**This is a breaking change. Old serialized `RunContext` payloads will not deserialize into the new model without transformation.**
+
+Specifically:
+
+- Old serialized form: `{"execution_state": {"step": 1, "agent": "writer"}, "metadata": {"source": "cli"}, ...}`
+- New expected form: `{"state": {"step": 1, "agent": "writer"}, "metadata": [["source", "cli"]], ...}`
+
+**Migration strategy:**
+
+1. **No automatic backward compatibility.** The field rename (`execution_state` -> `state`) and type change (`dict` -> `FrozenState` / `tuple`) make old payloads incompatible with `RunContext.model_validate()`.
+
+2. **Provide a one-time migration utility** in `miniautogen/compat/`:
+
+```python
+def migrate_run_context_v1_to_v2(data: dict[str, Any]) -> dict[str, Any]:
+    """Transform a serialized v1 RunContext dict to v2 format.
+
+    Handles:
+    - execution_state (dict) -> state (dict, deserialized by FrozenState)
+    - metadata (dict) -> metadata (list of [key, value] pairs)
+    """
+    migrated = dict(data)
+    if "execution_state" in migrated:
+        migrated["state"] = migrated.pop("execution_state")
+    if isinstance(migrated.get("metadata"), dict):
+        migrated["metadata"] = sorted(migrated["metadata"].items())
+    return migrated
+```
+
+3. **Deprecation timeline:**
+   - **v0.next (this release):** Ship frozen models + migration utility. Document the breaking change in CHANGELOG.
+   - **v0.next+1:** Remove migration utility. All persisted data must be in v2 format.
+
+4. **Checkpoint store migration:** If `CheckpointStore` has persisted `RunContext` objects via `model_dump()`, those checkpoints must be migrated using the utility above before loading with the new model. The `run_store` saves opaque status dicts (not `RunContext`), so it is unaffected.
+
+5. **Event replay:** Persisted `ExecutionEvent` payloads stored as dicts will deserialize correctly -- the `ExecutionEvent.__init__` override accepts both dict and tuple-of-tuples for `payload`. No migration needed for events. However, any code that reads replayed `event.payload["key"]` must still be updated to `event.get_payload("key")`.
+
+---
+
 ## Estimated Effort
 
 | Task | Estimate |
 |---|---|
-| Implement `FrozenState` and frozen `RunContext` | 2h |
+| Implement `FrozenState` (with `model_serializer`) and frozen `RunContext` (incl. `evolve_metadata()`) | 2.5h |
 | Implement frozen `ExecutionEvent` with `__init__` inference | 1h |
 | Update `compat/state_bridge.py` | 30min |
-| Update all tests (contracts, compat, runtimes) | 3h |
+| Write `migrate_run_context_v1_to_v2()` compat utility | 30min |
+| Update all tests -- 8 files, ~21 sites for `execution_state`/`metadata`/`payload` subscript access | 3h |
+| Update documentation example (`docs/pt/guides/gemini-cli-gateway.md:93`) | 15min |
 | Add new immutability and concurrency safety tests | 1h |
-| Documentation updates (architecture docs, invariants) | 1h |
-| **Total** | **~8.5h** |
+| Add serialization round-trip tests (`model_dump` / `model_validate`) | 1h |
+| Documentation updates (architecture docs, invariants, CHANGELOG) | 1h |
+| **Total** | **~10.75h** |
 
-**Risk:** Low. The runtime analysis shows that no runtime mutates `RunContext` fields. The blast radius is confined to construction sites (tests, compat bridge) and external consumers reading `execution_state` or `payload` as dicts.
+**Risk:** Low-Medium. The runtime analysis confirms no runtime mutates `RunContext` fields. The blast radius is confined to construction sites (tests, compat bridge) and external consumers reading `execution_state` or `payload` as dicts. The codebase audit identified 21 specific migration sites across 8 test files, 1 compat module, and 1 documentation file. The `event.payload["key"]` pattern (13 sites across 8 test files) is the largest single migration category. A `migrate_run_context_v1_to_v2()` utility addresses the serialization backward-compatibility gap.

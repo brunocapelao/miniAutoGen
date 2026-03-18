@@ -95,6 +95,43 @@ categories are referenced across the codebase but are not yet formalized into an
 enum or base exception hierarchy. This workstream depends on them being classifiable
 so that the supervisor can map error categories to strategies.
 
+#### ErrorCategory Enum (Shared Dependency: WS3 + WS4)
+
+A `StrEnum` must be added to `miniautogen/core/contracts/enums.py` before either
+WS3 or WS4 implementation begins. This is a shared dependency.
+
+```python
+from enum import StrEnum
+
+class ErrorCategory(StrEnum):
+    """Canonical error categories for supervision and effect journaling."""
+
+    TRANSIENT         = "transient"
+    PERMANENT         = "permanent"
+    VALIDATION        = "validation"
+    TIMEOUT           = "timeout"
+    CANCELLATION      = "cancellation"
+    ADAPTER           = "adapter"
+    CONFIGURATION     = "configuration"
+    STATE_CONSISTENCY = "state_consistency"
+```
+
+**Exception-to-Category mapping reference:**
+
+| Category | Common Python Exceptions |
+|---|---|
+| `transient` | `ConnectionError`, `httpx.TimeoutException`, `aiosqlite.OperationalError` |
+| `permanent` | `ValueError`, `TypeError`, `KeyError` (in agent logic) |
+| `validation` | `pydantic.ValidationError` |
+| `timeout` | `TimeoutError`, `anyio.get_cancelled_exc_class()` (when from deadline) |
+| `cancellation` | `asyncio.CancelledError`, AnyIO cancellation (`Cancelled`) |
+| `adapter` | `ImportError` (missing provider), provider-specific SDK errors |
+| `configuration` | `KeyError` (missing config key), `FileNotFoundError` |
+| `state_consistency` | Custom `StateConsistencyError` (to be defined in `core/contracts/errors.py`) |
+
+The `classify_error` function (Section 2.5) uses this enum as its return type
+instead of raw strings.
+
 ---
 
 ## 1. StepSupervision Model
@@ -221,7 +258,7 @@ class Supervisor(Protocol):
         *,
         child_id: str,
         error: BaseException,
-        error_category: str,
+        error_category: ErrorCategory,
         supervision: StepSupervision,
         restart_count: int,
     ) -> SupervisionDecision: ...
@@ -257,28 +294,69 @@ The `StepSupervisor.handle_failure` implementation follows this logic:
    - ESCALATE: propagate to parent supervisor.
 ```
 
-### 2.4 Integration with Existing Error Taxonomy
+### 2.4 FlowSupervisor Decision Algorithm
+
+The `FlowSupervisor.handle_escalation` receives failures escalated from
+`StepSupervisor` instances. It owns aggregate state across all steps in a flow.
+
+**Owned state:**
+
+- `total_flow_failures: int` --- count of all failures across all steps.
+- `step_completion_map: dict[str, StepStatus]` --- tracks each step's terminal
+  status (pending, running, completed, failed, skipped).
+- `flow_circuit_breaker_threshold: int` --- configurable; default 10.
+
+**Algorithm:**
+
+```
+1. Receive escalation from StepSupervisor:
+   - step_id, error, error_category, exhausted_strategy
+2. Increment total_flow_failures.
+3. Check flow-level circuit breaker:
+   - If total_flow_failures >= flow_circuit_breaker_threshold:
+     → STOP the entire flow.
+     → Emit SUPERVISION_CIRCUIT_OPEN event (flow-level).
+     → Cancel all running step scopes.
+     → Return.
+4. Inspect the exhausted_strategy from the StepSupervisor:
+   - If exhausted_strategy == ESCALATE:
+     → Propagate to SystemSupervisor.
+   - If exhausted_strategy == STOP:
+     → Mark step as FAILED in step_completion_map.
+     → If remaining steps are independent (fan-out or no data dependency):
+       continue executing remaining steps.
+     → If remaining steps depend on the failed step:
+       STOP the entire flow.
+5. Emit SUPERVISION_FLOW_DECISION event with:
+   - step_id, decision, total_flow_failures, step_completion_map snapshot.
+```
+
+**Key distinction:** The StepSupervisor owns per-step state (restart count,
+per-step circuit breaker). The FlowSupervisor owns aggregate state (total
+failures across all steps, step completion map).
+
+### 2.5 Integration with Existing Error Taxonomy
 
 The supervisor needs a way to classify arbitrary exceptions into the canonical
 categories. This requires a small classifier function:
 
 ```python
-def classify_error(exc: BaseException) -> str:
-    """Map an exception to a canonical error category."""
+def classify_error(exc: BaseException) -> ErrorCategory:
+    """Map an exception to a canonical ErrorCategory."""
 ```
 
 Classification rules (in priority order):
 
 1. If the exception has an `error_category` attribute, use it directly.
-2. If it is a `TimeoutError` or `anyio.get_cancelled_exc_class()`, return `"timeout"` or `"cancellation"`.
-3. If it matches known adapter exception base classes, return `"adapter"`.
-4. If it is a `pydantic.ValidationError`, return `"validation"`.
-5. Default: `"transient"` (optimistic --- the supervisor's strategy-to-error mapping will catch permanent failures that self-identify).
+2. If it is a `TimeoutError` or `anyio.get_cancelled_exc_class()`, return `ErrorCategory.TIMEOUT` or `ErrorCategory.CANCELLATION`.
+3. If it matches known adapter exception base classes, return `ErrorCategory.ADAPTER`.
+4. If it is a `pydantic.ValidationError`, return `ErrorCategory.VALIDATION`.
+5. Default: `ErrorCategory.TRANSIENT` (optimistic --- the supervisor's strategy-to-error mapping will catch permanent failures that self-identify).
 
 Long-term, all framework exceptions should carry an `error_category` attribute.
 This is a migration, not a prerequisite.
 
-### 2.5 Event Emissions
+### 2.6 Event Emissions
 
 The supervisor emits events at each decision point. New event types required:
 
@@ -370,6 +448,26 @@ An atomic transition is the unit of durable state change. It must include:
 The step index is critical for resume: after a crash, the system loads the last
 checkpoint, reads the step index, and resumes from that point.
 
+**Atomic transition boundaries:**
+
+```
+Step N executes
+  → Step N completes successfully
+  → atomic_transition(step_index=N, new_state=..., events=[...])
+      writes checkpoint + events + step_index in one transaction
+  → step_index is now N (meaning "step N is complete")
+  → Next iteration: execute step N+1
+
+On crash DURING step N execution (before atomic_transition):
+  → Last checkpoint has step_index = N-1
+  → Resume reads step_index = N-1
+  → Restarts from step N (= step_index + 1)
+```
+
+The checkpoint is saved AFTER step N completes successfully (post-step).
+The `step_index` in the checkpoint represents the last *completed* step, not the
+next step to execute. On resume: `next_step = last_checkpoint.step_index + 1`.
+
 ### 3.4 CheckpointStore Transaction Extension
 
 The `CheckpointStore` ABC needs a `transaction()` context manager. This is a
@@ -414,14 +512,29 @@ pub/sub for live notification).
 class EventStore(ABC):
     @abstractmethod
     async def append(self, run_id: str, event: ExecutionEvent) -> None:
-        """Durably append an event."""
+        """Durably append an event. Assigns a monotonic event_id."""
 
     @abstractmethod
     async def list_events(
         self, run_id: str, *, after_index: int = 0
     ) -> list[ExecutionEvent]:
-        """List events for a run, optionally starting after a given index."""
+        """Return events with event_id > after_index, ordered by event_id ASC."""
+
+    @abstractmethod
+    async def count_events(self, run_id: str) -> int:
+        """Return the total number of events for a run (for pagination)."""
 ```
+
+**Operational semantics:**
+
+| Property | Guarantee |
+|---|---|
+| **Append model** | Append-only; events are never updated or deleted |
+| **Ordering** | Each event receives a monotonic auto-increment `event_id` (int). Ordering is guaranteed by `event_id` ASC |
+| **Concurrency** | Writes are serialized within a transaction (SQLAlchemy session lock for SQL backends; GIL-trivial for in-memory) |
+| **`list_events` contract** | Returns all events where `event_id > after_index`, ordered by `event_id` ASC. If `after_index=0`, returns all events |
+| **`count_events` contract** | Returns `int` count for the given `run_id`. Used for pagination and progress tracking |
+| **Compaction / snapshotting** | Deferred to Phase 3 (event log snapshotting). For now the log grows unbounded per run. A future compaction strategy will collapse old events into a snapshot marker |
 
 This is required for replay safety (WS3 dependency) and for the atomic transition
 to include events in the same database transaction as the checkpoint.
@@ -517,18 +630,31 @@ to the step's timeout.
 
 ### 4.4 Cancel Scope Nesting Diagram
 
+The full nesting includes the ApprovalGate (if present), which runs OUTSIDE the
+FlowSupervisor scope. The FlowSupervisor scope starts only AFTER approval is
+granted. This is important because the approval wait time should not count toward
+the flow's timeout budget.
+
 ```
-[FlowSupervisor cancel scope --- ExecutionPolicy.timeout_seconds]
+[ApprovalGate --- no timeout, waits for human/system approval]
   |
-  +-- [StepSupervisor cancel scope --- StepSupervision.max_lifetime_seconds]
-  |     |
-  |     +-- [Agent invocation]
+  → Approval granted
   |
-  +-- [StepSupervisor cancel scope]
-  |     |
-  |     +-- [Agent invocation]
-  ...
+  [FlowSupervisor cancel scope --- ExecutionPolicy.timeout_seconds]
+    |
+    +-- [StepSupervisor cancel scope --- StepSupervision.max_lifetime_seconds]
+    |     |
+    |     +-- [Watchdog task (if heartbeat enabled)]
+    |     +-- [Agent invocation]
+    |
+    +-- [StepSupervisor cancel scope]
+    |     |
+    |     +-- [Agent invocation]
+    ...
 ```
+
+**Without ApprovalGate** (the common case), the diagram starts directly at the
+FlowSupervisor cancel scope.
 
 ---
 
@@ -568,15 +694,62 @@ class HeartbeatToken:
         """Signal liveness. Must be called within heartbeat_interval_seconds."""
 ```
 
-Implementation:
+**HeartbeatToken distribution:**
 
-- The `StepSupervisor` starts a background watchdog task when
-  `heartbeat_interval_seconds` is set.
-- The watchdog cancels the agent's cancel scope if no heartbeat arrives within
-  the interval.
-- The agent receives the `HeartbeatToken` via `RunContext.metadata["heartbeat"]`.
-- Agents that do not use the token are unaffected (the watchdog simply does not
-  start if the interval is `None`).
+The token is injected into `RunContext.metadata["_heartbeat_token"]`. The agent
+obtains it via `context.metadata.get("_heartbeat_token")` and calls `token.beat()`
+periodically. Agents that do not call `beat()` will be killed by the watchdog
+after `2 * heartbeat_interval_seconds`.
+
+**Watchdog task lifecycle:**
+
+1. Created by `StepSupervisor` when the step starts and
+   `heartbeat_interval_seconds is not None`.
+2. Runs in a **separate task within the step's `TaskGroup`** (sibling to the
+   agent task, inside the same cancel scope).
+3. Loop: sleep for `heartbeat_interval_seconds`, then check `last_beat` timestamp.
+4. If `now - last_beat > heartbeat_interval_seconds * 2`, cancel the step's
+   `CancelScope` (triggering a `TimeoutError` classified as `"timeout"`).
+5. When the agent task completes normally, the watchdog is cancelled automatically
+   by AnyIO's structured concurrency (TaskGroup exit cancels all children).
+
+```python
+async def _watchdog(
+    token: HeartbeatToken,
+    scope: anyio.CancelScope,
+    interval: float,
+) -> None:
+    """Background task that monitors agent liveness."""
+    while True:
+        await anyio.sleep(interval)
+        elapsed = anyio.current_time() - token.last_beat_time
+        if elapsed > interval * 2:
+            scope.cancel()  # Kill the agent's cancel scope
+            return
+```
+
+**Integration example:**
+
+```python
+async def supervised_step_with_heartbeat(
+    step: WorkflowStep,
+    supervision: StepSupervision,
+    context: RunContext,
+) -> Any:
+    token = HeartbeatToken()
+    context = context.model_copy(
+        update={"metadata": {**context.metadata, "_heartbeat_token": token}}
+    )
+    async with anyio.create_task_group() as tg:
+        with anyio.CancelScope() as scope:
+            if supervision.heartbeat_interval_seconds:
+                tg.start_soon(
+                    _watchdog, token, scope, supervision.heartbeat_interval_seconds
+                )
+            result = await invoke_agent(step, context)
+            tg.cancel_scope.cancel()  # Stop the watchdog
+            return result
+```
 
 ### 5.3 Max Lifetime Enforcement
 
@@ -616,8 +789,24 @@ must ensure cleanup:
 - The `CheckpointManager.atomic_transition` accepts `dict[str, Any]` for state
   (serialized from `RunContext.model_dump()`). When WS2 finalizes the frozen
   `RunContext`, the manager will serialize it directly.
-- The step index / execution pointer becomes a field on `RunContext` once WS2
-  stabilizes the model.
+
+**`step_index` field dependency:**
+
+The step index / execution pointer will be a field on `RunContext` added by WS2:
+
+```python
+class RunContext(BaseModel):
+    # ... existing fields ...
+    step_index: int = 0  # 0 = before any step executes
+```
+
+- **Initial value:** `0` (before any step executes).
+- **Serialization:** Included in `model_dump()` naturally as a Pydantic field.
+- **Interim strategy:** If WS2 is not complete when WS4 implementation begins,
+  WS4 stores `step_index` inside the checkpoint payload directly:
+  `checkpoint_payload["step_index"]`. When WS2 lands, this migrates to
+  `RunContext.step_index` with no behavioral change (the atomic_transition
+  method already receives `step_index` as an explicit parameter).
 
 ### WS3: Effect Journal
 

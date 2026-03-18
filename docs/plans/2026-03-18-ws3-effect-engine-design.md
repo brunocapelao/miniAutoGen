@@ -125,6 +125,11 @@ class EffectPolicy:
     # After this period, a completed effect may be re-executed.
     # None means records never expire.
     completed_ttl_seconds: float | None = None
+
+    # Maximum time (seconds) a PENDING record can exist before being
+    # considered stale and eligible for cleanup. A pending record older
+    # than this threshold is assumed to be from a prior crash.
+    stale_pending_timeout_seconds: float = 300.0
 ```
 
 **Integration with PolicyChain.** The `EffectPolicy` is a configuration object, not a `PolicyEvaluator`. The `EffectInterceptor` (see section 4) reads the policy to make decisions. This mirrors how `BudgetPolicy` configures `BudgetTracker` -- the policy is data, the tracker is behavior.
@@ -157,6 +162,18 @@ class EffectPolicyEvaluator:
 | `allowed_effect_types` | `frozenset[str]` | `frozenset()` (allow all) | Restricts which effect types can execute |
 | `require_idempotency` | `bool` | `True` | Whether journal registration is mandatory before execution |
 | `completed_ttl_seconds` | `float \| None` | `None` | Optional expiration for completed records |
+| `stale_pending_timeout_seconds` | `float` | `300.0` | Max seconds a PENDING record can exist before being treated as stale |
+
+#### PolicyContext Extensions
+
+When the `EffectPolicyEvaluator` is invoked via the `PolicyChain`, the `PolicyContext` is populated as follows:
+
+| Field | Value | Example |
+|-------|-------|---------|
+| `action` | The `effect_type` string from the descriptor | `"tool_call"`, `"api_request"`, `"db_write"` |
+| `metadata` | Dict containing the full effect descriptor | `{"effect_descriptor": descriptor.model_dump()}` |
+
+This allows the evaluator (and any other policy in the chain) to inspect the full effect details without coupling to `EffectDescriptor` directly.
 
 ---
 
@@ -197,8 +214,13 @@ class EffectJournal(ABC):
         self,
         run_id: str,
         status: EffectStatus | None = None,
+        limit: int = 100,
+        offset: int = 0,
     ) -> list[EffectRecord]:
-        """List all effect records for a run, optionally filtered by status."""
+        """List effect records for a run, optionally filtered by status.
+
+        Supports pagination via limit/offset. Default limit is 100.
+        """
 
     @abstractmethod
     async def delete_by_run(self, run_id: str) -> int:
@@ -325,43 +347,212 @@ State transitions:
 
 A `COMPLETED` record is terminal. A `FAILED` record is also terminal for that specific idempotency key. On retry, a new idempotency key is generated (incorporating the attempt number), so failed effects do not block re-execution.
 
+#### Exception Types
+
+The Effect Engine defines three exception types, each mapped to a category in the canonical error taxonomy (see `CLAUDE.md` section 4):
+
+```python
+class EffectDeniedError(MiniAutoGenError):
+    """Raised when an effect is rejected by the EffectPolicy.
+
+    Canonical category: validation
+    Triggers: effect_type not in allowed_effect_types, or
+              max_effects_per_step would be exceeded.
+    """
+    category = "validation"
+
+
+class EffectDuplicateError(MiniAutoGenError):
+    """Raised when registering an effect whose idempotency key
+    already exists with status COMPLETED.
+
+    Canonical category: state_consistency
+    Triggers: journal.register() called with a key that is
+              already in COMPLETED state.
+    """
+    category = "state_consistency"
+
+
+class EffectJournalUnavailableError(MiniAutoGenError):
+    """Raised when the EffectJournal store is unreachable.
+
+    Canonical category: adapter
+    Triggers: connection failure, timeout, or I/O error when
+              communicating with the journal backend (e.g., database).
+    """
+    category = "adapter"
+```
+
+| Exception | Category | Raised When |
+|-----------|----------|-------------|
+| `EffectDeniedError` | `validation` | Effect type not in allowed list, or max effects per step exceeded |
+| `EffectDuplicateError` | `state_consistency` | Idempotency key already exists with COMPLETED status |
+| `EffectJournalUnavailableError` | `adapter` | Journal store unreachable (connection error, timeout) |
+
+File placement: `miniautogen/core/contracts/effect.py` (alongside `EffectDescriptor`, `EffectRecord`, `EffectStatus`).
+
 #### Idempotency Key Generation Strategy
 
 The idempotency key must be **deterministic** for the same logical operation so that replays produce the same key:
 
 ```
-idempotency_key = SHA-256(run_id + step_id + tool_name + canonical_args_hash)
+idempotency_key = SHA-256(run_id + step_id + tool_name + args_hash + attempt_number)
 ```
 
-Where `canonical_args_hash` is the SHA-256 of the arguments serialized to JSON with sorted keys and no whitespace. This ensures:
+Where `args_hash` is computed from a **canonical JSON serialization** of the tool arguments:
 
-- **Same run, same step, same tool, same args** -> same key (deduplication works)
+```python
+import hashlib, json
+
+def canonical_args_hash(args: dict) -> str:
+    """Deterministic hash of tool arguments.
+
+    Uses sorted keys and compact separators to ensure identical
+    output for identical logical arguments regardless of dict ordering.
+    The `default=str` fallback handles non-primitive types (e.g., datetime)
+    by converting them to their string representation.
+    """
+    canonical = json.dumps(args, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(canonical.encode()).hexdigest()
+```
+
+This serialization is deterministic for all Python primitive types (`str`, `int`, `float`, `bool`, `None`, `list`, `dict`). Non-primitive types are coerced via `default=str`, which is stable but not invertible -- callers should prefer primitive arguments for maximum safety.
+
+**Key properties:**
+
+- **Same run, same step, same tool, same args, same attempt** -> same key (deduplication works)
 - **Same run, same step, same tool, different args** -> different key (no false positives)
 - **Different run** -> different key (runs do not interfere)
+- **Same operation, different attempt** -> different key (retries get fresh keys)
 
-For retries within the same step, the attempt number is appended:
+#### Retry Counter and Attempt Tracking
+
+The `attempt_number` component of the idempotency key tracks retry attempts. This is critical for allowing re-execution of failed effects while still deduplicating completed ones.
+
+**Who increments the attempt counter?** The runtime's `RetryPolicy`. Each time the policy triggers a retry of a step, it increments the attempt counter.
+
+**Where is it stored?** In the `RunContext.metadata` dict under the key `"attempt_number"` (integer, starting at 1). The `EffectInterceptor` reads this value when generating the idempotency key.
+
+**How does it flow into the idempotency key?** The interceptor concatenates it as the final component before hashing:
+
+```python
+def generate_idempotency_key(descriptor: EffectDescriptor, attempt_number: int) -> str:
+    raw = f"{descriptor.run_id}:{descriptor.step_id}:{descriptor.tool_name}:{descriptor.args_hash}:{attempt_number}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+```
+
+**Concrete example -- retry after transient failure:**
 
 ```
-retry_key = SHA-256(run_id + step_id + tool_name + canonical_args_hash + attempt_number)
+Attempt 1:
+  key = SHA-256("run-abc:step-3:send_email:<args_hash>:1")
+  -> register PENDING
+  -> execute tool
+  -> network timeout -> record FAILED
+  -> emit EFFECT_FAILED
+
+RetryPolicy triggers retry (attempt_number incremented to 2):
+
+Attempt 2:
+  key = SHA-256("run-abc:step-3:send_email:<args_hash>:2")  # different key!
+  -> register PENDING (new key, no conflict with attempt 1)
+  -> execute tool
+  -> success -> record COMPLETED
+  -> emit EFFECT_EXECUTED
+
+If the run is replayed from checkpoint and reaches step-3 again:
+  key = SHA-256("run-abc:step-3:send_email:<args_hash>:1")
+  -> journal lookup -> FAILED (attempt 1) -> new retry key needed
+  key = SHA-256("run-abc:step-3:send_email:<args_hash>:2")
+  -> journal lookup -> COMPLETED -> skip execution, return cached result
+  -> emit EFFECT_SKIPPED
 ```
 
-This allows a failed effect to be retried with a fresh key while a completed effect remains deduplicated.
+This ensures failed effects do not block re-execution while completed effects remain deduplicated across replays.
 
 ---
 
 ### 4. Idempotency Interceptor
 
-The `EffectInterceptor` hooks into the runtime at the point where tool calls are dispatched. It wraps the existing tool execution path without modifying it.
+The `EffectInterceptor` is a **concrete class** that wraps tool execution calls. It does not inherit from or depend on any abstract interceptor protocol -- it is a self-contained middleware that the runtime composes around its tool dispatch path.
 
-#### Where It Hooks Into the Runtime
+#### Class Signature
 
-The interceptor operates at the boundary between the agent runtime and tool execution. In the current architecture, the relevant integration points are:
+```python
+class EffectInterceptor:
+    """Wraps tool execution with idempotency checks and journal bookkeeping.
 
-- **`BACKEND_TOOL_CALL_REQUESTED`** -- emitted when a backend driver requests a tool call. The interceptor observes this event.
-- **Tool execution dispatch** -- the point where the runtime actually calls the tool function. The interceptor wraps this call.
-- **`BACKEND_TOOL_CALL_EXECUTED`** -- emitted after tool execution. The interceptor confirms or fails the effect record before this event.
+    The runtime calls `execute()` instead of invoking the tool directly.
+    This method handles the full before/execute/after lifecycle.
+    """
 
-The interceptor follows the `RuntimeInterceptor` pattern (see invariants doc, section on RuntimeInterceptors): it is composable, does not rewrite domain semantics, and its bail decision is deterministic.
+    def __init__(
+        self,
+        policy: EffectPolicy,
+        journal: EffectJournal,
+        event_sink: EventSink,
+    ) -> None: ...
+
+    async def execute(
+        self,
+        descriptor: EffectDescriptor,
+        tool_fn: Callable[..., Awaitable[Any]],
+        tool_args: dict[str, Any],
+        attempt_number: int = 1,
+    ) -> Any:
+        """Execute a tool call with idempotency protection.
+
+        1. Check policy (allowed type, budget)
+        2. Check journal for prior execution
+        3. Register intent as PENDING
+        4. Call tool_fn(**tool_args)
+        5. Record outcome (COMPLETED or FAILED)
+
+        Returns the tool result (or cached result if duplicate).
+        Raises EffectDeniedError if policy rejects the effect.
+        """
+        ...
+```
+
+#### Integration Point: How the Runtime Calls the Interceptor
+
+The `EffectInterceptor` integrates as a **wrapper around tool dispatch**. The runtime holds a reference to the interceptor and delegates tool calls through it. This is not a decorator or monkey-patch; it is explicit composition:
+
+```python
+# In the runtime's tool dispatch path (pseudocode):
+
+# WITHOUT Effect Engine (current behavior):
+result = await tool_fn(**tool_args)
+
+# WITH Effect Engine (new behavior):
+descriptor = EffectDescriptor(
+    effect_type="tool_call",
+    tool_name=tool_name,
+    args_hash=canonical_args_hash(tool_args),
+    run_id=run_context.run_id,
+    step_id=current_step_id,
+    metadata={"endpoint": tool_fn.__name__},
+)
+attempt = run_context.metadata.get("attempt_number", 1)
+result = await effect_interceptor.execute(descriptor, tool_fn, tool_args, attempt)
+```
+
+The interceptor is **optional**. If not configured, the runtime calls `tool_fn` directly (preserving backward compatibility). The runtime checks for the interceptor's presence:
+
+```python
+if self._effect_interceptor is not None:
+    result = await self._effect_interceptor.execute(descriptor, tool_fn, tool_args, attempt)
+else:
+    result = await tool_fn(**tool_args)
+```
+
+#### Relationship to Existing Events
+
+The interceptor operates at the boundary between the agent runtime and tool execution. It coordinates with the existing event flow:
+
+- **`BACKEND_TOOL_CALL_REQUESTED`** -- emitted by the runtime before dispatching. The interceptor's `execute()` is called after this event.
+- **Tool execution** -- the interceptor calls `tool_fn` internally and wraps it with journal bookkeeping.
+- **`BACKEND_TOOL_CALL_EXECUTED`** -- emitted by the runtime after the interceptor returns. The interceptor has already recorded the outcome in the journal before this event fires.
 
 #### Before/After Pattern
 
@@ -415,11 +606,14 @@ Record result    result
 
 #### Stale Pending Handling
 
-A `PENDING` record with no corresponding running execution indicates a prior crash. The interceptor handles this by:
+A `PENDING` record whose `created_at` is older than `EffectPolicy.stale_pending_timeout_seconds` (default: 300 seconds / 5 minutes) is considered stale -- it indicates a prior crash where the execution never completed. The interceptor handles this by:
 
-1. Logging a warning with the stale record details
-2. Updating the record status to `FAILED` with `error_info="stale_pending_cleared"`
-3. Proceeding with fresh registration
+1. Checking `now() - record.created_at > policy.stale_pending_timeout_seconds`
+2. If stale: logging a warning with the stale record details
+3. Updating the record status to `FAILED` with `error_info="stale_pending_cleared"`
+4. Proceeding with fresh registration under the current attempt's key
+
+If the `PENDING` record is **not** stale (i.e., within the timeout window), the interceptor assumes another execution is in progress and raises `EffectDuplicateError` to prevent concurrent execution of the same effect.
 
 This is safe because: if the original execution actually completed but the journal update was lost, the worst case is re-execution -- which is the same as having no idempotency at all. The journal provides best-effort deduplication, not distributed transaction guarantees.
 
@@ -594,6 +788,7 @@ Following existing project conventions:
 | `EffectPolicy` | `miniautogen/policies/effect.py` |
 | `EffectPolicyEvaluator` | `miniautogen/policies/effect.py` |
 | `EffectDescriptor`, `EffectRecord`, `EffectStatus` | `miniautogen/core/contracts/effect.py` |
+| `EffectDeniedError`, `EffectDuplicateError`, `EffectJournalUnavailableError` | `miniautogen/core/contracts/effect.py` |
 | `EffectJournal` (ABC) | `miniautogen/stores/effect_journal.py` |
 | `InMemoryEffectJournal` | `miniautogen/stores/in_memory_effect_journal.py` |
 | `SQLAlchemyEffectJournal` | `miniautogen/stores/sqlalchemy_effect_journal.py` |
