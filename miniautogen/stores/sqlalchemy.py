@@ -1,4 +1,4 @@
-import json
+from miniautogen._json import dumps, loads
 from datetime import datetime
 from typing import cast
 
@@ -46,7 +46,7 @@ class SQLAlchemyMessageStore(MessageStore):
                     sender_id=message.sender_id,
                     message=message.content,
                     timestamp=message.timestamp,
-                    additional_info=json.dumps(message.additional_info),
+                    additional_info=dumps(message.additional_info),
                 )
                 session.add(db_message)
 
@@ -62,7 +62,7 @@ class SQLAlchemyMessageStore(MessageStore):
                     sender_id=cast(str, message.sender_id),
                     content=cast(str, message.message),
                     timestamp=cast(datetime, message.timestamp),
-                    additional_info=json.loads(cast(str, message.additional_info))
+                    additional_info=loads(cast(str, message.additional_info))
                     if message.additional_info
                     else {},
                 )

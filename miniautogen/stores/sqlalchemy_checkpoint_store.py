@@ -1,4 +1,4 @@
-import json
+from miniautogen._json import dumps, loads
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -43,12 +43,12 @@ class SQLAlchemyCheckpointStore(CheckpointStore):
                 if db_checkpoint is None:
                     db_checkpoint = DBCheckpoint(
                         run_id=run_id,
-                        payload_json=json.dumps(payload),
+                        payload_json=dumps(payload),
                         updated_at=datetime.now(timezone.utc),
                     )
                     session.add(db_checkpoint)
                 else:
-                    db_checkpoint.payload_json = json.dumps(payload)
+                    db_checkpoint.payload_json = dumps(payload)
                     db_checkpoint.updated_at = datetime.now(timezone.utc)
 
     async def get_checkpoint(self, run_id: str) -> dict[str, Any] | None:
@@ -58,7 +58,7 @@ class SQLAlchemyCheckpointStore(CheckpointStore):
             db_checkpoint = result.scalar_one_or_none()
             if db_checkpoint is None:
                 return None
-            return cast(dict[str, Any], json.loads(db_checkpoint.payload_json))
+            return cast(dict[str, Any], loads(db_checkpoint.payload_json))
 
     async def list_checkpoints(
         self,
@@ -75,7 +75,7 @@ class SQLAlchemyCheckpointStore(CheckpointStore):
             return [
                 cast(
                     dict[str, Any],
-                    json.loads(cp.payload_json),
+                    loads(cp.payload_json),
                 )
                 for cp in result.scalars().all()
             ]

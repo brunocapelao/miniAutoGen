@@ -8,8 +8,9 @@ Uses anyio.open_process for async subprocess management.
 
 from __future__ import annotations
 
-import json
 import uuid
+
+from miniautogen._json import dumps
 from typing import Any, AsyncIterator
 
 from miniautogen.backends.driver import AgentDriver
@@ -104,7 +105,7 @@ class CLIAgentDriver(AgentDriver):
 
         try:
             # Prepare input as JSON
-            input_data = json.dumps({
+            input_data = dumps({
                 "session_id": request.session_id,
                 "messages": request.messages,
                 "metadata": request.metadata,

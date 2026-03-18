@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
+
+from miniautogen._json import dumps
 
 import click
 
@@ -30,7 +31,7 @@ def echo_warning(msg: str) -> None:
 
 def echo_json(data: Any) -> None:
     """Print data as formatted JSON."""
-    click.echo(json.dumps(data, indent=2, default=str))
+    click.echo(dumps(data, indent=True))
 
 
 def echo_table(

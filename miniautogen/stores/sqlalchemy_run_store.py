@@ -1,4 +1,4 @@
-import json
+from miniautogen._json import dumps, loads
 from datetime import datetime, timezone
 from typing import Any, cast
 
@@ -43,12 +43,12 @@ class SQLAlchemyRunStore(RunStore):
                 if db_run is None:
                     db_run = DBRun(
                         run_id=run_id,
-                        payload_json=json.dumps(payload),
+                        payload_json=dumps(payload),
                         updated_at=datetime.now(timezone.utc),
                     )
                     session.add(db_run)
                 else:
-                    db_run.payload_json = json.dumps(payload)
+                    db_run.payload_json = dumps(payload)
                     db_run.updated_at = datetime.now(timezone.utc)
 
     async def get_run(self, run_id: str) -> dict[str, Any] | None:
@@ -58,7 +58,7 @@ class SQLAlchemyRunStore(RunStore):
             db_run = result.scalar_one_or_none()
             if db_run is None:
                 return None
-            return cast(dict[str, Any], json.loads(db_run.payload_json))
+            return cast(dict[str, Any], loads(db_run.payload_json))
 
     async def list_runs(
         self,
@@ -69,7 +69,7 @@ class SQLAlchemyRunStore(RunStore):
             stmt = select(DBRun)
             result = await session.execute(stmt)
             runs = [
-                cast(dict[str, Any], json.loads(r.payload_json))
+                cast(dict[str, Any], loads(r.payload_json))
                 for r in result.scalars().all()
             ]
             if status:
