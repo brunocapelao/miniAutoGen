@@ -7,7 +7,13 @@ that framework models do not mutate their inputs or leak shared references.
 from __future__ import annotations
 
 import copy
+
+# ---------------------------------------------------------------------------
+# Import the shared helper (available via tests/conftest.py)
+# ---------------------------------------------------------------------------
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -16,15 +22,8 @@ from deepdiff import DeepDiff
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 
-# ---------------------------------------------------------------------------
-# Import the shared helper (available via tests/conftest.py)
-# ---------------------------------------------------------------------------
-import sys
-from pathlib import Path
-
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from conftest import assert_no_mutation
-
 
 # ---------------------------------------------------------------------------
 # ExecutionEvent immutability tests
@@ -61,8 +60,10 @@ class TestExecutionEventImmutability:
         assert diff == {}, f"Event round-trip fidelity violation: {diff}"
 
     @pytest.mark.xfail(
-        reason="Known violation: infer_run_id_from_payload mutates self.run_id in model_validator(mode='after'). "
-               "Tracked for refactoring in WS2 (Immutable Core).",
+        reason=(
+            "Known violation: infer_run_id_from_payload mutates self.run_id in "
+            "model_validator(mode='after'). Tracked for refactoring in WS2 (Immutable Core)."
+        ),
         strict=True,
     )
     def test_event_run_id_inference_does_not_mutate_self(self) -> None:
