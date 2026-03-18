@@ -11,6 +11,7 @@ def assert_no_mutation(
     before_snapshot: dict[str, Any],
     after_snapshot: dict[str, Any],
     label: str = "",
+    ignore_order: bool = False,
 ) -> None:
     """Assert that two snapshots are structurally identical.
 
@@ -21,6 +22,8 @@ def assert_no_mutation(
         before_snapshot: State captured before the operation.
         after_snapshot: State captured after the operation.
         label: Optional label for the error message.
+        ignore_order: Whether to ignore list ordering during comparison.
+            Defaults to False (order matters) for strict mutation detection.
     """
-    diff = DeepDiff(before_snapshot, after_snapshot, ignore_order=True)
+    diff = DeepDiff(before_snapshot, after_snapshot, ignore_order=ignore_order)
     assert diff == {}, f"Immutability violation{' in ' + label if label else ''}: {diff}"
