@@ -1656,3 +1656,88 @@ Project ←── obrigatório para tudo
 
 Esta hierarquia de dependências determina a ordem obrigatória de criação:
 **Project → Engine → Agent → Pipeline → Run**
+
+---
+
+## Matriz de Maturidade da Implementação
+
+Estado real da implementação por componente. Actualizado a cada ciclo de desenvolvimento.
+
+### Contratos e Modelos (Design Layer)
+
+| Componente | Estado | Notas |
+|-----------|--------|-------|
+| AgentSpec + 8 sub-configs | ✅ Completo | Pydantic, validação forte, todos os campos |
+| WorkflowPlan / Step | ✅ Completo | Sequential, fan-out, synthesis |
+| DeliberationPlan / State | ✅ Completo | 5 fases, peer review, sufficiency check |
+| AgenticLoopPlan / State | ✅ Completo | Router, stagnation detection, stop conditions |
+| CompositePlan | ✅ Completo | Sequência de modos com input/output mapping |
+| ExecutionEvent (48 tipos) | ✅ Completo | 8 categorias, lean model |
+| RunContext / RunResult | ✅ Completo | Imutável, correlation_id, metadata |
+| Agent Protocols | ✅ Completo | WorkflowAgent, DeliberationAgent, ConversationalAgent |
+| Store Contracts | ✅ Completo | RunStore, CheckpointStore, MessageStore (ABC) |
+| ApprovalRequest/Response | ✅ Completo | Protocol + AutoApproveGate |
+
+### Runtimes (Execution Layer)
+
+| Componente | Estado | Notas |
+|-----------|--------|-------|
+| PipelineRunner | ✅ Completo | Approval, retry, timeout, persistence, events |
+| WorkflowRuntime | ✅ Completo | Seq + parallel + synthesis. Emite eventos. |
+| DeliberationRuntime | ✅ Completo | 5 fases completas. Emite eventos. |
+| AgenticLoopRuntime | ✅ Completo | Router + stagnation. Emite eventos. |
+| CompositeRuntime | ✅ Completo | Encadeia modos com context threading. |
+
+### Implementações Concretas (Integration Layer)
+
+| Componente | Estado | Gap |
+|-----------|--------|-----|
+| Agent class (legacy) | ⚠ Desalinhado | Só tem `generate_reply()`. NÃO implementa os 3 protocols (WorkflowAgent, DeliberationAgent, ConversationalAgent). Precisa de AgentFactory. |
+| AgentAPIDriver (HTTP) | ✅ Funcional | Bridge HTTP para OpenAI-compatible. Capabilities todas `false`. |
+| ACP Driver | ❌ Stub | Declarado no enum, sem implementação. |
+| PTY Driver | ❌ Stub | Declarado no enum, sem implementação. |
+| InMemoryRunStore | ✅ Completo | Dict-based, async. |
+| InMemoryCheckpointStore | ✅ Completo | Dict-based, async. |
+| SQLAlchemyRunStore | ✅ Completo | ORM, JSON serialisation, async. |
+| SQLAlchemyCheckpointStore | ✅ Completo | ORM, JSON serialisation, async. |
+| InMemoryMessageStore | ✅ Completo | List-based, async. |
+| EventSink (4 implementações) | ✅ Completo | InMemory, Null, Composite, Filtered. |
+| TuiEventSink | ✅ Completo | Bridge anyio → Textual via MemoryObjectStream. |
+
+### Policies (Enforcement Layer)
+
+| Componente | Estado | Gap |
+|-----------|--------|-----|
+| ApprovalPolicy + Gate | ✅ Integrado | Wired ao PipelineRunner. Funciona. |
+| RetryPolicy | ✅ Integrado | Via tenacity. Wired ao PipelineRunner. |
+| BudgetPolicy + Tracker | ⚠ Parcial | BudgetTracker existe mas NÃO está wired aos runtimes. Ninguém chama `.record()` automaticamente. |
+| ValidationPolicy | ⚠ Parcial | Utility `validate_with_policy()` existe mas NÃO está wired. |
+| PermissionPolicy | ⚠ Parcial | Utility `check_permission()` existe mas NÃO está wired. |
+| ExecutionPolicy | ⚠ Stub | Só tem `timeout_seconds`. Sem composição real. |
+| Event Bus / Listener | ❌ Ausente | Eventos emitidos mas sem subscribers automáticos. Policies não reagem a eventos. |
+
+### CLI & TUI (Interface Layer)
+
+| Componente | Estado | Notas |
+|-----------|--------|-------|
+| CLI: init, check, run | ✅ Completo | Bootstrap, validação, execução |
+| CLI: engine CRUD | ✅ Completo | create/list/show/update/delete, dual mode |
+| CLI: agent CRUD | ✅ Completo | create/list/show/update/delete, dual mode |
+| CLI: pipeline CRUD | ✅ Completo | 4 modos, participants, policies |
+| CLI: sessions | ✅ Completo | list/show/clean |
+| CLI: server | ✅ Completo | start/stop/status/logs |
+| TUI: Workspace | ✅ Completo | Team sidebar + Interaction log |
+| TUI: CRUD Views | ✅ Completo | Engines, agents, pipelines, runs, events |
+| TUI: HITL Approval | ✅ Completo | Inline banner com approve/deny |
+| TUI: Data Provider | ✅ Completo | Bridge TUI ↔ CLI services |
+
+### Lacunas Críticas para Produção (Roadmap)
+
+| Lacuna | Impacto | Prioridade |
+|--------|---------|-----------|
+| **AgentFactory** — converter AgentSpec + Driver em protocol-compliant agent | Runtimes avançados falham sem isto | 🔴 Crítica |
+| **Event Bus** — subscribers automáticos para policies reagirem a eventos | Policies de budget/validation não funcionam em produção | 🔴 Crítica |
+| **ACP/PTY Drivers** — backends locais e Anthropic | Limitado a HTTP bridge | 🟡 Alta |
+| **Policy Wiring** — ligar Budget/Validation/Permission aos runtimes | Enforcement é manual | 🟡 Alta |
+| **YAML Examples** — ficheiros de exemplo no repo | Developers não sabem a estrutura | 🟢 Média |
+| **Config ↔ AgentSpec bridge** — carregar agents/ directory automaticamente | CLI e runtime desconectados | 🟡 Alta |
