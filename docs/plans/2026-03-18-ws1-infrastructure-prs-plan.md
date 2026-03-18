@@ -25,7 +25,7 @@ git log --oneline -1  # Expected: 0d5f0fc docs: add implementation maturity matr
 
 ## TG-1: orjson Integration
 
-**Branch:** `infra/orjson-integration`
+**Branch:** `chore/orjson-integration`
 
 ### Task 1.1: Create feature branch and add orjson dependency
 
@@ -36,7 +36,7 @@ git log --oneline -1  # Expected: 0d5f0fc docs: add implementation maturity matr
 **How:**
 
 ```bash
-git checkout -b infra/orjson-integration main
+git checkout -b chore/orjson-integration main
 ```
 
 Edit `/Users/brunocapelao/Projects/miniAutoGen/pyproject.toml` -- add `orjson` after the `ruamel-yaml` line (line 26):
@@ -780,7 +780,7 @@ git add miniautogen/pipeline/components/components.py
 git add pyproject.toml
 git add tests/core/test_json_shim.py
 git add tests/core/contracts/test_base_model.py
-git commit -m "feat(infra): integrate orjson via centralized JSON shim and Pydantic base model
+git commit -m "chore(core): integrate orjson via centralized JSON shim and Pydantic base model
 
 - Add miniautogen/_json.py shim with orjson primary / stdlib fallback
 - Add MiniAutoGenBaseModel with orjson-backed model_json_loads/dumps
@@ -833,7 +833,7 @@ git log --oneline -1
 
 ## TG-2: uv Migration
 
-**Branch:** `infra/uv-migration`
+**Branch:** `chore/uv-migration`
 
 ### Task 2.1: Create feature branch and install uv
 
@@ -845,7 +845,7 @@ git log --oneline -1
 
 ```bash
 git checkout main
-git checkout -b infra/uv-migration
+git checkout -b chore/uv-migration
 ```
 
 Install uv if not present:
@@ -1098,7 +1098,7 @@ uv run mypy miniautogen/
 git add pyproject.toml
 git add uv.lock
 git rm poetry.lock  # records the deletion
-git commit -m "build: migrate from Poetry to uv with PEP 621 pyproject.toml
+git commit -m "chore(core): migrate from Poetry to uv with PEP 621 pyproject.toml
 
 - Convert [tool.poetry.*] sections to PEP 621 [project.*] format
 - Replace poetry-core build backend with hatchling
@@ -1150,7 +1150,7 @@ git diff --name-only HEAD~1
 
 ## TG-3: deepdiff for QA
 
-**Branch:** `infra/deepdiff-qa`
+**Branch:** `chore/deepdiff-qa`
 
 ### Task 3.1: Create feature branch and install deepdiff
 
@@ -1162,7 +1162,7 @@ git diff --name-only HEAD~1
 
 ```bash
 git checkout main
-git checkout -b infra/deepdiff-qa
+git checkout -b chore/deepdiff-qa
 ```
 
 If TG-2 has NOT been merged yet (pyproject.toml still uses Poetry format), add deepdiff manually:
@@ -1576,7 +1576,7 @@ git add pyproject.toml  # only if deepdiff was added here (not in TG-2)
 git add tests/conftest.py
 git add tests/core/contracts/test_immutability.py
 git add tests/stores/test_store_round_trip.py
-git commit -m "test(qa): add deepdiff immutability guards and store round-trip fidelity tests
+git commit -m "test(core): add deepdiff immutability guards and store round-trip fidelity tests
 
 - Add assert_no_mutation helper in tests/conftest.py
 - Add 8 immutability tests for ExecutionEvent and RunContext
@@ -1628,10 +1628,10 @@ git log --oneline -1
 
 After all three task groups are complete (on their respective branches), verify each branch independently:
 
-### TG-1 Verification (on `infra/orjson-integration`):
+### TG-1 Verification (on `chore/orjson-integration`):
 
 ```bash
-git checkout infra/orjson-integration
+git checkout chore/orjson-integration
 
 # 1. No remaining direct json imports in migrated modules
 python -c "
@@ -1663,10 +1663,10 @@ python -c "from miniautogen.core.contracts.base import MiniAutoGenBaseModel; pri
 python -m pytest tests/ -v --timeout=60
 ```
 
-### TG-2 Verification (on `infra/uv-migration`):
+### TG-2 Verification (on `chore/uv-migration`):
 
 ```bash
-git checkout infra/uv-migration
+git checkout chore/uv-migration
 
 # 1. No poetry.lock
 test ! -f poetry.lock && echo "OK" || echo "FAIL"
@@ -1681,10 +1681,10 @@ uv run python -c "import miniautogen; print('OK')"
 uv run pytest tests/ -x --timeout=60
 ```
 
-### TG-3 Verification (on `infra/deepdiff-qa`):
+### TG-3 Verification (on `chore/deepdiff-qa`):
 
 ```bash
-git checkout infra/deepdiff-qa
+git checkout chore/deepdiff-qa
 
 # 1. Helper exists
 python -c "import sys; sys.path.insert(0, 'tests'); from conftest import assert_no_mutation; print('Helper OK')"
@@ -1703,8 +1703,8 @@ python -m pytest tests/core/contracts/test_immutability.py --collect-only -q
 
 | Task Group | Branch | Tasks | Commit Message |
 |------------|--------|-------|----------------|
-| TG-1: orjson | `infra/orjson-integration` | 1.1--1.11 | `feat(infra): integrate orjson via centralized JSON shim and Pydantic base model` |
-| TG-2: uv | `infra/uv-migration` | 2.1--2.7 | `build: migrate from Poetry to uv with PEP 621 pyproject.toml` |
-| TG-3: deepdiff | `infra/deepdiff-qa` | 3.1--3.6 | `test(qa): add deepdiff immutability guards and store round-trip fidelity tests` |
+| TG-1: orjson | `chore/orjson-integration` | 1.1--1.11 | `feat(infra): integrate orjson via centralized JSON shim and Pydantic base model` |
+| TG-2: uv | `chore/uv-migration` | 2.1--2.7 | `build: migrate from Poetry to uv with PEP 621 pyproject.toml` |
+| TG-3: deepdiff | `chore/deepdiff-qa` | 3.1--3.6 | `test(qa): add deepdiff immutability guards and store round-trip fidelity tests` |
 
 All three branches are independent and can be merged in any order.
