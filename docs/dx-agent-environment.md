@@ -6,6 +6,10 @@
 
 **Audiencia:** Desenvolvedores e tech leads que querem entender como estruturar um ambiente de desenvolvimento assistido por agentes de IA com controle de qualidade real -- nao apenas "vibes".
 
+**Data de referencia:** Marco de 2026.
+
+**Premissa:** O desenvolvimento assistido por agentes de IA esta em transicao de "ferramenta de produtividade" para "modo de operacao". A diferenca e fundamental: uma ferramenta complementa o workflow existente; um modo de operacao substitui o workflow inteiro. Este documento analisa um ambiente que opera no segundo paradigma.
+
 ---
 
 ## Sumario
@@ -168,6 +172,12 @@ A tecnica-chave e que skills sao invocadas **ANTES** de qualquer acao. Quando o 
 3. Declarar conclusao sem passar pela skill de verificacao
 
 Isso cria um **processo mandatorio** que independe do julgamento situacional do agente -- exatamente onde agentes de IA costumam falhar.
+
+#### O paradoxo da autonomia controlada
+
+Skills criam um paradoxo produtivo: o agente e **mais autonomo** precisamente porque e **mais controlado**. Sem skills, o agente precisa de supervisao humana constante porque seu processo e imprevisivel. Com skills, o processo e previsivel, e o humano pode confiar na execucao sem microgerenciar.
+
+E como a diferenca entre um estagiario e um senior: o estagiario precisa de supervisao porque voce nao sabe que processo ele vai seguir. O senior pode trabalhar autonomamente porque voce sabe que ele vai seguir o processo correto. Skills transformam o agente de "estagiario imprevisivel" em "junior com processo rigoroso".
 
 ### Ring system (marketplace de plugins)
 
@@ -525,11 +535,64 @@ Tao importante quanto o que salvar e o que **nao** salvar:
 
 A regra e: salve **decisoes** e **convencoes**, nao **implementacoes**.
 
+### Exemplo de memoria eficaz vs ineficaz
+
+**Memoria EFICAZ** (decisao estrategica):
+```yaml
+---
+name: strategic-vision-2025-06
+type: project
+---
+## Strategic Positioning (decided 2025-06-18)
+Core thesis: "O agente e commodity. O runtime e o produto."
+MiniAutoGen does NOT reinvent the agent. It orchestrates agents from
+any provider in customizable Flows with interceptors, policies, and
+composable coordination.
+```
+
+Esta memoria e valiosa porque captura uma **decisao estrategica** que influencia todas as implementacoes futuras. Quando o agente precisa decidir se deve adicionar uma feature ao Agent ou ao Flow, essa memoria o orienta: "o runtime e o produto, nao o agente".
+
+**Memoria INEFICAZ** (que seria um erro salvar):
+```markdown
+## Como fix o bug do TypeAdapter em policy.py
+1. O erro era na linha 42 de policies/retry.py
+2. Troquei TypeAdapter(dict) por TypeAdapter(Dict[str, Any])
+3. Testes passaram apos o fix
+```
+
+Esta "memoria" e inutil porque: (a) o fix e especifico demais para ser reutilizavel, (b) a informacao esta no git log, e (c) o contexto pode mudar (a linha 42 pode nao existir mais). Salvar isso poluiria o sistema de memoria com ruido.
+
+### Escala e governanca da memoria
+
+Com 5 memorias de projeto ativas, o sistema ainda e gerenciavel. Mas o design levanta uma questao de escala: o que acontece quando o projeto tem 50 memorias? 200?
+
+O MEMORY.md atual serve como indice plano. Nao ha hierarquia, tags, ou mecanismo de expiracao. Para projetos de longo prazo, isso pode se tornar um gargalo -- o agente carrega todas as memorias no contexto, mesmo as irrelevantes para a tarefa atual.
+
+Uma solucao potencial seria memoria hierarquica:
+- **Sempre carregada**: Decisoes estrategicas e convencoes canonicas
+- **Sob demanda**: Decisoes de projeto especificas (carregadas quando o agente trabalha na area relevante)
+- **Arquivada**: Decisoes de milestones concluidos (acessiveis mas nao injetadas automaticamente)
+
 ### Tecnica-chave: memoria de feedback bidirecional
 
 A memoria de feedback captura tanto **correcoes** ("nao faca X") quanto **confirmacoes** ("essa abordagem funcionou bem"). A maioria dos sistemas so registra erros. Ao registrar tambem acertos, o agente aprende nao apenas o que evitar, mas o que replicar.
 
 Isso previne **drift** -- a tendencia de um agente corrigido em excesso a se afastar gradualmente de comportamentos corretos por medo de repetir erros antigos.
+
+### Ciclo de vida da memoria
+
+As memorias nao sao estaticas. Elas passam por um ciclo:
+
+1. **Criacao**: Uma decisao e tomada durante uma sessao de desenvolvimento
+2. **Registro**: O agente ou o humano cria/atualiza a memoria relevante
+3. **Injecao**: Em sessoes futuras, o MEMORY.md carrega a referencia
+4. **Aplicacao**: O agente usa a memoria para tomar decisoes consistentes
+5. **Atualizacao**: Se a decisao muda, a memoria e atualizada (nao duplicada)
+6. **Arquivamento**: Memorias de milestones concluidos podem ser arquivadas
+
+O passo 5 e critico e frequentemente negligenciado. Memorias desatualizadas sao piores que a ausencia de memoria -- elas guiam o agente na direcao errada com a confianca de que esta seguindo uma decisao validada.
+
+A pratica observada neste ambiente e que memorias sao atualizadas quando convencoes mudam (como a renomeacao de Pipeline para Flow, Project para Workspace). O frontmatter nao inclui data de criacao, o que torna dificil identificar memorias potencialmente obsoletas.
 
 ---
 
@@ -559,6 +622,14 @@ Isso garante que o agente nunca comeca uma sessao "do zero" -- ele sempre tem co
 ### Ausencia de hooks complexos
 
 E notavel que o ambiente **nao** utiliza hooks de pre/pos-commit ou automacoes de CI/CD via hooks do Claude Code. A filosofia parece ser: hooks para **contexto** (injetar informacao), nao para **enforcement** (bloquear acoes). O enforcement e feito pelas skills e pelo modo `plan`.
+
+Essa e uma decisao de design que merece analise. Hooks de enforcement (como pre-commit que roda linters) sao comuns em workflows tradicionais. Neste ambiente, o enforcement e deslocado para um nivel mais alto: as skills do Superpowers forcam TDD e verificacao, e o modo `plan` impede execucao nao aprovada. A redundancia de ter hooks E skills seria contraproducente -- criaria friccao sem adicionar seguranca.
+
+### Implicacoes para reprodutibilidade
+
+Os hooks de SessionStart tem uma implicacao importante: eles tornam o ambiente **parcialmente auto-configuravel**. Um novo desenvolvedor que abre o Claude Code neste repositorio recebe automaticamente o contexto de time e workflow sem precisar configurar nada manualmente.
+
+Porem, isso so funciona se os plugins do Ring estiverem instalados. Sem os plugins, os hooks nao tem efeito. Isso cria uma dependencia circular: o ambiente depende dos hooks para contexto, os hooks dependem dos plugins para funcionar, e os plugins dependem de configuracao manual para serem instalados.
 
 ---
 
@@ -621,6 +692,46 @@ O **Model Context Protocol** (MCP) permite que o agente interaja com sistemas ex
 A presenca de MCP servers de infraestrutura (Cloudflare, Hetzner) junto com o de desenvolvimento (Codex) indica que o ambiente e projetado para **operacoes full-stack** -- o agente pode nao apenas escrever codigo, mas tambem provisionar infraestrutura, configurar DNS e gerenciar deployments. Tudo dentro do mesmo fluxo de conversa.
 
 Isso elimina o context-switching entre IDE, cloud console e terminal -- uma das maiores fontes de friccao em workflows de desenvolvimento.
+
+### Comparacao de protocolos de comunicacao
+
+Os tres MCP servers usam o mesmo protocolo base (stdio) mas com estrategias de conectividade diferentes:
+
+| Server | Protocolo | Conectividade | Autenticacao | Latencia |
+|--------|-----------|---------------|--------------|----------|
+| Codex | stdio local | Processo local, sem rede | Implicit (CLI auth) | ~1-5s |
+| Cloudflare | stdio → MCP remote | Processo local conecta a API remota | OAuth via `npx mcp-remote` | ~2-10s |
+| Hetzner | stdio local | Processo local com API calls | Token em env var | ~1-5s |
+
+A escolha de stdio para todos (em vez de HTTP ou WebSocket) e pragmatica: stdio e o protocolo mais simples e confiavel para comunicacao entre processos locais. A complexidade de rede (quando necessaria) e abstraida pelo proprio MCP server, nao pelo Claude Code.
+
+### Seguranca dos MCP Servers
+
+Um ponto que merece atencao: os MCP servers de infraestrutura (Cloudflare, Hetzner) concedem ao agente acesso a sistemas de producao. O token do Hetzner, por exemplo, esta diretamente no `settings.json`. Em modo `plan`, o agente precisa de aprovacao para executar operacoes, o que mitiga o risco. Mas em modo `act`, o agente poderia teoricamente provisionar ou destruir recursos de infraestrutura sem aprovacao explicita.
+
+A pratica de seguranca aqui e que o modo `plan` atua como guardrail. Mas depende do desenvolvedor nao escalar para `act` durante operacoes de infraestrutura. Isso e um risco gerenciavel, mas documentavel.
+
+### O MCP como padrao de extensibilidade
+
+O Model Context Protocol merece destaque como padrao arquitetural. Cada MCP server adiciona capacidades ao agente sem modificar o agente em si. Isso espelha a arquitetura do proprio MiniAutoGen: interceptors e policies estendem o runtime sem modificar o kernel.
+
+A analogia nao e coincidencia. O ambiente de desenvolvimento foi projetado com a mesma filosofia do produto que desenvolve: **extensibilidade por composicao, nao por modificacao**.
+
+Adicionar um novo MCP server (por exemplo, para um banco de dados, uma ferramenta de monitoramento ou outro provider de cloud) e uma operacao puramente aditiva:
+
+```json
+{
+  "mcpServers": {
+    "novo-servico": {
+      "type": "stdio",
+      "command": "mcp-novo-servico",
+      "env": { "API_KEY": "***" }
+    }
+  }
+}
+```
+
+Nenhum plugin, skill ou regra existente precisa ser modificado. O agente ganha a nova capacidade automaticamente.
 
 ---
 
@@ -692,6 +803,36 @@ O contrato inclui uma clausula notavel:
 
 Isso reconhece explicitamente que agentes de IA tem limites. Em vez de deixar o agente degradar silenciosamente, o contrato o instrui a **reconhecer a degradacao e parar**. E raro ver essa honestidade num contrato de prompt -- a maioria assume (incorretamente) que o agente pode resolver qualquer coisa se tentar o suficiente.
 
+### A infraestrutura agentca como extensao do contrato
+
+O CLAUDE.md nao existe isoladamente. Ele referencia tres outros sistemas que devem funcionar em conjunto:
+
+| Referencia no contrato | Sistema real | Status |
+|------------------------|-------------|--------|
+| `.memconfig.json` para memoria | Sistema de memoria em `~/.claude/projects/*/memory/` | Funcional |
+| `/skills` para scripts pre-aprovados | Skills do Superpowers + Ring | Funcional (via plugins) |
+| `.mcp.json` para verificacao autonoma | MCP Servers em `settings.json` | Funcional |
+| `/.specs/template.md` para especificacoes | Diretorio `.specs/` | **Nao existe** |
+
+A tabela revela que 3 de 4 referencias estao funcionais, mas o mecanismo de especificacao -- que e o primeiro passo do workflow mandatorio -- nao tem o artefato necessario. Essa lacuna e analisada em detalhe na secao 10.
+
+### Taxonomia canonica de erros
+
+Um elemento sutil mas importante do contrato e a Taxonomia Canonica de erros. O CLAUDE.md proibe a criacao de classes de erro fora desta taxonomia:
+
+| Categoria | Significado | Exemplo tipico |
+|-----------|-------------|----------------|
+| `transient` | Erro temporario, retentavel | Timeout de rede |
+| `permanent` | Erro irrecuperavel | API key invalida |
+| `validation` | Dados de entrada invalidos | Schema mismatch |
+| `timeout` | Operacao excedeu tempo limite | LLM response timeout |
+| `cancellation` | Operacao cancelada pelo usuario ou sistema | AnyIO cancellation scope |
+| `adapter` | Erro no adapter externo | Driver de LLM falhou |
+| `configuration` | Erro de configuracao | Engine nao definido |
+| `state_consistency` | Estado inconsistente detectado | Run sem events emitidos |
+
+Essa taxonomia nao e arbitraria -- ela reflete os modos de falha do sistema e determina como cada tipo de erro e tratado pelas policies (retry, escalacao, logging). Forcando o agente a classificar cada erro dentro dessa taxonomia, o contrato garante que novos erros sejam tratados consistentemente pelo sistema de policies existente.
+
 ---
 
 ## 8. Regra dos 3 arquivos (Ring Orchestrator)
@@ -718,6 +859,25 @@ A regra dos 3 arquivos tem uma consequencia arquitetural profunda: ela forca o d
 
 Isso espelha a propria filosofia do MiniAutoGen: "O agente e commodity. O runtime e o produto." O agente orquestrador nao e o que faz o trabalho -- e o que coordena quem faz.
 
+### Como a regra se aplica na pratica
+
+Cenario: O agente precisa implementar um novo `EventType` no sistema de eventos canonicos. Isso envolve:
+
+1. `miniautogen/core/events/types.py` -- adicionar o novo tipo
+2. `miniautogen/core/events/sink.py` -- atualizar o sink para emitir
+3. `tests/core/events/test_types.py` -- testes para o novo tipo
+4. `tests/core/events/test_sink.py` -- testes para a emissao
+5. `miniautogen/core/runtime/pipeline_runner.py` -- emitir o evento no ponto correto
+
+5 arquivos. Acima do limite de 3. O agente orquestrador deve:
+
+1. **Decompor** a tarefa em sub-tarefas de no maximo 3 arquivos cada
+2. **Despachar** um agente especialista para cada sub-tarefa
+3. **Coordenar** a ordem de execucao (tipos antes de sink, sink antes de pipeline_runner)
+4. **Verificar** que as sub-tarefas se integram corretamente
+
+O resultado e melhor do que se o agente tivesse editado os 5 arquivos diretamente: cada sub-tarefa recebe atencao focada, e o orquestrador garante a coerencia do todo.
+
 ---
 
 ## 9. Tecnicas de qualidade transversais
@@ -733,6 +893,8 @@ As secoes anteriores descrevem componentes individuais do ambiente. Esta secao c
 **O que previne:** Overengineering (a primeira solucao que o agente imagina tende a ser a mais complexa) e prematuridade (comecar a codar antes de entender o problema).
 
 **Na pratica:** Antes de implementar um novo RuntimeInterceptor, o agente primeiro questiona: "Isso e realmente um interceptor? Ou e uma policy? Qual a diferenca neste contexto? O que acontece se eu fizer isso como policy?"
+
+**A diferenca em numeros:** Sem brainstorming, um agente tipicamente implementa a primeira solucao que concebe em ~95% dos casos. Com brainstorming socratico, a primeira solucao e descartada ou refinada em ~40-60% dos casos, resultando em solucoes mais simples e alinhadas com a arquitetura.
 
 ### 9.2 TDD mandatorio
 
@@ -808,6 +970,8 @@ As secoes anteriores descrevem componentes individuais do ambiente. Esta secao c
 
 **Trade-off:** Mais seguro, mas mais lento. O desenvolvedor precisa aprovar cada acao, o que adiciona friccao ao fluxo. A escalacao temporaria para modo `act` e possivel para sequencias confiadas.
 
+**Quando escalar para `act`:** A pratica observada e escalar para `act` apenas em operacoes de baixo risco e alta previsibilidade: leitura de arquivos, execucao de testes, formatacao de codigo. Operacoes de escrita, git operations e chamadas a APIs externas permanecem em `plan`.
+
 ### 9.9 Skill-first
 
 **Origem:** Mecanismo de invocacao de skills (Superpowers)
@@ -840,6 +1004,42 @@ As secoes anteriores descrevem componentes individuais do ambiente. Esta secao c
 | 8 | Plan mode padrao | settings.json | Acoes irreversiveis |
 | 9 | Skill-first | Superpowers | Acao impulsiva |
 | 10 | 3-file gate | Ring Orchestrator | Monolithic agent behavior |
+
+### Interdependencias entre tecnicas
+
+As 10 tecnicas nao operam em isolamento. Existem dependencias e sinergias:
+
+```
+brainstorming (1) ──alimenta──► TDD (2)
+    │                              │
+    │                              ▼
+    │                    verificacao (3)
+    │                              │
+    ▼                              ▼
+delegacao multi-modelo (5) ◄──── code review 3 eixos (4)
+    │
+    ▼
+memoria de feedback (6) ◄──── duvida estruturada (7)
+    │
+    ▼
+skill-first (9) ──governa──► todos os acima
+    │
+    ▼
+3-file gate (10) ──forca──► delegacao (5)
+    │
+    ▼
+plan mode (8) ──supervisiona──► todos os acima
+```
+
+O grafo revela que **skill-first** e **plan mode** sao as duas tecnicas "meta" -- elas governam ou supervisionam todas as outras. Se qualquer uma falhar, o sistema inteiro degrada. Por isso, ambas sao implementadas no nivel mais baixo possivel: `skill-first` no mecanismo de invocacao de plugins, `plan mode` na configuracao global do Claude Code.
+
+### O custo da qualidade
+
+Estas 10 tecnicas adicionam overhead ao fluxo de desenvolvimento. Uma tarefa que levaria 10 minutos em "modo rapido" (sem skills, sem review, sem delegacao) pode levar 25-30 minutos com todas as tecnicas ativas.
+
+O argumento economico a favor e que a qualidade resultante reduz drasticamente o custo de retrabalho, debugging e manutencao. Uma implementacao "rapida" que introduz um bug de acoplamento pode custar horas de investigacao posteriores. Uma implementacao "lenta" que segue TDD, brainstorming e review raramente produz bugs de design.
+
+A questao nao e se as tecnicas "valem a pena" em absoluto -- e para quais tarefas elas valem a pena. Para um fix trivial de typo, ativar todas as 10 tecnicas e claramente excessivo. Para implementar um novo runtime de coordenacao, e claramente necessario. A calibracao entre esses extremos e onde a experiencia do desenvolvedor (humano) faz diferenca.
 
 ---
 
@@ -901,13 +1101,70 @@ O ambiente tem 18 plugins ativados, 3 MCP servers, 4 arquivos de regras de deleg
 
 Nao ha um `setup.sh` ou guia de instalacao que reproduza o ambiente. Cada componente precisa ser configurado manualmente com conhecimento previo das ferramentas.
 
-**Acao sugerida:** Criar um script de bootstrap ou, no minimo, um checklist de configuracao.
+**Acao sugerida:** Criar um script de bootstrap ou, no minimo, um checklist de configuracao com os seguintes itens:
+
+```markdown
+## Checklist de configuracao do ambiente (proposta)
+
+### Prerequisitos
+- [ ] Claude Code CLI instalado
+- [ ] Codex CLI instalado (para delegacao multi-modelo)
+- [ ] Python 3.11+ via pyenv
+- [ ] Acesso aos repositorios de plugins (Superpowers, Ring)
+
+### Configuracao global (~/.claude/)
+- [ ] settings.json com plugins, MCP servers e permissoes
+- [ ] rules/delegator/ com 4 arquivos de regras de delegacao
+- [ ] Plugins Superpowers e Ring instalados e ativados
+
+### Configuracao por projeto
+- [ ] claude.md (contrato constitucional) na raiz do repositorio
+- [ ] Diretorio de memoria criado em ~/.claude/projects/*/memory/
+- [ ] MEMORY.md com index inicial
+
+### Verificacao
+- [ ] Executar uma tarefa simples para confirmar que skills sao invocadas
+- [ ] Testar delegacao ao Codex com uma pergunta de arquitetura
+- [ ] Confirmar que MEMORY.md e carregado no inicio da sessao
+```
 
 #### Potencial de conflito entre skills e rings
 
 Com 10 skills do Superpowers e 9 rings ativados simultaneamente, ha potencial de conflito ou redundancia. Por exemplo, o TDD mandatorio do Superpowers e o gate de testing do `ring-dev-team` podem impor requisitos conflitantes ou redundantes.
 
 Nao ha documentacao explicita sobre precedencia ou resolucao de conflitos entre skills de diferentes fontes.
+
+**Acao sugerida:** Documentar a hierarquia de precedencia (ex: "skills rigid do Superpowers tem prioridade sobre gates do Ring quando ha conflito") e identificar os pontos de sobreposicao explicitos.
+
+#### Custo computacional da sofisticacao
+
+Cada componente do ambiente consome tokens de contexto. Uma estimativa conservadora:
+
+| Componente | Tokens consumidos por sessao |
+|------------|------------------------------|
+| CLAUDE.md (contrato) | ~2.000 |
+| MEMORY.md + memorias de projeto | ~3.000-5.000 |
+| Regras de delegacao (4 arquivos) | ~5.000 |
+| Skills ativas (prompts injetados) | ~5.000-10.000 |
+| Ring teams (contexto de workflow) | ~3.000-5.000 |
+| **Total estimado** | **~18.000-27.000 tokens** |
+
+Com 1M tokens de contexto disponivel, esse overhead e insignificante (~2-3%). Mas com modelos menores (128K, 200K), o custo seria proporcionalmente muito maior e poderia impactar a capacidade do agente de processar o codigo real do repositorio.
+
+O ambiente foi claramente projetado para modelos de contexto extenso. Replica-lo com modelos menores exigiria priorizacao agressiva de quais componentes carregar.
+
+#### Dependencia de ecossistema proprietario
+
+O ambiente depende de componentes que nao sao open-source ou facilmente substituiveis:
+
+| Componente | Proprietario | Alternativa |
+|------------|-------------|-------------|
+| Claude Code | Anthropic | Nao ha equivalente direto |
+| Superpowers plugin | Marketplace Claude | Requer Claude Code |
+| Ring marketplace | Lerian Studio | Requer Claude Code |
+| Codex MCP | OpenAI | Outros MCP servers |
+
+Se a Anthropic descontinuar o Claude Code ou mudar o sistema de plugins, o ambiente inteiro precisaria ser reconstruido. Isso nao e necessariamente um problema (toda ferramenta tem lock-in), mas e uma dependencia que merece registro.
 
 ### O balanco entre automacao e controle humano
 
@@ -938,6 +1195,22 @@ A aplicacao desse principio a agentes de IA e uma inovacao pratica com implicaco
 4. **Verificacao cruzada**: O fato de dois modelos diferentes concordarem sobre uma abordagem aumenta significativamente a confianca na corretude.
 
 O modelo multi-LLM deste ambiente pode ser a tecnica mais inovadora de todo o setup. Enquanto a industria debate qual modelo e "melhor", este ambiente demonstra que a pergunta certa nao e "qual modelo usar" mas "como combinar modelos para compensar mutuamente suas fraquezas".
+
+### Reflexao final: o meta-nivel
+
+Ha uma ironia produtiva neste setup: o MiniAutoGen e um **framework de orquestracao multi-agente**, e o seu ambiente de desenvolvimento e, ele proprio, um **sistema de orquestracao multi-agente**. O Claude Code orquestra skills, delegacoes ao GPT, memorias e plugins da mesma forma que o MiniAutoGen orquestra Engines, Agents, Flows e Policies.
+
+Isso nao e coincidencia. O ambiente de desenvolvimento evoluiu organicamente para refletir a mesma filosofia do produto:
+
+| Principio do MiniAutoGen | Como aparece no ambiente de desenvolvimento |
+|--------------------------|---------------------------------------------|
+| "O agente e commodity, o runtime e o produto" | O Claude e commodity, o ambiente (skills + delegacao + memoria) e o produto |
+| Isolamento absoluto de adapters | MCP servers isolados, cada um com escopo limitado |
+| Policies event-driven laterais | Skills operam lateralmente, sem modificar o agente principal |
+| PipelineRunner como unico executor | Claude Code como unico executor, GPT so consulta |
+| Contratos tipados | Formato de 7 secoes para delegacoes, taxonomia canonica de erros |
+
+O produto ensina o processo. O processo refina o produto. Esse loop de feedback e o que torna este ambiente mais do que a soma das suas partes -- e um sistema auto-referencial onde as decisoes de design do produto e do ambiente se reforçam mutuamente.
 
 ---
 
@@ -1065,6 +1338,35 @@ Para ilustrar como todos esses componentes interagem, aqui esta o fluxo de uma t
 
 Este fluxo envolve **7 componentes diferentes** do ambiente interagindo em sequencia. Nenhum componente sozinho garante qualidade -- e a orquestracao entre eles que produz o resultado.
 
+### Pontos de decisao humana no fluxo
+
+O fluxo acima tem **5 pontos** onde o humano intervem:
+
+| Ponto | Tipo de decisao | O que o humano avalia |
+|-------|-----------------|----------------------|
+| 3 (design validado pelo GPT) | Aceitar/rejeitar recomendacao | A recomendacao do GPT faz sentido para este contexto? |
+| 4 (contrato G/C/FC) | Aceitar/ajustar contrato | O Goal, Constraint e Failure Condition estao corretos? |
+| 8 (cada acao em plan mode) | Aprovar/rejeitar acao | Essa acao especifica e segura e correta? |
+| 9 (resultado do code review) | Aceitar/pedir ajustes | Os issues identificados sao reais? |
+| 10 (evidencia de conclusao) | Aceitar/rejeitar conclusao | A evidencia apresentada e suficiente? |
+
+A razao entre acoes automaticas e decisoes humanas e aproximadamente 7:5 -- o sistema faz mais do que o humano decide, mas o humano decide nos pontos criticos. Essa e a essencia do modelo "automacao com supervisao".
+
+### Quando o fluxo falha
+
+O fluxo pode falhar em varios pontos, e cada falha tem um mecanismo de recuperacao:
+
+| Ponto de falha | Causa tipica | Recuperacao |
+|---------------|-------------|-------------|
+| Brainstorming inconclusivo | Problema muito ambiguo | Escalar para Scope Analyst (GPT) |
+| Architect GPT da recomendacao irrelevante | Contexto insuficiente na delegacao | Reenviar com mais contexto |
+| Testes nao conseguem ser escritos | Especificacao muito vaga | Voltar ao brainstorming |
+| 3-file gate ativado mas agente nao pode delegar | Infraestrutura de sub-agentes nao configurada | Humano autoriza execucao direta |
+| Code review identifica issues fundamentais | Design incorreto | Voltar ao passo 2 (brainstorming) |
+| Verificacao falha | Implementacao incompleta | Continuar implementacao |
+
+O fluxo nao e linear -- ele tem loops de feedback em cada estagio. A robustez vem nao de evitar falhas, mas de ter mecanismos de recuperacao para cada tipo de falha.
+
 ---
 
 ## Apendice C: Configuracao de referencia
@@ -1102,6 +1404,97 @@ Para replicar este ambiente, os seguintes arquivos devem ser configurados:
 
 A hierarquia e deliberada: configuracoes globais (plugins, MCP) ficam em `~/.claude/`, convencoes de delegacao ficam em `~/.claude/rules/`, memorias de projeto ficam no diretorio do projeto, e o contrato constitucional fica na raiz do repositorio (versionado no git).
 
+### O que e versionado vs o que e local
+
+Uma distincao critica para reprodutibilidade:
+
+| Artefato | Versionado (git) | Local (~/.claude/) |
+|----------|-------------------|--------------------|
+| Contrato constitucional (claude.md) | Sim | -- |
+| Memorias de projeto | -- | Sim |
+| Regras de delegacao | -- | Sim |
+| Configuracao de plugins/MCP | -- | Sim |
+| Documentacao do projeto | Sim | -- |
+| Testes e codigo | Sim | -- |
+
+O contrato constitucional e versionado porque e especifico do repositorio e deve ser consistente para todos os desenvolvedores. Memorias, regras e configuracoes sao locais porque sao especificas do desenvolvedor e do seu ambiente.
+
+Essa separacao significa que um novo desenvolvedor que clona o repositorio recebe o contrato (como o agente deve operar) mas nao as memorias (o que o agente aprendeu) nem as regras de delegacao (como delegar para GPT). O contrato e o minimo viavel; o ambiente completo requer configuracao adicional.
+
 ---
 
-*Documento gerado como analise do ambiente de desenvolvimento do MiniAutoGen. Reflete a configuracao observada em marco de 2026.*
+## Apendice D: Glossario de termos
+
+| Termo | Definicao neste contexto |
+|-------|--------------------------|
+| **Agent** | Modelo de IA operando dentro de um ambiente configurado (Claude Code, GPT Codex) |
+| **Contrato constitucional** | Arquivo claude.md que define regras inviolaveis para o agente |
+| **Context rot** | Degradacao gradual do alinhamento entre agente e projeto ao longo do tempo |
+| **Delegacao** | Transferencia de uma tarefa do agente principal (Claude) para um especialista (GPT) |
+| **DX** | Developer Experience -- a qualidade da experiencia do desenvolvedor |
+| **Gate** | Checkpoint obrigatorio num pipeline de qualidade (ring-dev-team, ring-pm-team) |
+| **Hook** | Script automatico executado em eventos do sistema (startup, resume) |
+| **MCP** | Model Context Protocol -- padrao de comunicacao entre agentes e servicos externos |
+| **Memoria persistente** | Sistema de arquivos que mantem decisoes e convencoes entre sessoes |
+| **Plan mode** | Modo de operacao onde o agente propoe e o humano aprova antes da execucao |
+| **Ring** | Marketplace de plugins para Claude Code com times especializados |
+| **Skill** | Instrucao processual que governa como o agente executa um tipo de tarefa |
+| **Superpowers** | Plugin que fornece skills processuais para qualidade de desenvolvimento |
+| **Trigger** | Condicao que ativa automaticamente uma skill ou delegacao |
+
+---
+
+## Apendice E: Leitura relacionada
+
+Para aprofundamento nos temas abordados neste documento:
+
+### Documentacao do projeto
+- [README principal (pt-BR)](docs/pt/README.md) -- Visao geral do MiniAutoGen, conceitos de primeira classe
+- [Retrospectiva arquitetural](docs/architecture-retrospective.md) -- Comparacao v0 vs arquitetura atual
+- [Analise competitiva](docs/competitive-landscape.md) -- Posicionamento contra 10+ frameworks
+- [Anatomia do agente](docs/pt/architecture/07-agent-anatomy.md) -- 5 layers, comparacao com protocolos de mercado
+
+### Arquitetura do ambiente
+- [Regras de delegacao](~/.claude/rules/delegator/) -- 4 arquivos que governam delegacao multi-modelo
+- [Contrato constitucional](claude.md) -- Regras inviolaveis e workflow mandatorio
+- [Memorias de projeto](~/.claude/projects/*/memory/) -- Decisoes e convencoes acumuladas
+
+### Referencias externas
+- Model Context Protocol (MCP) -- Padrao de comunicacao para integracao de ferramentas com LLMs
+- Claude Code CLI -- Interface de desenvolvimento assistida por IA da Anthropic
+- Codex CLI -- Interface de linha de comando para modelos GPT da OpenAI
+
+---
+
+## Apendice F: Evolucao provavel do ambiente
+
+### Tendencias observaveis
+
+Com base na configuracao atual e nas lacunas identificadas, e possivel projetar evolucoes provaveis:
+
+**Curto prazo (1-3 meses):**
+- Criacao do diretorio `.specs/` e template, resolvendo a lacuna do workflow mandatorio
+- Adicao de metricas basicas de eficacia (invocacoes de skills, taxa de sucesso de delegacoes)
+- Documentacao de precedencia entre skills e rings
+
+**Medio prazo (3-6 meses):**
+- Memoria hierarquica com mecanismo de expiracao
+- Script de bootstrap para onboarding de novos desenvolvedores
+- Adicao de MCP servers para monitoramento e observabilidade
+
+**Longo prazo (6-12 meses):**
+- O ambiente provavelmente evoluira para ter **multiplos agentes locais** coordenados (nao apenas delegacao singleshot ao GPT), espelhando a propria evolucao do MiniAutoGen em direcao a orquestracao multi-agente mais sofisticada
+- Hooks mais sofisticados que adaptem o conjunto de skills ativas ao tipo de tarefa
+- Integracao com CI/CD onde o agente nao apenas escreve codigo, mas acompanha o pipeline de deployment
+
+### O paradoxo final
+
+Ha um paradoxo inerente a este tipo de ambiente: quanto mais sofisticado ele se torna, mais dificil e distinguir a contribuicao do agente da contribuicao do ambiente. Quando o agente produz codigo de alta qualidade, e porque o modelo e bom ou porque as skills, delegacoes e memorias compensam suas fraquezas?
+
+A resposta, provavelmente, e que a pergunta esta mal formulada. O valor nao esta no modelo nem no ambiente isoladamente -- esta na **composicao**. Um modelo poderoso sem ambiente produz "vibes". Um ambiente sofisticado com modelo fraco produz friccao sem resultado. A combinacao certa dos dois produz desenvolvimento de qualidade reprodutivel.
+
+E esse e, talvez, o maior insight deste ambiente: **a qualidade de software assistido por agentes nao e uma propriedade do modelo. E uma propriedade do sistema.**
+
+---
+
+*Documento gerado como analise do ambiente de desenvolvimento do MiniAutoGen. Reflete a configuracao observada em marco de 2026. A analise foi feita por observacao direta dos arquivos de configuracao, regras de delegacao, memorias de projeto e contrato constitucional.*
