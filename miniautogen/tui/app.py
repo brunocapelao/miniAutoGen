@@ -8,6 +8,9 @@ The app shell provides:
 - Command palette (built-in)
 - SVG export (built-in via Ctrl+P)
 - Theme support
+- Data provider for CRUD operations
+- Server status display
+- Init wizard when no project found
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, Header
 
+from miniautogen.tui.data_provider import DashDataProvider
 from miniautogen.tui.messages import TuiEvent
 from miniautogen.tui.views.agents import AgentsView
 from miniautogen.tui.views.events import EventsView
@@ -59,6 +63,11 @@ class MiniAutoGenDash(App):
         Binding("tab", "next_pipeline", "Next Tab", show=False),
     ]
 
+    def __init__(self, project_root=None) -> None:
+        super().__init__()
+        self._provider: DashDataProvider | None = None
+        self._project_root = project_root
+
     def compose(self) -> ComposeResult:
         yield Header()
         yield TeamSidebar()
@@ -66,8 +75,48 @@ class MiniAutoGenDash(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        """Handle initial mount -- apply responsive breakpoints."""
+        """Handle initial mount -- load provider, apply responsive, check project."""
         self._apply_responsive()
+        self._init_provider()
+        self._update_server_status()
+
+    def _init_provider(self) -> None:
+        """Initialize the data provider."""
+        if self._project_root is not None:
+            from pathlib import Path
+            self._provider = DashDataProvider(Path(self._project_root))
+        else:
+            self._provider = DashDataProvider.from_cwd()
+
+        if self._provider is None or not self._provider.has_project():
+            # Show init wizard
+            from miniautogen.tui.screens.init_wizard import InitWizardScreen
+            self.push_screen(InitWizardScreen(), callback=self._on_init_result)
+
+    def _on_init_result(self, created: bool) -> None:
+        """Callback from init wizard."""
+        if created:
+            self._provider = DashDataProvider.from_cwd()
+            self.notify("Project initialized!")
+        else:
+            self.notify("No project -- some features unavailable", severity="warning")
+
+    def _update_server_status(self) -> None:
+        """Update subtitle with server status."""
+        if self._provider is None:
+            return
+        try:
+            status = self._provider.server_status()
+            server_state = status.get("status", "stopped")
+            if server_state == "running":
+                port = status.get("port", "?")
+                self.sub_title = f"Your AI Team at Work | Server: running (:{port})"
+            elif server_state == "stopped":
+                self.sub_title = "Your AI Team at Work | Server: stopped"
+            else:
+                self.sub_title = f"Your AI Team at Work | Server: {server_state}"
+        except Exception:
+            pass
 
     def on_resize(self, event: object) -> None:
         """Handle terminal resize for responsive breakpoints."""
@@ -129,8 +178,27 @@ class MiniAutoGenDash(App):
 
     def action_diff_view(self) -> None:
         """Open diff view."""
-        pass
+        from miniautogen.tui.screens.diff_view import DiffViewScreen
+        self.push_screen(DiffViewScreen())
 
     def action_next_pipeline(self) -> None:
         """Switch to next pipeline tab."""
         pass
+
+    def action_server_start(self) -> None:
+        """Start the gateway server."""
+        if self._provider is None:
+            self.notify("No project found", severity="error")
+            return
+        result = self._provider.start_server(daemon=True)
+        self.notify(result.get("message", "Server started"))
+        self._update_server_status()
+
+    def action_server_stop(self) -> None:
+        """Stop the gateway server."""
+        if self._provider is None:
+            self.notify("No project found", severity="error")
+            return
+        result = self._provider.stop_server()
+        self.notify(result.get("message", "Server stopped"))
+        self._update_server_status()

@@ -33,3 +33,8 @@ class SecondaryView(Screen):
     def compose_content(self) -> ComposeResult:
         """Override in subclasses to provide view-specific content."""
         yield Static("[dim]No content[/dim]")
+
+    @property
+    def provider(self):
+        """Access the DashDataProvider from the app."""
+        return getattr(self.app, "_provider", None)
