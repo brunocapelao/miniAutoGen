@@ -43,12 +43,19 @@ def test_resolve_valid_target(tmp_path: Path) -> None:
     (mod_dir / "pipeline.py").write_text("def build(): return 'ok'")
 
     import sys
-    sys.path.append(str(tmp_path))
+    sys.path.insert(0, str(tmp_path))
+    # Clean any cached modules from prior test runs
+    for mod_name in list(sys.modules):
+        if mod_name.startswith("mypkg"):
+            del sys.modules[mod_name]
     try:
         fn = resolve_pipeline_target("mypkg.pipeline:build", tmp_path)
         assert callable(fn)
     finally:
         sys.path.remove(str(tmp_path))
+        for mod_name in list(sys.modules):
+            if mod_name.startswith("mypkg"):
+                del sys.modules[mod_name]
 
 
 def test_resolve_rejects_outside_project(tmp_path: Path) -> None:
