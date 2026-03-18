@@ -23,4 +23,4 @@ def test_execution_event_preserves_payload_shape(
         payload=payload,
     )
 
-    assert event.payload == payload
+    assert event.payload_dict() == payload
