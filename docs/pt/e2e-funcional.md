@@ -2,8 +2,8 @@
 
 Documento de especificação funcional end-to-end do framework MiniAutoGen, descrevendo a jornada completa do utilizador num paradigma CLI-First de gestão de recursos. O terminal é o plano de controlo único: criar, modificar, listar e orquestrar qualquer recurso do sistema sem nunca abrir um editor de texto.
 
-**Versão:** 3.1.0
-**Data:** 2026-03-17
+**Versão:** 3.2.0
+**Data:** 2026-03-18
 **Escopo:** Jornada E2E do desenvolvedor no MiniAutoGen CLI como Control Plane de recursos
 
 ---
@@ -18,7 +18,7 @@ Documento de especificação funcional end-to-end do framework MiniAutoGen, desc
 
 # Parte 1: Story Map -- Nova Jornada E2E CLI-First
 
-O Story Map a seguir descreve a jornada completa de um desenvolvedor que utiliza o MiniAutoGen CLI como plano de controlo para gerir todos os recursos do sistema multiagente. Cada etapa representa um "Job to be Done" concreto, onde o terminal é a interface única de interação. O objectivo estratégico: um novo desenvolvedor tem um pipeline multiagente a funcionar com LLM local em menos de 3 minutos, usando apenas o terminal.
+O Story Map a seguir descreve a jornada completa de um desenvolvedor que utiliza o MiniAutoGen CLI como plano de controlo para gerir todos os recursos do sistema multiagente. Cada etapa representa um "Job to be Done" concreto, onde o terminal é a interface única de interação. O objectivo estratégico: um novo desenvolvedor tem um flow multiagente a funcionar com LLM local em menos de 3 minutos, usando apenas o terminal.
 
 ---
 
@@ -41,7 +41,7 @@ miniautogen init meu-projecto
 
 1. O CLI cria o diretório do projecto com a estrutura padrão.
 2. Gera o ficheiro `miniautogen.yml` com a configuração base (vazio, pronto para receber recursos).
-3. Cria os diretórios `agents/`, `pipelines/` e `templates/`.
+3. Cria os diretórios `agents/`, `flows/` e `templates/`.
 4. Exibe mensagem de sucesso com próximos passos sugeridos (criar um motor).
 
 **Política de diretório não vazio:**
@@ -56,7 +56,7 @@ miniautogen init meu-projecto
 meu-projecto/
   miniautogen.yml
   agents/
-  pipelines/
+  flows/
   templates/
 ```
 
@@ -68,6 +68,89 @@ meu-projecto/
 
 **User Story:**
 > Como desenvolvedor, quero configurar motores de IA via terminal sem editar ficheiros YAML manualmente, para que a configuração seja guiada, validada e livre de erros de sintaxe.
+
+### Conceito: Engines como Estratégia Multi-Provider
+
+Engines são **a conexão do MiniAutoGen aos monólitos de agentes externos** (Claude Code, GPT, Gemini CLI, Codex CLI, etc.) e constituem a parte mais crucial da estratégia do framework. Em vez de reimplementar funcionalidades de LLM, o MiniAutoGen liga-se a provedores existentes e orquestra-os como um team.
+
+Os Engines organizam-se em **três categorias**:
+
+| Categoria | Descrição | Exemplos | Estado |
+|-----------|-----------|----------|--------|
+| **API Providers** (stateless) | Comunicação HTTP com APIs de LLM. Cada chamada é independente. | OpenAI, Anthropic, Google, LiteLLM | Stateless request/response |
+| **CLI Agents** (stateful subprocess) | Spawn de processo local com PTY. Mantém estado entre turnos. | Claude Code, Gemini CLI, Codex CLI | Stateful subprocess com sessão |
+| **Gateway/Hub** (stateful WebSocket) | Conexão persistente via WebSocket a um hub de agentes. | ACP Hub, custom gateways | Stateful WebSocket com reconexão |
+
+O EngineResolver já mapeia os seguintes provedores: `openai`, `anthropic`, `google`, `litellm`, `claude-code`, `gemini-cli`, `codex-cli`.
+
+**Múltiplas instâncias do mesmo provedor** são suportadas com configurações distintas. Isto permite, por exemplo, ter dois agentes Claude Code com personalidades diferentes:
+
+```yaml
+engines:
+  claude-architect:
+    provider: claude-code
+    model: claude-sonnet-4-20250514
+    config:
+      claude_md: "prompts/architect.md"   # CLAUDE.md específico para arquitectura
+      max_turns: 50
+
+  claude-reviewer:
+    provider: claude-code
+    model: claude-sonnet-4-20250514
+    config:
+      claude_md: "prompts/reviewer.md"    # CLAUDE.md específico para code review
+      max_turns: 20
+      permissions:
+        shell: false                       # reviewer não executa comandos
+```
+
+**Exemplo: API Provider (stateless)**
+
+```yaml
+engines:
+  gpt4o-main:
+    provider: openai
+    model: gpt-4o
+    api_key: ${OPENAI_API_KEY}
+    capabilities: [chat, completion]
+
+  gemini-pro:
+    provider: google
+    model: gemini-2.5-pro
+    api_key: ${GOOGLE_API_KEY}
+    capabilities: [chat]
+```
+
+**Exemplo: CLI Agent (stateful subprocess)**
+
+```yaml
+engines:
+  gemini-local:
+    provider: gemini-cli
+    model: gemini-2.5-pro
+    config:
+      sandbox: true
+      timeout: 120
+
+  codex-impl:
+    provider: codex-cli
+    model: codex
+    config:
+      approval_policy: on-failure
+      sandbox: workspace-write
+```
+
+**Exemplo: Gateway/Hub (stateful WebSocket)**
+
+```yaml
+engines:
+  acp-hub:
+    provider: acp
+    endpoint: ws://localhost:9090/agents
+    config:
+      reconnect: true
+      heartbeat_interval: 30
+```
 
 ### Modo Interactivo (sem flags)
 
@@ -83,11 +166,14 @@ miniautogen engine create openai-gpt4
 
 1. O CLI detecta que faltam parâmetros obrigatórios.
 2. Inicia o modo interactivo (wizard):
-   - Pergunta o tipo de provedor (OpenAI, Gemini CLI Gateway, vLLM, outro).
+   - Pergunta a **categoria** do motor (API Provider, CLI Agent, Gateway/Hub).
+   - Pergunta o tipo de provedor (OpenAI, Anthropic, Google, LiteLLM, Claude Code, Gemini CLI, Codex CLI, ACP).
    - Pergunta o modelo específico.
    - Pergunta o endpoint (com valor padrão por provedor).
-   - Pergunta a chave de API (com opção de referenciar variável de ambiente).
+   - Pergunta a chave de API (com opção de referenciar variável de ambiente) -- apenas para API Providers.
    - Pergunta as capacidades suportadas (chat, completion, embedding).
+   - Para CLI Agents: pergunta configurações de subprocess (sandbox, timeout, permissions).
+   - Para Gateway/Hub: pergunta endpoint WebSocket e parâmetros de conexão.
 3. O wizard aceita a chave temporariamente para validar a conexão, mas grava apenas a referência a variável de ambiente (formato: `${NOME_DA_VARIAVEL}`). O sistema nunca grava chaves de API em texto limpo nos ficheiros de configuração.
 4. Valida o esquema completo do motor (BackendConfig) antes de gravar.
 5. Escreve a configuração na secção `engines` do `miniautogen.yml`.
@@ -137,6 +223,35 @@ Le o YAML existente, altera apenas a chave solicitada, regrava preservando comen
 
 **User Story:**
 > Como desenvolvedor, quero iniciar, parar e verificar o estado do gateway local do MiniAutoGen via terminal, para não precisar de gerir processos manualmente.
+
+O Server/Gateway é uma **capacidade do Workspace**, não uma entidade separada. O Workspace actua simultaneamente como container (que contém Engines, Agents, Flows, Defaults) e como server/gateway para interacção externa. A secção `server` do `miniautogen.yml` define a conectividade externa do Workspace:
+
+```yaml
+# miniautogen.yml — o Workspace é container + gateway
+workspace:
+  name: meu-projecto
+  version: "1.0"
+
+server:                          # ← Capacidade de gateway do Workspace
+  host: 127.0.0.1
+  port: 8080
+  daemon: false
+  pid_file: .miniautogen/server.pid
+  health_check: /health
+  timeout: 30
+  max_concurrency: 10
+
+engines:
+  # ...
+agents:
+  # ...
+flows:
+  # ...
+defaults:
+  engine: gpt4o-main
+  policies:
+    timeout: 300
+```
 
 O gateway é um servidor HTTP local que encapsula backends LLM (como o Gemini CLI) e os expõe como API HTTP compatível com OpenAI em `/v1/chat/completions`. É este gateway que permite ao AgentAPIDriver comunicar com backends LLM locais. Sem o gateway em execução, motores configurados com endpoint local não são acessíveis.
 
@@ -197,7 +312,69 @@ Quando um motor está configurado com endpoint local (ex: `localhost:8080`), o c
 ## Etapa 4: Gestão de Agentes
 
 **User Story:**
-> Como desenvolvedor, quero criar agentes com identidade, papel e vínculo a motor via terminal, para definir as capacidades de cada participante do pipeline sem editar ficheiros.
+> Como desenvolvedor, quero criar agentes com identidade, papel e vínculo a motor via terminal, para definir as capacidades de cada participante do flow sem editar ficheiros.
+
+### Conceito: Agentes como Abstracção sobre Engines
+
+Agentes são uma **abstracção de Engines, não uma reimplementação**. O Engine fornece a capacidade bruta de IA (gerar texto, executar código, etc.). O Agent adiciona uma **camada de runtime local** sobre essa capacidade: identidade, tools, memória, permissões, delegação e hooks.
+
+**5 Camadas do Agent (da base ao topo):**
+
+```
+┌─────────────────────────────────────────────┐
+│ 5. Protocol Adapters                         │  ← Como participa em Flows
+│    WorkflowAgent | DeliberationAgent |       │    (interface de coordenação)
+│    ConversationalAgent | CoordinatorAgent    │
+├─────────────────────────────────────────────┤
+│ 4. Policies (limites)                        │  ← max_turns, timeout, retry,
+│    RetryPolicy | BudgetPolicy | Timeout      │    budget constraints
+├─────────────────────────────────────────────┤
+│ 3. Agent Runtime (capacidades locais)        │  ← O que DIFERENCIA o Agent do Engine
+│    ├── Tools (allowlist/denylist/all)         │
+│    ├── Memory (session + long-term + distill)│
+│    ├── Permissions (shell, network, fs)      │
+│    ├── Delegation (can_delegate_to)          │
+│    └── Hooks (before_turn, after_event,      │
+│              on_error) — composable          │
+├─────────────────────────────────────────────┤
+│ 2. Engine Binding                            │  ← Ref para Engine (provider)
+│    engine: "claude-architect"                │
+├─────────────────────────────────────────────┤
+│ 1. Identity (AgentSpec)                      │  ← Quem é este agente
+│    name, role, goal, backstory, version      │
+└─────────────────────────────────────────────┘
+```
+
+**4 Capabilities (como o agente participa em Flows):**
+
+| Capability | Protocol | Uso em Flows |
+|-----------|----------|--------------|
+| **workflow** | WorkflowAgent | Executa step sequencial, recebe input e produz output |
+| **deliberation** | DeliberationAgent | Participa em rounds de deliberação (líder ou par) |
+| **conversational** | ConversationalAgent | Participa em loops de conversa com roteador |
+| **coordinator** | CoordinatorAgent (NEW) | Orquestra sub-flows, delega a outros agentes |
+
+**Agent Runtime — Hooks composáveis:**
+
+Os hooks permitem injectar lógica antes, depois e em caso de erro de cada turno do agente, sem modificar o código do agente:
+
+- `before_turn(context) → context` — Transforma o contexto antes de cada turno (ex: injectar memória, filtrar mensagens).
+- `after_event(event) → None` — Observa eventos emitidos (ex: logging, métricas, actualização de memória).
+- `on_error(error) → ErrorAction` — Decide acção em caso de erro (retry, escalate, ignore).
+
+Os hooks são composáveis: múltiplos hooks do mesmo tipo executam em cadeia (waterfall para `before_turn`, parallel para `after_event`).
+
+**MemoryProvider — 3 níveis:**
+
+| Nível | Scope | Exemplo |
+|-------|-------|---------|
+| **session** | Dentro de um Run | Mensagens trocadas, contexto acumulado |
+| **long-term** | Entre Runs | Factos aprendidos, preferências do utilizador |
+| **distillation** | Resumo automático | Compressão de memória longa em sumários concisos |
+
+O MemoryProvider é injectado como dependência no Agent Runtime e é transparente para o Engine — o Engine recebe o contexto já enriquecido pela memória.
+
+> **Resgate do v0:** O Agent Runtime recupera o conceito de "pipeline as runtime" do MiniAutoGen v0, mas modernizado. Em vez de o pipeline SER o agente, o agente tem um pipeline INTERNO (hooks, memory, tools) que envolve o Engine. Composição em vez de herança.
 
 ### Criação de Agente
 
@@ -251,27 +428,136 @@ miniautogen agent delete analyst
 
 **Exclusão segura:**
 
-1. Verifica se o agente está referenciado em algum pipeline.
-2. Se estiver em uso, bloqueia a exclusão e informa quais pipelines o referenciam.
+1. Verifica se o agente está referenciado em algum flow.
+2. Se estiver em uso, bloqueia a exclusão e informa quais flows o referenciam.
 3. Se não estiver em uso, remove o ficheiro e confirma.
 
-**Resultado:** O desenvolvedor tem agentes definidos, validados e vinculados a motores, prontos para participar em pipelines.
+**Resultado:** O desenvolvedor tem agentes definidos, validados e vinculados a motores, prontos para participar em flows.
 
 ---
 
-## Etapa 5: Gestão de Pipelines (Coordenação)
+## Etapa 5: Gestão de Flows (Coordenação)
 
 **User Story:**
 > Como desenvolvedor, quero montar planos de coordenação multiagente via terminal, escolhendo o modo de execução e os participantes sem escrever configuração manualmente.
 
-### Criação de Pipeline
+### Conceito: Flows como Diferenciador Competitivo
 
-O CLI suporta três modos de coordenação, cada um com fluxo de configuração específico:
+Flows são **onde vive a diferenciação competitiva** do MiniAutoGen. Enquanto Engines e Agents são commodities (qualquer framework pode chamar uma API), a forma como os agentes **colaboram, se supervisionam e se recuperam de falhas** é o valor único da plataforma.
+
+**4 Modos de Coordenação:**
+
+| Modo | Semântica | Quando Usar |
+|------|-----------|-------------|
+| **Workflow** | Cadeia sequencial/paralela de steps | ETL, pipelines determinísticos, processos com ordem fixa |
+| **AgenticLoop** | Roteador decide próximo agente por iteração | Suporte, investigação, tarefas open-ended |
+| **Deliberation** | Líder propõe, pares avaliam, convergência | Decisões complexas, revisão de qualidade, consenso |
+| **Composite** | Composição de modos em sequência | Flows complexos que combinam padrões |
+
+#### RuntimeInterceptor — Hooks tipados com semântica waterfall (inspirados em Tapable/Webpack)
+
+O sistema de interceptors permite injectar lógica transversal (retry, logging, circuit-breaker, approval gates) em qualquer ponto do ciclo de vida de um Flow, sem modificar os runtimes:
+
+**Tipos de Hook:**
+
+| Tipo | Semântica | Uso |
+|------|-----------|-----|
+| **AsyncSeriesWaterfall** | Cada interceptor transforma o valor e passa ao seguinte | `before_flow`, `before_step` (enriquecer contexto) |
+| **AsyncSeriesBail** | Primeiro interceptor que retorna non-null interrompe a cadeia | `should_execute` (gate de execução) |
+| **AsyncSeries** | Todos os interceptors executam em série (observação) | `after_step`, `after_flow` (logging, métricas) |
+
+**Hooks disponíveis:**
+
+```
+before_flow(context)        → context'     # Waterfall: preparar contexto global
+  │
+  ├── before_step(step, ctx) → (step', ctx') # Waterfall: preparar cada step
+  │     │
+  │     ├── should_execute(step, ctx) → bool  # Bail: gate (skip, approve, budget check)
+  │     │
+  │     ├── [execução do step]
+  │     │
+  │     ├── after_step(step, result, ctx)     # Series: observar resultado
+  │     │
+  │     └── on_step_error(step, error, ctx)   # Bail: decidir recovery
+  │           → retry | skip | escalate | stop
+  │
+  └── after_flow(result, ctx)                 # Series: observar resultado final
+```
+
+**Boundary-awareness** — Os interceptors são conscientes do seu scope:
+
+| Scope | Alcance | Exemplo |
+|-------|---------|---------|
+| **FlowInterceptor** | Todo o Flow | Timeout global, budget global |
+| **StepInterceptor** | Um step específico | Retry por step, approval gate |
+| **AgentInterceptor** | Um agente específico | Rate limiting por agente, memória |
+
+**Composição pipe-style:**
+
+```python
+flow = (
+    Flow("research", mode="deliberation")
+    .with_interceptor(RetryInterceptor(max_retries=3, backoff="exponential"))
+    .with_interceptor(BudgetInterceptor(max_cost=5.0))
+    .with_interceptor(ApprovalInterceptor(require_before=["deploy-step"]))
+    .with_interceptor(LoggingInterceptor(level="debug"))
+)
+```
+
+#### Fan-out Dinâmico
+
+O roteador de um AgenticLoop pode retornar `RouterDecision.next_agents` como lista, activando múltiplos agentes em paralelo (fan-out dinâmico):
+
+```python
+# O roteador decide enviar para 2 agentes em paralelo
+RouterDecision(
+    next_agents=["researcher", "fact-checker"],  # Fan-out: paralelo
+    strategy="race",                              # Primeiro a responder ganha
+    merge_with="vote"                             # Ou: all, quorum(n), vote
+)
+```
+
+#### ResultAggregator — Estratégias de agregação
+
+Quando um step produz múltiplos resultados (fan-out, deliberação), o ResultAggregator determina como consolidar:
+
+| Estratégia | Semântica | Uso |
+|-----------|-----------|-----|
+| **all** | Aguarda todos os resultados, retorna lista | Recolha exaustiva |
+| **race** | Retorna o primeiro resultado, cancela os restantes | Latência mínima |
+| **quorum(n)** | Retorna quando N resultados chegam | Consenso parcial |
+| **vote** | Retorna o resultado mais frequente | Decisão democrática |
+
+#### Supervisão per-step (inspirada em Akka)
+
+Cada step pode ter uma estratégia de supervisão que define o que acontece em caso de falha:
+
+| Acção | Semântica |
+|-------|-----------|
+| **restart** | Re-executa o step desde o início |
+| **resume** | Ignora o erro e prossegue com resultado parcial |
+| **stop** | Termina o Flow com erro |
+| **escalate** | Propaga o erro para o Flow pai (em Composite) |
+
+#### Monitoramento e Previsibilidade
+
+O sistema de Flows emite **47+ EventTypes** estruturados ao longo do ciclo de vida, garantindo observabilidade total:
+
+- Eventos de coordenação: `FLOW_STARTED`, `STEP_STARTED`, `STEP_FINISHED`, `FLOW_FINISHED`
+- Eventos de routing: `ROUTER_DECISION`, `FAN_OUT_STARTED`, `FAN_OUT_COMPLETED`
+- Eventos de interceptor: `INTERCEPTOR_APPLIED`, `GATE_BLOCKED`, `GATE_PASSED`
+- Eventos de supervisão: `STEP_RESTARTED`, `STEP_ESCALATED`, `STEP_SKIPPED`
+- Eventos de agregação: `AGGREGATION_STARTED`, `QUORUM_REACHED`, `VOTE_COMPLETED`
+
+### Criação de Flow
+
+O CLI suporta quatro modos de coordenação, cada um com fluxo de configuração específico:
 
 **Modo Workflow (cadeia sequencial):**
 
 ```
-miniautogen pipeline create etl --mode workflow
+miniautogen flow create etl --mode workflow
 ```
 
 Wizard pergunta: quais agentes encadear e em que ordem.
@@ -279,7 +565,7 @@ Wizard pergunta: quais agentes encadear e em que ordem.
 **Modo Deliberação (líder + pares):**
 
 ```
-miniautogen pipeline create research --mode deliberation --leader analyst --participants reviewer,writer
+miniautogen flow create research --mode deliberation --leader analyst --participants reviewer,writer
 ```
 
 Wizard pergunta (se faltar flags): quem é o líder, quem são os pares, quantas rondas de deliberação.
@@ -287,7 +573,7 @@ Wizard pergunta (se faltar flags): quem é o líder, quem são os pares, quantas
 **Modo Loop Agêntico (roteador + participantes):**
 
 ```
-miniautogen pipeline create support --mode loop
+miniautogen flow create support --mode loop
 ```
 
 Wizard pergunta: qual agente é o roteador, quais são os participantes, condição de terminação.
@@ -295,32 +581,32 @@ Wizard pergunta: qual agente é o roteador, quais são os participantes, condiç
 **Modo Composite (composição de modos):**
 
 ```
-miniautogen pipeline create complexo --mode composite
+miniautogen flow create complexo --mode composite
 ```
 
-O wizard lista pipelines existentes e permite selecionar quais encadear. Para cada pipeline selecionado, permite definir mapeadores de entrada/saída opcionais. Gera os CompositionStep correspondentes com a configuração de encadeamento.
+O wizard lista flows existentes e permite selecionar quais encadear. Para cada flow selecionado, permite definir mapeadores de entrada/saída opcionais. Gera os CompositionStep correspondentes com a configuração de encadeamento.
 
 ### Listagem, Inspeção e Atualização
 
 ```
-miniautogen pipeline list
+miniautogen flow list
 ```
 
-Exibe tabela com pipelines: nome, modo, agentes participantes.
+Exibe tabela com flows: nome, modo, agentes participantes.
 
 ```
-miniautogen pipeline show <name>
+miniautogen flow show <name>
 ```
 
-Exibe detalhes completos de um pipeline específico: nome, modo de coordenação, agentes participantes, parâmetros do modo (líder, rondas, condição de terminação), composição (se aplicável). Suporta `--format json` para saída estruturada.
+Exibe detalhes completos de um flow específico: nome, modo de coordenação, agentes participantes, parâmetros do modo (líder, rondas, condição de terminação), composição (se aplicável). Suporta `--format json` para saída estruturada.
 
 ```
-miniautogen pipeline update research --add-participant fact-checker
+miniautogen flow update research --add-participant fact-checker
 ```
 
-Adiciona ou remove agentes de um pipeline existente. Suporta `--dry-run` que mostra a diferença entre o estado actual e o proposto, sem aplicar alterações.
+Adiciona ou remove agentes de um flow existente. Suporta `--dry-run` que mostra a diferença entre o estado actual e o proposto, sem aplicar alterações.
 
-**Resultado:** O desenvolvedor tem pipelines configurados com modos de coordenação e participantes validados.
+**Resultado:** O desenvolvedor tem flows configurados com modos de coordenação e participantes validados.
 
 ---
 
@@ -342,7 +628,7 @@ O comando `check` executa dois tipos de validação:
 **Validação de configuração:**
 1. **Motores:** Todos os motores referenciados por agentes existem na configuração.
 2. **Agentes:** Todos os ficheiros em `agents/` são válidos contra o esquema AgentSpec.
-3. **Pipelines:** Todos os agentes referenciados em pipelines existem. Configuração do modo é consistente.
+3. **Flows:** Todos os agentes referenciados em flows existem. Configuração do modo é consistente.
 4. **Dependências cruzadas:** Não existem referências circulares ou órfãs.
 5. **Integridade de ficheiros:** Esquemas válidos, referências cruzadas consistentes.
 
@@ -363,14 +649,14 @@ miniautogen run research
 
 **Fornecimento de entrada:**
 
-O comando `run` suporta três formas de fornecer entrada ao pipeline:
+O comando `run` suporta três formas de fornecer entrada ao flow:
 - `--input "texto"` -- fornece entrada directamente como argumento.
 - `--input @caminho/arquivo.txt` -- le entrada de ficheiro (prefixo `@` indica caminho).
 - Se nenhum `--input` for fornecido, le de stdin.
 
 **O que acontece:**
 
-1. O CLI carrega a configuração do pipeline `research`.
+1. O CLI carrega a configuração do flow `research`.
 2. Resolve todas as dependências (motores, agentes, políticas).
 3. Delega ao PipelineRunner a execução.
 4. O PipelineRunner:
@@ -383,14 +669,14 @@ O comando `run` suporta três formas de fornecer entrada ao pipeline:
    - Ao terminar, emite `RUN_FINISHED` com o RunResult final.
 5. O CLI exibe o resultado: status (FINISHED, FAILED, CANCELLED, TIMED_OUT), duração, métricas.
 
-**Resultado:** O desenvolvedor executa pipelines validados com visibilidade completa do ciclo de vida.
+**Resultado:** O desenvolvedor executa flows validados com visibilidade completa do ciclo de vida.
 
 ---
 
 ## Etapa 7: Recuperação e Retomada (Execução Durável)
 
 **User Story:**
-> Como desenvolvedor, quero retomar execuções interrompidas a partir de checkpoints, para não perder progresso em pipelines longos.
+> Como desenvolvedor, quero retomar execuções interrompidas a partir de checkpoints, para não perder progresso em flows longos.
 
 ### Mecanismo de Recuperação
 
@@ -423,7 +709,7 @@ miniautogen run research --resume <run_id>
 miniautogen sessions list
 ```
 
-Exibe tabela com execuções: `run_id`, pipeline, status, data de início, duração.
+Exibe tabela com execuções: `run_id`, flow, status, data de início, duração.
 
 ```
 miniautogen sessions list --status FAILED --since 7d
@@ -462,7 +748,7 @@ Comandos de gestão de recursos e configuração do projecto:
 - `miniautogen init` -- inicialização do projecto
 - `miniautogen engine create|list|show|update` -- gestão de motores
 - `miniautogen agent create|list|show|update|delete` -- gestão de agentes
-- `miniautogen pipeline create|list|show|update` -- gestão de pipelines
+- `miniautogen flow create|list|show|update` -- gestão de flows
 - `miniautogen server start|stop|status|logs` -- gestão do gateway
 - `miniautogen check` -- validação do projecto
 
@@ -470,7 +756,7 @@ Comandos de gestão de recursos e configuração do projecto:
 
 Comandos de execução e gestão do ciclo de vida de sessões:
 
-- `miniautogen run <pipeline> [--input] [--resume]` -- execução de pipelines
+- `miniautogen run <flow> [--input] [--resume]` -- execução de flows
 - `miniautogen sessions list|show|clean` -- gestão de sessões
 
 ---
@@ -491,7 +777,7 @@ Funcionalidade: Inicialização de projeto
     Quando o utilizador executa "miniautogen init meu-projeto"
     Então o diretório "meu-projeto" é criado
     E o ficheiro "meu-projeto/miniautogen.yml" é gerado com esquema válido
-    E os diretórios "agents/", "pipelines/" e "templates/" são criados
+    E os diretórios "agents/", "flows/" e "templates/" são criados
     E a saída exibe mensagem de sucesso com próximos passos
 
   Cenário: Init em diretório não vazio sem force
@@ -592,15 +878,15 @@ Funcionalidade: Gestão de agentes
 ## Cenário 7: Exclusão segura de agente
 
 ```gherkin
-  Cenário: Excluir agente em uso por pipeline
-    Dado que o agente "analyst" está referenciado no pipeline "research"
+  Cenário: Excluir agente em uso por flow
+    Dado que o agente "analyst" está referenciado no flow "research"
     Quando o utilizador executa "miniautogen agent delete analyst"
     Então a exclusão é bloqueada
-    E a saída informa que o agente está em uso pelo pipeline "research"
-    E sugere remover o agente do pipeline antes de excluir
+    E a saída informa que o agente está em uso pelo flow "research"
+    E sugere remover o agente do flow antes de excluir
 
   Cenário: Excluir agente sem uso
-    Dado que o agente "analyst" não está referenciado em nenhum pipeline
+    Dado que o agente "analyst" não está referenciado em nenhum flow
     Quando o utilizador executa "miniautogen agent delete analyst"
     Então o ficheiro "agents/analyst.yml" é removido
     E a saída confirma a exclusão
@@ -608,34 +894,34 @@ Funcionalidade: Gestão de agentes
 
 ---
 
-## Cenário 8: Criação de pipeline Workflow via CLI interactivo
+## Cenário 8: Criação de flow Workflow via CLI interactivo
 
 ```gherkin
-Funcionalidade: Gestão de pipelines
+Funcionalidade: Gestão de flows
 
-  Cenário: Criar pipeline Workflow em modo interactivo
+  Cenário: Criar flow Workflow em modo interactivo
     Dado que existem 3 agentes configurados: "extractor", "transformer", "loader"
-    Quando o utilizador executa "miniautogen pipeline create etl --mode workflow"
+    Quando o utilizador executa "miniautogen flow create etl --mode workflow"
     Então o CLI pergunta quais agentes encadear
     E pergunta a ordem de execução
     E valida que todos os agentes referenciados existem
-    E grava o ficheiro de pipeline
+    E grava o ficheiro de flow
     E exibe resumo com modo "workflow" e cadeia de agentes
 ```
 
 ---
 
-## Cenário 9: Criação de pipeline Deliberação com líder e pares
+## Cenário 9: Criação de flow Deliberação com líder e pares
 
 ```gherkin
-  Cenário: Criar pipeline Deliberação com flags completas
+  Cenário: Criar flow Deliberação com flags completas
     Dado que existem os agentes "analyst", "reviewer" e "writer"
-    Quando o utilizador executa "miniautogen pipeline create research --mode deliberation --leader analyst --participants reviewer,writer"
-    Então o pipeline é criado com modo "deliberation"
+    Quando o utilizador executa "miniautogen flow create research --mode deliberation --leader analyst --participants reviewer,writer"
+    Então o flow é criado com modo "deliberation"
     E o líder é "analyst"
     E os pares são "reviewer" e "writer"
     E todos os agentes referenciados são validados
-    E o ficheiro de pipeline é gravado
+    E o ficheiro de flow é gravado
 ```
 
 ---
@@ -647,14 +933,14 @@ Funcionalidade: Validação do projeto
 
   Cenário: Check detecta problemas de configuração
     Dado que o agente "analyst" referencia o motor "motor-inexistente"
-    E o pipeline "research" referencia o agente "agente-removido"
+    E o flow "research" referencia o agente "agente-removido"
     Quando o utilizador executa "miniautogen check"
     Então a saída reporta erro: motor "motor-inexistente" não encontrado
-    E reporta erro: agente "agente-removido" não encontrado no pipeline "research"
+    E reporta erro: agente "agente-removido" não encontrado no flow "research"
     E o código de saída é diferente de 0
 
   Cenário: Check valida projeto consistente
-    Dado que todos os motores, agentes e pipelines estão corretamente configurados
+    Dado que todos os motores, agentes e flows estão corretamente configurados
     Quando o utilizador executa "miniautogen check"
     Então a saída reporta todos os recursos como válidos
     E o código de saída é 0
@@ -665,13 +951,13 @@ Funcionalidade: Validação do projeto
 ## Cenário 11: Execução E2E de Workflow com sucesso
 
 ```gherkin
-Funcionalidade: Execução de pipelines
+Funcionalidade: Execução de flows
 
-  Cenário: Fluxo completo init-engine-agent-pipeline-check-run
+  Cenário: Fluxo completo init-engine-agent-flow-check-run
     Dado que o utilizador executou "miniautogen init meu-projeto"
     E criou o motor "openai-gpt4" via "miniautogen engine create"
     E criou os agentes "extractor" e "transformer" vinculados ao motor
-    E criou o pipeline "etl" em modo workflow com os agentes encadeados
+    E criou o flow "etl" em modo workflow com os agentes encadeados
     E executou "miniautogen check" com resultado válido
     Quando o utilizador executa "miniautogen run etl"
     Então o PipelineRunner gera um run_id único
@@ -688,7 +974,7 @@ Funcionalidade: Execução de pipelines
 
 ```gherkin
   Cenário: Deliberação converge em consenso
-    Dado que o pipeline "research" está configurado em modo deliberation
+    Dado que o flow "research" está configurado em modo deliberation
     E o líder é "analyst" com pares "reviewer" e "writer"
     Quando o utilizador executa "miniautogen run research"
     Então o DeliberationRuntime inicia a deliberação
@@ -705,7 +991,7 @@ Funcionalidade: Execução de pipelines
 
 ```gherkin
   Cenário: Loop agêntico termina por condição de paragem
-    Dado que o pipeline "support" está configurado em modo loop
+    Dado que o flow "support" está configurado em modo loop
     E o roteador é "coordinator" com participantes "researcher" e "responder"
     E a condição de terminação é "task_complete"
     Quando o utilizador executa "miniautogen run support"
@@ -722,7 +1008,7 @@ Funcionalidade: Execução de pipelines
 
 ```gherkin
   Cenário: CompositeRuntime executa modos encadeados
-    Dado que o pipeline "complexo" está configurado como composição
+    Dado que o flow "complexo" está configurado como composição
     E a primeira fase é um Workflow com agentes de recolha
     E a segunda fase é uma Deliberação com agentes de análise
     Quando o utilizador executa "miniautogen run complexo"
@@ -738,7 +1024,7 @@ Funcionalidade: Execução de pipelines
 
 ```gherkin
   Cenário: ApprovalGate pausa execução para aprovação
-    Dado que o pipeline "deploy" contém um ApprovalGate entre as fases
+    Dado que o flow "deploy" contém um ApprovalGate entre as fases
     Quando a execução atinge o ApprovalGate
     Então o sistema emite o evento APPROVAL_REQUESTED
     E a execução é suspensa
@@ -775,7 +1061,7 @@ Funcionalidade: Execução durável
 
 ```gherkin
   Cenário: BudgetPolicy interrompe execução
-    Dado que o pipeline "research" tem um limite de orçamento configurado
+    Dado que o flow "research" tem um limite de orçamento configurado
     E a execução acumula custos acima do limite
     Quando o próximo componente tenta executar
     Então a BudgetPolicy intercepta a execução
@@ -795,7 +1081,7 @@ Funcionalidade: Gestão de sessões
     Dado que existem 5 sessões: 3 FINISHED, 1 FAILED, 1 CANCELLED
     Quando o utilizador executa "miniautogen sessions list --status FAILED"
     Então a saída exibe apenas 1 sessão com status FAILED
-    E inclui run_id, pipeline, data de início e duração
+    E inclui run_id, flow, data de início e duração
 
   Cenário: Limpar sessões antigas
     Dado que existem sessões com mais de 30 dias
@@ -833,7 +1119,7 @@ Funcionalidade: Integração com backends
     Dado que o Gemini CLI Gateway está disponível localmente
     Quando o utilizador executa "miniautogen engine create gemini-local --provider gemini-cli --endpoint localhost:8080"
     E cria o agente "researcher" vinculado ao motor "gemini-local"
-    E cria o pipeline "local-research" em modo workflow com o agente
+    E cria o flow "local-research" em modo workflow com o agente
     E executa "miniautogen run local-research"
     Então o PipelineRunner comunica com o Gemini CLI Gateway
     E a execução completa com status FINISHED
@@ -888,21 +1174,21 @@ Funcionalidade: Gestão do servidor gateway
 ```gherkin
 Funcionalidade: Fornecimento de entrada para execução
 
-  Cenário: Executar pipeline com entrada direta
-    Dado que o pipeline "etl" está configurado e válido
+  Cenário: Executar flow com entrada direta
+    Dado que o flow "etl" está configurado e válido
     Quando o utilizador executa "miniautogen run etl --input 'Analisar vendas Q4'"
     Então o PipelineRunner recebe o texto como entrada inicial
     E a execução procede normalmente com a entrada fornecida
 
-  Cenário: Executar pipeline com entrada de ficheiro
-    Dado que o pipeline "etl" está configurado e válido
+  Cenário: Executar flow com entrada de ficheiro
+    Dado que o flow "etl" está configurado e válido
     E existe o ficheiro "dados/prompt.txt" com conteúdo
     Quando o utilizador executa "miniautogen run etl --input @dados/prompt.txt"
     Então o conteúdo do ficheiro é lido como entrada inicial
     E a execução procede normalmente
 
-  Cenário: Executar pipeline com entrada de stdin
-    Dado que o pipeline "etl" está configurado e válido
+  Cenário: Executar flow com entrada de stdin
+    Dado que o flow "etl" está configurado e válido
     Quando o utilizador fornece texto via stdin e executa "miniautogen run etl"
     Então o conteúdo de stdin é lido como entrada inicial
     E a execução procede normalmente
@@ -950,17 +1236,17 @@ Funcionalidade: Pré-visualização de alterações
 ## 1. Título e Contexto
 
 **Produto:** MiniAutoGen CLI-First E2E
-**Versão:** 3.1.0
+**Versão:** 3.2.0
 
-**Visão:** O MiniAutoGen CLI é uma plataforma de orquestração multiagente 100% gerida via terminal. O CLI funciona como plano de controlo (Control Plane) único, permitindo ao desenvolvedor criar, modificar, listar, validar e executar todos os recursos do sistema -- motores LLM, agentes, pipelines -- sem nunca abrir um editor de texto.
+**Visão:** O MiniAutoGen CLI é uma plataforma de orquestração multiagente 100% gerida via terminal. O CLI funciona como plano de controlo (Control Plane) único, permitindo ao desenvolvedor criar, modificar, listar, validar e executar todos os recursos do sistema -- motores LLM, agentes, flows -- sem nunca abrir um editor de texto.
 
-**Objectivo Estratégico:** Um novo desenvolvedor consegue ter um pipeline multiagente a funcionar com LLM local em menos de 3 minutos, usando apenas o terminal. A experiência é guiada por wizards interactivos quando necessário e completamente silenciosa para automação CI/CD.
+**Objectivo Estratégico:** Um novo desenvolvedor consegue ter um flow multiagente a funcionar com LLM local em menos de 3 minutos, usando apenas o terminal. A experiência é guiada por wizards interactivos quando necessário e completamente silenciosa para automação CI/CD.
 
 **Posicionamento Competitivo:** O MiniAutoGen combina as melhores práticas de ferramentas de referência:
 - Auto-descoberta de contexto de projecto e extensibilidade via plugins (inspiração de CLIs modernos de desenvolvimento).
 - Onboarding guiado via wizard, diagnósticos tipo `doctor`, gestão CRUD de recursos, configuração declarativa com overrides imperativos, modo dual interactivo/flags (inspiração de CLIs de gestão de infraestrutura).
 
-**Execução Durável:** O sistema suporta execução durável com checkpoints, permitindo retomar pipelines interrompidos sem perda de progresso. Este diferenciador é crítico para pipelines longos com interações LLM custosas.
+**Execução Durável:** O sistema suporta execução durável com checkpoints, permitindo retomar flows interrompidos sem perda de progresso. Este diferenciador é crítico para flows longos com interações LLM custosas.
 
 ---
 
@@ -968,7 +1254,7 @@ Funcionalidade: Pré-visualização de alterações
 
 ### História Principal
 
-> Como desenvolvedor de sistemas de IA, quero gerir todo o ciclo de vida de pipelines multiagente via terminal -- desde a configuração de motores LLM até a execução e monitoramento -- para ter controlo total, reprodutibilidade e integração com os meus fluxos de trabalho existentes.
+> Como desenvolvedor de sistemas de IA, quero gerir todo o ciclo de vida de flows multiagente via terminal -- desde a configuração de motores LLM até a execução e monitoramento -- para ter controlo total, reprodutibilidade e integração com os meus fluxos de trabalho existentes.
 
 ### Cenários de Aceitação por Tipo de Recurso
 
@@ -984,18 +1270,18 @@ Funcionalidade: Pré-visualização de alterações
 - Criar agente vinculado a motor existente.
 - Impedir criação de agente sem motores disponíveis.
 - Excluir agente que não está em uso.
-- Bloquear exclusão de agente referenciado em pipeline.
+- Bloquear exclusão de agente referenciado em flow.
 - Inspecionar agente individual com `agent show`.
 - Atualizar propriedade de agente preservando YAML.
 - Pré-visualizar atualização com `--dry-run`.
 
-**Pipelines:**
-- Criar pipeline em cada modo (workflow, deliberation, loop, composite).
+**Flows:**
+- Criar flow em cada modo (workflow, deliberation, loop, composite).
 - Validar que todos os agentes referenciados existem.
-- Adicionar/remover participantes de pipeline existente.
-- Inspecionar pipeline individual com `pipeline show`.
+- Adicionar/remover participantes de flow existente.
+- Inspecionar flow individual com `flow show`.
 - Pré-visualizar atualização com `--dry-run`.
-- Configurar composição via wizard de seleção de pipelines.
+- Configurar composição via wizard de seleção de flows.
 
 **Servidor (Gateway):**
 - Iniciar gateway em modo foreground com logs em tempo real.
@@ -1005,7 +1291,7 @@ Funcionalidade: Pré-visualização de alterações
 - Validar acessibilidade do gateway via `miniautogen check`.
 
 **Execução:**
-- Executar pipeline com resultado FINISHED.
+- Executar flow com resultado FINISHED.
 - Fornecer entrada via `--input`, `--input @ficheiro` ou stdin.
 - Retomar execução a partir de checkpoint.
 - Respeitar políticas de timeout, budget e retry.
@@ -1023,7 +1309,7 @@ Funcionalidade: Pré-visualização de alterações
 ### Fase 1 -- Fundação e Motores (Sprint A)
 
 **FR-001: Scaffolding via init**
-O sistema deve criar a estrutura completa de um projecto multiagente com um único comando. O scaffold inclui o ficheiro de configuração principal (`miniautogen.yml`), os diretórios para agentes, pipelines e templates. O projecto gerado deve ser imediatamente válido para receber recursos. Se o diretório de destino não estiver vazio, o comando bloqueia por defeito. Com `--force`, preserva ficheiros existentes e adiciona apenas os que faltam. O sistema nunca sobrescreve ficheiros existentes sem `--force`.
+O sistema deve criar a estrutura completa de um projecto multiagente com um único comando. O scaffold inclui o ficheiro de configuração principal (`miniautogen.yml`), os diretórios para agentes, flows e templates. O projecto gerado deve ser imediatamente válido para receber recursos. Se o diretório de destino não estiver vazio, o comando bloqueia por defeito. Com `--force`, preserva ficheiros existentes e adiciona apenas os que faltam. O sistema nunca sobrescreve ficheiros existentes sem `--force`.
 
 **FR-002: Engine CRUD (create, list, show, update)**
 O sistema deve suportar a gestão completa de motores LLM via CLI:
@@ -1045,7 +1331,7 @@ Ao atualizar qualquer recurso, o sistema deve:
 - Não reorganizar ou reformatar seccoes não modificadas.
 
 **FR-005: Validação de esquema antes da escrita**
-Toda operação de criação ou atualização de recurso deve validar o objecto resultante contra o esquema correspondente (BackendConfig, AgentSpec, PipelineConfig) antes de o persistir em disco. Dados inválidos nunca devem ser gravados.
+Toda operação de criação ou atualização de recurso deve validar o objecto resultante contra o esquema correspondente (BackendConfig, AgentSpec, FlowConfig) antes de o persistir em disco. Dados inválidos nunca devem ser gravados.
 
 **FR-006: Validação de projecto via check (expandido)**
 O comando `miniautogen check` deve validar a integridade completa do projecto em dois níveis:
@@ -1053,8 +1339,8 @@ O comando `miniautogen check` deve validar a integridade completa do projecto em
 Validação de configuração:
 - Motores referenciados por agentes existem na configuração.
 - Agentes são válidos contra o esquema AgentSpec.
-- Pipelines referenciam agentes que existem.
-- Configuração de modo de pipeline é consistente (ex: deliberation tem líder definido).
+- Flows referenciam agentes que existem.
+- Configuração de modo de flow é consistente (ex: deliberation tem líder definido).
 - Não existem dependências circulares ou referências órfãs.
 
 Validação de runtime:
@@ -1078,8 +1364,8 @@ A criação de agente deve obrigatoriamente vincular o agente a um motor existen
 
 **FR-009: Exclusão segura com verificação de uso**
 Antes de excluir um agente, o sistema deve:
-- Verificar se o agente está referenciado em algum pipeline.
-- Se estiver em uso, bloquear a exclusão e informar quais pipelines o referenciam.
+- Verificar se o agente está referenciado em algum flow.
+- Se estiver em uso, bloquear a exclusão e informar quais flows o referenciam.
 - Se não estiver em uso, proceder com a exclusão.
 
 **FR-010: Modo dual para comandos de agentes**
@@ -1088,13 +1374,13 @@ Os comandos de criação e atualização de agentes seguem o mesmo paradigma dua
 **FR-011: Validação de agente contra esquema AgentSpec**
 Todo agente criado ou atualizado deve ser validado contra o esquema AgentSpec, que define campos obrigatórios (nome, papel, motor) e opcionais (objectivo, temperatura, tokens máximos).
 
-### Fase 3 -- Pipelines e Coordenação (Sprint C)
+### Fase 3 -- Flows e Coordenação (Sprint C)
 
-**FR-012: Pipeline CRUD (create, list, show, update)**
-O sistema deve suportar a gestão completa de pipelines via CLI:
-- **create:** Cria configuração de pipeline com modo de coordenação e agentes participantes.
-- **list:** Exibe pipelines em formato tabular com nome, modo e participantes.
-- **show:** Exibe detalhes completos de um pipeline específico. Suporta `--format json`.
+**FR-012: Flow CRUD (create, list, show, update)**
+O sistema deve suportar a gestão completa de flows via CLI:
+- **create:** Cria configuração de flow com modo de coordenação e agentes participantes.
+- **list:** Exibe flows em formato tabular com nome, modo e participantes.
+- **show:** Exibe detalhes completos de um flow específico. Suporta `--format json`.
 - **update:** Adiciona ou remove agentes, modifica parâmetros de coordenação. Suporta `--dry-run`.
 
 **FR-013: Wizard de configuração específico por modo**
@@ -1102,20 +1388,20 @@ Cada modo de coordenação tem um fluxo de configuração interactivo distinto:
 - **Workflow:** Pergunta quais agentes encadear e em que ordem.
 - **Deliberation:** Pergunta quem é o líder, quem são os pares e o número máximo de rondas.
 - **Loop:** Pergunta qual agente é o roteador, quais são os participantes e a condição de terminação.
-- **Composite:** Lista pipelines existentes e permite selecionar quais encadear. Para cada pipeline, permite definir mapeadores de entrada/saída opcionais. Gera os CompositionStep correspondentes.
+- **Composite:** Lista flows existentes e permite selecionar quais encadear. Para cada flow, permite definir mapeadores de entrada/saída opcionais. Gera os CompositionStep correspondentes.
 
-**FR-014: Validação de referências de agentes em pipelines**
-A criação e atualização de pipelines deve validar que todos os agentes referenciados existem no diretório `agents/`. Referências a agentes inexistentes devem ser rejeitadas com mensagem de erro específica.
+**FR-014: Validação de referências de agentes em flows**
+A criação e atualização de flows deve validar que todos os agentes referenciados existem no diretório `agents/`. Referências a agentes inexistentes devem ser rejeitadas com mensagem de erro específica.
 
-**FR-015: Modo dual para comandos de pipelines**
-Os comandos de criação e atualização de pipelines seguem o paradigma dual. Em modo silencioso, todos os parâmetros (modo, agentes, configuração específica) são fornecidos via flags.
+**FR-015: Modo dual para comandos de flows**
+Os comandos de criação e atualização de flows seguem o paradigma dual. Em modo silencioso, todos os parâmetros (modo, agentes, configuração específica) são fornecidos via flags.
 
 ### Fase 4 -- Execução e Runtime
 
-**FR-016: Execução de pipeline via PipelineRunner**
-O comando `miniautogen run <pipeline>` deve delegar a execução ao PipelineRunner, que:
+**FR-016: Execução de flow via PipelineRunner**
+O comando `miniautogen run <flow>` deve delegar a execução ao PipelineRunner, que:
 - Gera um `run_id` único para cada execução.
-- Carrega a configuração do pipeline e resolve todas as dependências.
+- Carrega a configuração do flow e resolve todas as dependências.
 - Instancia o runtime adequado ao modo de coordenação.
 - Gere o ciclo de vida completo da execução.
 - Produz um RunResult com status final, duração e métricas.
@@ -1143,7 +1429,7 @@ O PipelineRunner deve aplicar limites de tempo configurados:
 Ao exceder o limite, a execução é cancelada com status TIMED_OUT e emissão do evento correspondente.
 
 **FR-019: Portões de aprovação (human-in-the-loop)**
-O sistema deve suportar ApprovalGate como componente de pipeline que:
+O sistema deve suportar ApprovalGate como componente de flow que:
 - Pausa a execução e emite APPROVAL_REQUESTED.
 - Persiste o estado via checkpoint.
 - Retoma após aprovação do operador.
@@ -1166,10 +1452,12 @@ O sistema deve implementar BudgetPolicy que:
 
 **FR-022: Execução dos modos de coordenação**
 O sistema deve suportar quatro modos de coordenação:
-- **Workflow (WorkflowRuntime):** Execução sequencial de agentes em cadeia. Saída de um componente alimenta o seguinte.
+- **Workflow (WorkflowRuntime):** Execução sequencial/paralela de agentes em cadeia. Saída de um componente alimenta o seguinte. Suporta fan-out estático (steps paralelos declarados no plano).
 - **Deliberation (DeliberationRuntime):** Líder propõe, pares avaliam, líder sintetiza. Repete até convergência ou limite de rondas.
-- **Agentic Loop (AgenticLoopRuntime):** Roteador decide qual participante activar em cada iteração. Ciclo repete até condição de terminação.
+- **Agentic Loop (AgenticLoopRuntime):** Roteador decide qual participante activar em cada iteração. Suporta fan-out dinâmico via `RouterDecision.next_agents` para dispatch paralelo. ResultAggregator consolida resultados com estratégias: all, race, quorum(n), vote. Ciclo repete até condição de terminação.
 - **Composite (CompositeRuntime):** Encadeia múltiplos modos em sequência. Resultado de uma fase alimenta a seguinte.
+
+Todos os modos suportam RuntimeInterceptors (hooks tipados com semântica waterfall inspirados em Tapable/Webpack): `before_flow`, `before_step`, `should_execute` (gate), `after_step`, `on_step_error`, `after_flow`. Os interceptors são boundary-aware (FlowInterceptor, StepInterceptor, AgentInterceptor) e composáveis via API pipe-style. Cada step pode ter supervisão individual: restart, resume, stop ou escalate.
 
 ### Fase 5 -- Persistência e Operação
 
@@ -1192,7 +1480,7 @@ O comando `miniautogen sessions list` deve suportar:
 - Listagem de todas as sessões em formato tabular.
 - Filtragem por status (FINISHED, FAILED, CANCELLED, TIMED_OUT).
 - Filtragem por período (ex: `--since 7d`).
-- Exibição de: run_id, pipeline, status, data de início, duração.
+- Exibição de: run_id, flow, status, data de início, duração.
 
 O comando `miniautogen sessions show <run_id>` deve exibir detalhes completos da execução: estado actual, eventos emitidos, mensagens trocadas, checkpoints registados. Suporta `--format json`.
 
@@ -1249,7 +1537,7 @@ As operações de atualização devem preservar:
 O sistema deve usar técnicas de manipulação de YAML que respeitem a estrutura documental, não apenas os dados.
 
 **NFR-003: Validação de esquema antes da escrita (< 100ms)**
-Toda validação de esquema (BackendConfig, AgentSpec, PipelineConfig) deve completar em menos de 100 milissegundos. Dados inválidos nunca devem ser persistidos em disco.
+Toda validação de esquema (BackendConfig, AgentSpec, FlowConfig) deve completar em menos de 100 milissegundos. Dados inválidos nunca devem ser persistidos em disco.
 
 **NFR-004: Observabilidade -- 100% de eventos com correlation_id e timestamp**
 Todo evento emitido pelo sistema deve conter obrigatoriamente `correlation_id` e `timestamp`. Não devem existir eventos sem estes campos. A cobertura da taxonomia canônica de eventos de execução (versão 1) deve ser completa, sem lacunas no ciclo de vida.
@@ -1263,8 +1551,8 @@ Falhas em adaptadores de backend (motores LLM) não devem corromper o RunContext
 **NFR-007: Determinismo**
 Dada a mesma entrada (configuração, dados, seed), o sistema deve produzir a mesma sequência de eventos. A ordem de emissão de eventos é determinística para o mesmo grafo de execução. Não-determinismo introduzido pelos LLMs (respostas variadas) não inválida esta propriedade -- o determinismo refere-se a lógica de orquestração, não ao conteudo gerado.
 
-**NFR-008: Tempo até primeiro pipeline (< 3 minutos)**
-Um novo desenvolvedor deve conseguir ir de zero a um pipeline multiagente em execução em menos de 3 minutos, usando apenas o terminal. O fluxo completo (init, engine create, agent create, pipeline create, check, run) deve ser fluido é guiado.
+**NFR-008: Tempo até primeiro flow (< 3 minutos)**
+Um novo desenvolvedor deve conseguir ir de zero a um flow multiagente em execução em menos de 3 minutos, usando apenas o terminal. O fluxo completo (init, engine create, agent create, flow create, check, run) deve ser fluido é guiado.
 
 **NFR-009 [Servidor - Arranque Rápido]: Tempo de arranque do gateway (< 3 segundos)**
 O gateway deve estar operacional e a responder ao health check em menos de 3 segundos após o comando de arranque. Este requisito é essencial para manter a fluidez do fluxo de trabalho do desenvolvedor.
@@ -1291,7 +1579,7 @@ Inglês como língua nativa do CLI (output e logs). Documentação multilingue. 
 O sistema é totalmente funcional offline quando o desenvolvedor utiliza apenas motores locais (gateway local, motores locais). O CLI, validação, execução e gestão de sessões operam sem acesso a internet. Apenas motores com endpoints remotos requerem conectividade.
 
 **NFR-016: Sem restrições lógicas de recursos**
-O sistema não impõe limites ao número de agentes, motores ou pipelines por projecto. A restrição é a capacidade do sistema operativo (memória, disco, processos).
+O sistema não impõe limites ao número de agentes, motores ou flows por projecto. A restrição é a capacidade do sistema operativo (memória, disco, processos).
 
 ---
 
@@ -1299,17 +1587,20 @@ O sistema não impõe limites ao número de agentes, motores ou pipelines por pr
 
 O modelo de domínio do MiniAutoGen CLI-First organiza-se em torno das seguintes entidades:
 
+**Workspace**
+Container de topo que contém todos os recursos do sistema (Engines, Agents, Flows, Defaults) e simultaneamente actua como server/gateway para interacção externa. Definido pelo ficheiro `miniautogen.yml`. O Workspace gere a conectividade externa (host, port, daemon mode, PID, health check) como capacidade integrada, não como entidade separada.
+
 **Engine (BackendConfig)**
-Motor LLM configurado no sistema. Contém: nome, provedor, modelo, endpoint, credenciais (referência a variável de ambiente), capacidades. É a entidade de primeira classe para integração com backends de IA. Cada agente deve estar vinculado a exactamente um motor.
+Conexão do MiniAutoGen a monólitos de agentes externos. Contém: nome, provedor, modelo, endpoint, credenciais (referência a variável de ambiente), capacidades, configuração específica da categoria. Organiza-se em três categorias: API Providers (stateless HTTP), CLI Agents (stateful subprocess com PTY) e Gateway/Hub (stateful WebSocket). O EngineResolver mapeia provedores: openai, anthropic, google, litellm, claude-code, gemini-cli, codex-cli. Suporta múltiplas instâncias do mesmo provedor com configurações distintas. Cada agente deve estar vinculado a exactamente um motor.
 
 **AgentSpec**
-Definição de um agente com identidade e capacidades. Contém: nome, papel (role), objectivo (goal), motor vinculado (engine), configurações de geração (temperatura, tokens máximos). Gravado como ficheiro individual em `agents/`.
+Definição de um agente como abstracção sobre um Engine, com runtime local próprio. Organiza-se em 5 camadas: Identity (nome, papel, objectivo, backstory, versão), Engine Binding (referência ao motor), Agent Runtime (tools, memory, permissions, delegation, hooks composáveis), Policies (limites de turnos, timeout, retry, budget) e Protocol Adapters (workflow, deliberation, conversational, coordinator). O Agent Runtime adiciona capacidades locais que o Engine não possui: memória multi-nível (session + long-term + distillation), sistema de tools (allowlist/denylist/all), permissões granulares (shell, network, filesystem) e hooks composáveis (before_turn, after_event, on_error). Gravado como ficheiro individual em `agents/`.
 
-**PipelineConfig**
-Configuração de um pipeline de coordenação multiagente. Contém: nome, modo de coordenação (workflow, deliberation, loop, composite), lista de agentes participantes, parâmetros específicos do modo (líder, rondas, condição de terminação). Define como os agentes colaboram.
+**FlowConfig**
+Configuração de um flow de coordenação multiagente -- onde vive a diferenciação competitiva do MiniAutoGen. Contém: nome, modo de coordenação (workflow, deliberation, agentic_loop, composite), lista de agentes participantes, parâmetros específicos do modo (líder, rondas, condição de terminação), RuntimeInterceptors (hooks tipados com semântica waterfall), configuração de fan-out dinâmico e ResultAggregator (all, race, quorum, vote), e supervisão per-step (restart, resume, stop, escalate). Define como os agentes colaboram, se supervisionam e se recuperam de falhas.
 
 **PipelineRunner**
-Executor central de pipelines. Responsável por: gerar run_id, resolver dependências, instanciar o runtime adequado, gerir o ciclo de vida, aplicar políticas, emitir eventos, produzir RunResult.
+Executor central de flows. Responsável por: gerar run_id, resolver dependências, instanciar o runtime adequado, gerir o ciclo de vida, aplicar políticas, emitir eventos, produzir RunResult.
 
 **RunContext**
 Estado mutável de uma execução em curso. Contém: run_id, mensagens acumuladas, metadados, métricas parciais. Flui entre componentes durante a execução.
@@ -1325,13 +1616,15 @@ Política lateral que observa e reage a eventos da execução. Tipos: RetryPolic
 
 **Runtimes de Coordenação**
 Estratégias de execução que implementam modos de coordenação:
-- WorkflowRuntime: cadeia sequencial.
+- WorkflowRuntime: cadeia sequencial/paralela de steps.
 - DeliberationRuntime: líder + pares + convergência.
-- AgenticLoopRuntime: roteador + participantes + condição de terminação.
-- CompositeRuntime: composição de modos.
+- AgenticLoopRuntime: roteador + participantes + condição de terminação + fan-out dinâmico.
+- CompositeRuntime: composição de modos em sequência.
+
+Os Runtimes suportam RuntimeInterceptors (hooks tipados com semântica waterfall inspirada em Tapable/Webpack), fan-out dinâmico via RouterDecision.next_agents, ResultAggregator (all, race, quorum, vote) e supervisão per-step (restart, resume, stop, escalate).
 
 **ApprovalGate**
-Componente de pipeline que pausa a execução para aprovação humana. Persiste estado via checkpoint e retoma após decisão do operador.
+Componente de flow que pausa a execução para aprovação humana. Persiste estado via checkpoint e retoma após decisão do operador.
 
 **SessionRecovery**
 Mecanismo de recuperação que reconstrói o RunContext a partir de checkpoints e retoma execuções interrompidas.
@@ -1339,8 +1632,8 @@ Mecanismo de recuperação que reconstrói o RunContext a partir de checkpoints 
 **Stores (RunStore, MessageStore, CheckpointStore)**
 Camada de persistência para metadados de execução, mensagens e checkpoints respectivamente.
 
-**Servidor/Gateway**
-Servidor HTTP local que encapsula backends LLM e os expõe como API HTTP compatível com OpenAI. Gere o ciclo de vida do processo (arranque, paragem, estado), regista PID em `.miniautogen/server.pid` em modo daemon e fornece endpoint de saúde para verificação de acessibilidade. É o intermediário que permite ao AgentAPIDriver comunicar com backends locais.
+**Servidor/Gateway (capacidade do Workspace)**
+Servidor HTTP local que encapsula backends LLM e os expõe como API HTTP compatível com OpenAI. É uma capacidade integrada do Workspace (configurada na secção `server` do `miniautogen.yml`), não uma entidade independente. Gere o ciclo de vida do processo (arranque, paragem, estado), regista PID em `.miniautogen/server.pid` em modo daemon e fornece endpoint de saúde para verificação de acessibilidade. É o intermediário que permite ao AgentAPIDriver comunicar com backends locais.
 
 ---
 
@@ -1356,9 +1649,9 @@ Servidor HTTP local que encapsula backends LLM e os expõe como API HTTP compat�
 
 **DA-003: Comportamento de exclusão de recursos**
 - **Questão:** Soft delete (marcar como inactivo) ou hard delete (remover ficheiro)?
-- **Recomendação:** Hard delete com verificações de segurança. Antes de excluir, o sistema verifica dependências (agente em uso por pipeline, motor em uso por agente). Se existirem dependências, a exclusão é bloqueada com mensagem informativa. Esta abordagem é mais simples e alinha-se com o paradigma de ficheiros em disco.
+- **Recomendação:** Hard delete com verificações de segurança. Antes de excluir, o sistema verifica dependências (agente em uso por flow, motor em uso por agente). Se existirem dependências, a exclusão é bloqueada com mensagem informativa. Esta abordagem é mais simples e alinha-se com o paradigma de ficheiros em disco.
 
-**DA-004: Complexidade de configuração de pipelines**
+**DA-004: Complexidade de configuração de flows**
 - **Questão:** Como gerir a complexidade de configuração para modos avançados (composite, loop com condições complexas)?
 - **Recomendação:** Para modos simples (workflow), o wizard cobre 100% da configuração. Para modos complexos (composite, loop com lógica avançada), o wizard gera um esqueleto de configuração que o utilizador pode refinar. O modo silencioso via flags aceita a configuração completa para todos os modos.
 
@@ -1372,7 +1665,7 @@ As seguintes questões foram resolvidas com decisões concretas:
 Política de last-write-wins com aviso. O sistema verifica a data de modificação do ficheiro antes de gravar. Se houve alteração externa desde a leitura, exibe aviso mas permite forçar com `--force`. Backup automático antes de cada escrita (`.bak`).
 
 **DT-002: Limites de recursos**
-Sem restrições lógicas. O sistema não impõe limites ao número de agentes, motores ou pipelines. A restrição é a capacidade do sistema operativo.
+Sem restrições lógicas. O sistema não impõe limites ao número de agentes, motores ou flows. A restrição é a capacidade do sistema operativo.
 
 **DT-003: Migração de versão do esquema**
 Fora de escopo para Fase 1. A validação estrita rejeita schemas incompatíveis. Futuro: comando `miniautogen migrate`.
@@ -1394,7 +1687,7 @@ Inglês como única língua do terminal na Fase 1. Sem sistema de internacionali
 ## 8. Dependências e Pressupostos
 
 **Dependências:**
-- O sistema depende de pelo menos um backend LLM acessível (local ou remoto) para execução de pipelines.
+- O sistema depende de pelo menos um backend LLM acessível (local ou remoto) para execução de flows.
 - A estrutura do projecto segue convenções de diretório definidas pelo comando `init`.
 - Os ficheiros de configuração usam formato YAML.
 - O CLI opera num terminal com suporte a entrada interactiva (para modo wizard).
@@ -1416,7 +1709,7 @@ Os seguintes itens não fazem parte desta especificação:
 - Distribuição de execuções em múltiplas máquinas (execução distribuída).
 - Marketplace de agentes ou templates.
 - Integração directa com repositórios de código (Git hooks, CI/CD pipelines).
-- Versionamento de recursos (agentes, pipelines).
+- Versionamento de recursos (agentes, flows).
 - Hot-reload de configuração durante execução.
 - Métricas de desempenho agregadas entre execuções (analytics).
 - Migração automática de esquemas entre versões (Fase 1).
@@ -1434,14 +1727,14 @@ A manipulação de YAML com preservação de comentários e formatação é tecn
 - **Mitigação:** Testes extensivos com ficheiros YAML que contém comentários, indentação variada e estruturas complexas. Backups automáticos antes de escrita (NFR-013).
 
 **R-003: Consistência de referências cruzadas**
-Com motores, agentes e pipelines como entidades separadas, a integridade referencial depende de verificações em tempo de escrita e do comando `check`.
+Com motores, agentes e flows como entidades separadas, a integridade referencial depende de verificações em tempo de escrita e do comando `check`.
 - **Mitigação:** Validação obrigatória antes de persistência (FR-005). Comando `check` como rede de segurança. Exclusão segura (FR-009).
 
 **R-004: Experiência do wizard para modos complexos**
 Modos avançados (composite, loop com lógica condicional) podem ser difíceis de configurar via wizard interactivo sem sobrecarregar o utilizador.
 - **Mitigação:** Wizards geram esqueletos para modos complexos (DA-004). Documentação com exemplos para cada modo.
 
-**R-005: Tempo até primeiro pipeline**
+**R-005: Tempo até primeiro flow**
 O objectivo de < 3 minutos (NFR-008) é ambicioso e depende de fatores externos (velocidade de instalação, disponibilidade de backend).
 - **Mitigação:** Medir e otimizar o fluxo crítico. Fornecer backends locais pré-configurados como opção rápida.
 
@@ -1470,7 +1763,7 @@ O documento é considerado aprovado quando todos os critérios seguintes forem s
 
 | # | Critério | Status |
 |---|----------|--------|
-| 1 | Todos os comandos CLI (init, engine, agent, pipeline, check, run, sessions, server) estão especificados com entradas e saídas | APROVADO |
+| 1 | Todos os comandos CLI (init, engine, agent, flow, check, run, sessions, server) estão especificados com entradas e saídas | APROVADO |
 | 2 | Modo dual (interactivo/silencioso) está definido para todos os comandos CRUD | APROVADO |
 | 3 | Cenários BDD cobrem os fluxos críticos identificados (26 cenários) | APROVADO |
 | 4 | Requisitos funcionais estão agrupados por fase de entrega (6 fases) | APROVADO |
@@ -1481,7 +1774,7 @@ O documento é considerado aprovado quando todos os critérios seguintes forem s
 | 9 | Fora de escopo está explicitamente declarado | APROVADO |
 | 10 | Documento descreve o sistema como caixa preta (sem nomes de bibliotecas de implementação) | APROVADO |
 | 11 | Vocabulário de domínio preservado (PipelineRunner, WorkflowRuntime, RunContext, AgentSpec, etc.) | APROVADO |
-| 12 | Objectivo de < 3 minutos para primeiro pipeline está documentado como NFR | APROVADO |
+| 12 | Objectivo de < 3 minutos para primeiro flow está documentado como NFR | APROVADO |
 | 13 | Execução durável (checkpoints, recovery) está especificada | APROVADO |
 | 14 | Exclusão segura com verificação de dependências está especificada | APROVADO |
 | 15 | Preservação de YAML in-place está especificada como requisito | APROVADO |
@@ -1503,56 +1796,99 @@ Mapa hierárquico completo dos elementos do MiniAutoGen, do projecto ao agente. 
 ## Hierarquia de Recursos
 
 ```
-Project (miniautogen.yml)
+Workspace (miniautogen.yml) — Container + Server/Gateway
 │
-├── Engine Profiles (motores LLM)
-│   ├── engine: "gpt4o"        kind: api,   provider: litellm
-│   ├── engine: "claude"       kind: api,   provider: litellm
-│   └── engine: "local-gemma"  kind: local,  provider: gemini-cli
+├── Server / Gateway (capacidade do Workspace)
+│   ├── host, port, daemon mode
+│   ├── PID management (.miniautogen/server.pid)
+│   └── Health check endpoint (/health)
 │
-├── Agents (os "funcionários")
-│   ├── agent: "planner"    → engine: gpt4o,  role: Architect
-│   ├── agent: "writer"     → engine: claude,  role: Developer
-│   ├── agent: "reviewer"   → engine: gpt4o,  role: QA Lead
-│   └── agent: "editor"     → engine: claude,  role: Refiner
+├── Engines (conexão a monólitos de agentes — 3 categorias)
+│   │
+│   ├── API Providers (stateless HTTP)
+│   │   ├── engine: "gpt4o-main"     provider: openai
+│   │   ├── engine: "gemini-pro"     provider: google
+│   │   └── engine: "multi-model"    provider: litellm
+│   │
+│   ├── CLI Agents (stateful subprocess com PTY)
+│   │   ├── engine: "claude-architect"  provider: claude-code  config: {claude_md: "prompts/architect.md"}
+│   │   ├── engine: "claude-reviewer"   provider: claude-code  config: {claude_md: "prompts/reviewer.md"}
+│   │   ├── engine: "gemini-local"      provider: gemini-cli
+│   │   └── engine: "codex-impl"        provider: codex-cli
+│   │
+│   └── Gateway/Hub (stateful WebSocket)
+│       └── engine: "acp-hub"        provider: acp  endpoint: ws://...
+│
+├── Agents (abstracção sobre Engines — 5 camadas)
+│   ├── agent: "planner"    → engine: gpt4o-main,       role: Architect
+│   ├── agent: "writer"     → engine: claude-architect,  role: Developer
+│   ├── agent: "reviewer"   → engine: claude-reviewer,   role: QA Lead
+│   └── agent: "editor"     → engine: gemini-pro,        role: Refiner
 │       │
-│       ├── AgentSpec (identidade)
+│       ├── 1. Identity — AgentSpec
 │       │   ├── name, role, goal, backstory
-│       │   ├── engine_profile → ref to Engine
+│       │   ├── engine → ref to Engine
 │       │   ├── skills: SkillRef
 │       │   └── version
 │       │
-│       ├── ToolAccessConfig
-│       │   ├── mode: allowlist | denylist | all
-│       │   └── tools: [web_search, file_read, code_gen]
+│       ├── 2. Engine Binding
+│       │   └── engine → ref to Engine (provider de capacidade bruta)
 │       │
-│       ├── PermissionsConfig
-│       │   ├── shell: bool
-│       │   ├── network: bool
-│       │   └── filesystem: read-only | read-write | denied
+│       ├── 3. Agent Runtime (camada local sobre o Engine)
+│       │   ├── tools
+│       │   │   ├── mode: allowlist | denylist | all
+│       │   │   └── tools: [web_search, file_read, code_gen]
+│       │   │
+│       │   ├── memory (MemoryProvider — 3 níveis)
+│       │   │   ├── session: mensagens do Run actual
+│       │   │   ├── long_term: factos entre Runs
+│       │   │   ├── distillation: resumo automático
+│       │   │   └── max_context_tokens
+│       │   │
+│       │   ├── permissions
+│       │   │   ├── shell: bool
+│       │   │   ├── network: bool
+│       │   │   └── filesystem: read-only | read-write | denied
+│       │   │
+│       │   ├── delegation
+│       │   │   ├── allow_delegation: bool
+│       │   │   └── can_delegate_to: [agent_ids]
+│       │   │
+│       │   └── hooks (composáveis, pipeline interno)
+│       │       ├── before_turn(ctx) → ctx'      # Waterfall
+│       │       ├── after_event(event) → None     # Parallel observe
+│       │       └── on_error(error) → ErrorAction  # Decide recovery
 │       │
-│       ├── MemoryConfig
-│       │   ├── session_memory, retrieval_memory
-│       │   └── max_context_tokens
+│       ├── 4. Policies (limites)
+│       │   ├── max_turns, timeout_seconds
+│       │   └── retry_policy, budget_limit
 │       │
-│       ├── DelegationConfig
-│       │   ├── allow_delegation: bool
-│       │   └── can_delegate_to: [agent_ids]
-│       │
-│       └── RuntimeConfig
-│           ├── max_turns, timeout_seconds
-│           └── retry_policy
+│       └── 5. Protocol Adapters (4 capabilities)
+│           ├── WorkflowAgent         → executa steps sequenciais
+│           ├── DeliberationAgent     → participa em rounds
+│           ├── ConversationalAgent   → conversa com roteador
+│           └── CoordinatorAgent (NEW) → orquestra sub-flows
 │
-├── Pipelines (a orquestração)
-│   ├── pipeline: "main"        mode: workflow
-│   ├── pipeline: "review-loop" mode: agentic_loop
-│   └── pipeline: "research"    mode: deliberation
+├── Flows (a orquestração — O DIFERENCIADOR)
+│   ├── flow: "main"        mode: workflow
+│   ├── flow: "review-loop" mode: agentic_loop
+│   └── flow: "research"    mode: deliberation
 │       │
 │       ├── Coordination Mode (como os agents colaboram)
 │       │   ├── WorkflowPlan      → steps sequenciais/paralelos
 │       │   ├── DeliberationPlan  → rounds com leader + peer review
-│       │   ├── AgenticLoopPlan   → router seleciona próximo speaker
-│       │   └── CompositePlan     → encadeia sub-pipelines
+│       │   ├── AgenticLoopPlan   → router + fan-out dinâmico
+│       │   └── CompositePlan     → encadeia sub-flows
+│       │
+│       ├── RuntimeInterceptors (hooks tipados — Tapable/Webpack)
+│       │   ├── AsyncSeriesWaterfall: before_flow, before_step
+│       │   ├── AsyncSeriesBail: should_execute (gate)
+│       │   ├── AsyncSeries: after_step, after_flow (observe)
+│       │   └── on_step_error → restart | resume | stop | escalate
+│       │
+│       ├── Fan-out & Aggregation
+│       │   ├── RouterDecision.next_agents → parallel dispatch
+│       │   └── ResultAggregator: all | race | quorum(n) | vote
 │       │
 │       ├── Participants
 │       │   └── [agent_refs] → refs to Agents
@@ -1565,22 +1901,17 @@ Project (miniautogen.yml)
 │           ├── ValidationPolicy  → cross-check outputs
 │           └── ExecutionPolicy   → composite of above
 │
-├── Server / Gateway
-│   ├── host, port, daemon mode
-│   ├── PID management
-│   └── Health check endpoint
-│
 └── Defaults
-    ├── default engine_profile
+    ├── default engine
     └── default policies
 ```
 
 ## Fluxo de Execução (Runtime)
 
-O que acontece quando um pipeline é executado via `miniautogen run`:
+O que acontece quando um flow é executado via `miniautogen run`:
 
 ```
-Pipeline
+Flow
   │
   ▼
 PipelineRunner (executor único do microkernel)
@@ -1621,41 +1952,45 @@ PipelineRunner (executor único do microkernel)
 
 | # | Elemento | Descrição | Persistência | CRUD |
 |---|----------|-----------|-------------|------|
-| 1 | **Project** | Container raiz, configuração global | `miniautogen.yml` | init |
-| 2 | **Engine** | Motor LLM (API ou local) | `engine_profiles:` no YAML | create/list/show/update/delete |
-| 3 | **Agent** | Personagem com role, tools, permissions | `agents:` no YAML + `AgentSpec` | create/list/show/update/delete |
-| 4 | **Pipeline** | Orquestração (mode + participants + policies) | `pipelines:` no YAML | create/list/show/update/delete |
-| 5 | **Run** | Execução concreta de um pipeline | `RunStore` + `RunContext` | list/show/clean |
-| 6 | **Event** | Facto atómico do que aconteceu | `EventSink` (55 tipos) | list/filter |
+| 1 | **Workspace** | Container raiz + Server/Gateway. Contém Engines, Agents, Flows, Defaults. Gere conectividade externa (host, port, daemon, PID, health check) | `miniautogen.yml` | init |
+| 2 | **Engine** | Conexão a monólitos de agentes. 3 categorias: API Provider (stateless), CLI Agent (stateful subprocess), Gateway/Hub (stateful WebSocket). EngineResolver: openai, anthropic, google, litellm, claude-code, gemini-cli, codex-cli | `engines:` no YAML | create/list/show/update/delete |
+| 3 | **Agent** | Abstracção sobre Engine com runtime local: 5 camadas (Identity → Engine Binding → Runtime → Policies → Protocol Adapters). 4 capabilities: workflow, deliberation, conversational, coordinator | `agents:` no YAML + `AgentSpec` | create/list/show/update/delete |
+| 4 | **Flow** | Orquestração (mode + participants + policies + RuntimeInterceptors + fan-out + ResultAggregator + supervisão per-step). O DIFERENCIADOR competitivo. 47+ EventTypes | `flows:` no YAML | create/list/show/update/delete |
+| 5 | **Run** | Execução concreta de um flow | `RunStore` + `RunContext` | list/show/clean |
+| 6 | **Event** | Facto atómico do que aconteceu | `EventSink` (55+ tipos, 8 categorias) | list/filter |
 | 7 | **Checkpoint** | Snapshot para resume de execução durável | `CheckpointStore` | list/restore |
 
 ## Grafo de Dependências entre Recursos
 
 ```
-Project ←── obrigatório para tudo
+Workspace (container + gateway) ←── obrigatório para tudo
+  │
+  ├── Server/Gateway ←── capacidade integrada do Workspace (não entidade separada)
   │
   ├── Engine ←── independente (criado primeiro)
+  │     │         3 categorias: API Provider | CLI Agent | Gateway/Hub
   │     ▲
-  │     │ referenciado por
+  │     │ referenciado por (engine binding)
   │     │
-  ├── Agent ──→ depende de Engine (engine_profile)
+  ├── Agent ──→ depende de Engine (abstracção com runtime local)
+  │     │         5 camadas: Identity → Binding → Runtime → Policies → Protocols
   │     ▲
-  │     │ referenciado por
+  │     │ referenciado por (participants)
   │     │
-  ├── Pipeline ──→ depende de Agents (participants)
+  ├── Flow ──→ depende de Agents + RuntimeInterceptors
+  │     │         4 modos: Workflow | AgenticLoop | Deliberation | Composite
+  │     │         + Fan-out dinâmico + ResultAggregator + Supervisão per-step
   │     │
   │     ▼ produz
   │
-  ├── Run ──→ produzido por Pipeline + PipelineRunner
+  ├── Run ──→ produzido por Flow + PipelineRunner
   │     │
-  │     ├──→ Events (emitidos durante execução)
+  │     ├──→ Events (47+ tipos em 8 categorias)
   │     └──→ Checkpoints (salvos para resume)
-  │
-  └── Server ←── independente (gateway HTTP)
 ```
 
 Esta hierarquia de dependências determina a ordem obrigatória de criação:
-**Project → Engine → Agent → Pipeline → Run**
+**Workspace → Engine → Agent → Flow → Run**
 
 ---
 
@@ -1723,11 +2058,11 @@ Estado real da implementação por componente. Actualizado a cada ciclo de desen
 | CLI: init, check, run | ✅ Completo | Bootstrap, validação, execução |
 | CLI: engine CRUD | ✅ Completo | create/list/show/update/delete, dual mode |
 | CLI: agent CRUD | ✅ Completo | create/list/show/update/delete, dual mode |
-| CLI: pipeline CRUD | ✅ Completo | 4 modos, participants, policies |
+| CLI: flow CRUD | ✅ Completo | 4 modos, participants, policies |
 | CLI: sessions | ✅ Completo | list/show/clean |
 | CLI: server | ✅ Completo | start/stop/status/logs |
 | TUI: Workspace | ✅ Completo | Team sidebar + Interaction log |
-| TUI: CRUD Views | ✅ Completo | Engines, agents, pipelines, runs, events |
+| TUI: CRUD Views | ✅ Completo | Engines, agents, flows, runs, events |
 | TUI: HITL Approval | ✅ Completo | Inline banner com approve/deny |
 | TUI: Data Provider | ✅ Completo | Bridge TUI ↔ CLI services |
 

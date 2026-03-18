@@ -34,19 +34,19 @@ Helpers deliberativos: `summarize_peer_reviews`, `build_follow_up_tasks`, `apply
 
 ### `core/events/`
 
-Taxonomia de 42 tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
+Taxonomia de 47+ tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
 
 ---
 
 ## Composição
 
-### `pipeline/`
+### `pipeline/` (legacy)
 
-Mecanismo de composição por pipeline sequencial.
+> **Nota:** Este pacote contém o mecanismo de composição legado. O conceito de orquestração orientado ao utilizador é agora "Flow" (via `FlowConfig` e runtimes de coordenação). O pacote `pipeline/` permanece para compatibilidade retroativa.
 
 - `Pipeline` -- orquestrador de componentes
 - `PipelineComponent` -- classe base para componentes executáveis
-- `DynamicChatPipeline` -- pipeline com roteamento dinâmico de chat
+- `DynamicChatPipeline` -- flow com roteamento dinâmico de chat
 - Componentes prontos em `pipeline/components/components.py`
 
 ---
@@ -136,7 +136,7 @@ Comandos:
 
 - `init` -- scaffolding de projeto com `miniautogen.yml` e exemplos opcionais
 - `check` -- validação da configuração do projeto
-- `run` -- execução de pipeline nomeado em modo headless
+- `run` -- execução de flow nomeado em modo headless
 - `sessions list` -- listagem de runs com filtros
 - `sessions clean` -- remoção de runs antigos por idade
 

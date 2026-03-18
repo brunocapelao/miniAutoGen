@@ -50,6 +50,33 @@ Três protocolos `runtime_checkable` definem as capacidades que um agente deve s
 
 O isolamento por protocolo garante que agentes são validados estruturalmente em tempo de execução, sem herança obrigatória.
 
+### Anatomia do Agente (5 camadas)
+
+A evolução arquitetural define uma anatomia de agente em 5 camadas concêntricas. Para detalhes completos, consulte [`07-agent-anatomy.md`](07-agent-anatomy.md).
+
+| Camada | Nome | Responsabilidade |
+|--------|------|------------------|
+| 1 | **Identity** | `agent_id`, nome, descrição, metadata. Define "quem" é o agente. |
+| 2 | **Engine** | Binding ao provedor de inteligência (API, CLI, gateway). Define "com que" o agente pensa. |
+| 3 | **Runtime** | Hooks locais do ciclo de vida (`AgentHook` protocol), `MemoryProvider`, tool registry. Define "como" o agente opera. |
+| 4 | **Policies** | Budget, retry, timeout, permission aplicados ao nível do agente individual. |
+| 5 | **Protocol Adapters** | Implementação dos protocolos de coordenação (`WorkflowAgent`, `DeliberationAgent`, `ConversationalAgent`). |
+
+### Novos componentes do Agent Runtime
+
+| Componente | Tipo | Responsabilidade |
+|------------|------|------------------|
+| `AgentHook` | Protocol | Contrato para hooks do ciclo de vida do agente (`before_turn`, `after_turn`, `on_error`). Todos os hooks DEVEM ser async (AnyIO canonical). |
+| `MemoryProvider` | Protocol | Contrato para gestão de memória do agente (short-term, long-term, episodic). Injeção de contexto antes de cada turno. |
+
+### Coordenação: RuntimeInterceptor e fan-out dinâmico
+
+O modelo de coordenação evolui com dois novos conceitos:
+
+- **RuntimeInterceptor:** protocolo com semântica de hooks tipados inspirada no Tapable (webpack). Interceptors participam na execução de flows com hooks `before_step`, `should_execute` (bail semantics), `after_step` e `on_error`. São composíveis e não possuem estado global. Detalhes completos dos fluxos com interceptors em [Fluxo 9](04-fluxos.md#fluxo-9-flow-com-interceptors).
+
+- **Fan-out dinâmico:** extensão do `WorkflowRuntime` que permite determinar em runtime quais agentes participam no fan-out, baseado em condições do `RunContext` ou resultados de passos anteriores.
+
 ---
 
 ## 3. Modos de coordenação
@@ -101,7 +128,7 @@ O `PipelineRunner` é o único executor oficial do framework. Centraliza o ciclo
 - Aplicar timeout via `anyio.fail_after()` com base em `ExecutionPolicy` ou parâmetro explícito.
 - Executar o gate de aprovação (`ApprovalGate`) quando configurado, emitindo `APPROVAL_REQUESTED`, `APPROVAL_GRANTED` ou `APPROVAL_DENIED`.
 - Persistir estado de execução em `RunStore` e checkpoints em `CheckpointStore`.
-- Aplicar `RetryPolicy` com backoff exponencial sobre a execução do pipeline.
+- Aplicar `RetryPolicy` com backoff exponencial sobre a execução do flow.
 
 Dependências injetáveis: `EventSink`, `RunStore`, `CheckpointStore`, `ExecutionPolicy`, `ApprovalGate`, `RetryPolicy`. Todas opcionais, com defaults seguros (`NullEventSink`).
 
@@ -142,7 +169,7 @@ Todos em `miniautogen/pipeline/`:
 
 Módulo: `miniautogen/core/events/`
 
-O framework emite 42 tipos de evento canônico organizados em 10 categorias:
+O framework emite 47+ tipos de evento canônico organizados em 12 categorias:
 
 | Categoria | Eventos |
 | --- | --- |
@@ -223,6 +250,18 @@ Interface unificada para backends externos com seis métodos abstratos: `start_s
 Arquivo: `agentapi/driver.py`
 
 Implementação HTTP bridge compatível com endpoints OpenAI. Utiliza `anyio.fail_after()` para timeouts de rede.
+
+### Categorias de Engine/Driver
+
+Os backend drivers organizam-se em três categorias que refletem a estratégia multi-provider do framework:
+
+| Categoria | Descrição | Exemplos |
+|-----------|-----------|----------|
+| **API Providers** | Endpoints HTTP compatíveis com protocolos standard (OpenAI, Anthropic). | OpenAI, Anthropic, Google AI, LiteLLM, vLLM, Ollama |
+| **CLI Agents** | Agentes que operam como processos locais com interface de terminal. | Gemini CLI, Claude Code CLI, Codex CLI |
+| **Gateway/Hub** | Serviços que agregam múltiplos provedores e expõem uma interface unificada. | OpenRouter, LiteLLM proxy, API gateway próprio |
+
+Esta categorização suporta a filosofia "O agente é commodity. O runtime é o produto." -- o Engine é intercambiável, o valor diferencial reside no runtime local.
 
 ### BackendResolver
 

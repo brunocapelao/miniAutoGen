@@ -44,7 +44,7 @@ Modelo: `miniautogen/core/contracts/run_result.py`
 
 Modelo: `miniautogen/core/contracts/events.py`
 
-- `type` é obrigatório. Deve corresponder a um dos 42 valores do enum `EventType`.
+- `type` é obrigatório. Deve corresponder a um dos 47+ valores do enum `EventType`.
 - `timestamp` possui valor padrão em UTC. Todos os eventos possuem marca temporal.
 - `run_id` pode ser inferido do `payload` via `model_validator`. Se o payload contém `run_id`, este é promovido para o campo de topo.
 - `correlation_id` permite agrupar eventos de uma mesma execução ou sub-execução.
@@ -67,6 +67,22 @@ Modelo: `miniautogen/core/contracts/conversation.py`
 - O schema do checkpoint deve ser versionável para permitir migração entre versões do framework.
 - Todo checkpoint deve ser restaurável: os dados persistidos devem ser suficientes para retomar a execução.
 - A operação de restauração é registada via evento `CHECKPOINT_RESTORED`.
+
+### Agent Runtime
+
+Invariantes aplicáveis ao Agent Runtime e aos seus componentes (ver [`07-agent-anatomy.md`](07-agent-anatomy.md)):
+
+- **Hooks DEVEM ser async.** Todos os hooks do `AgentHook` protocol (`before_turn`, `after_turn`, `on_error`) são coroutines AnyIO. Hooks síncronos são considerados defeitos de implementação. Isto garante que o runtime nunca bloqueia o event loop, mesmo em operações de I/O nos hooks.
+- **Engine isolation.** O Agent Runtime NUNCA vaza tipos específicos do Engine para o `core/`. Toda comunicação entre o runtime local e o engine ocorre via protocolos tipados (`LLMProviderProtocol`, `AgentDriver`). Tipos internos do provedor (OpenAI message formats, Gemini response objects, etc.) são transformados por adapters na fronteira.
+- **MemoryProvider é injetável e opcional.** O agente opera normalmente sem `MemoryProvider`. Quando presente, o provider injeta contexto antes de cada turno mas não altera o fluxo principal de execução.
+
+### RuntimeInterceptor
+
+Invariantes aplicáveis ao protocolo `RuntimeInterceptor`:
+
+- **Interceptors DEVEM ser composíveis.** Cada interceptor opera de forma independente, sem estado global partilhado. A composição é feita por registo sequencial, e a ordem de registo determina a ordem de execução.
+- **Interceptors não reescrevem a semântica do domínio.** Tal como as policies, interceptors observam e transformam -- não substituem a lógica de coordenação. Um interceptor pode modificar inputs/outputs e decidir bail, mas não pode alterar o modo de coordenação.
+- **Bail é determinístico.** Quando `should_execute` retorna `False`, o passo é incondicionalmente ignorado. Não há mecanismo de override posterior.
 
 ---
 
@@ -96,7 +112,7 @@ Notas:
 
 ## Taxonomia canônica de eventos
 
-O enum `EventType` em `core/events/types.py` define 42 tipos de evento organizados em 10 categorias.
+O enum `EventType` em `core/events/types.py` define 47+ tipos de evento organizados em 12 categorias.
 
 ### Ciclo de vida do run (5)
 
@@ -189,6 +205,27 @@ O enum `EventType` em `core/events/types.py` define 42 tipos de evento organizad
 | `APPROVAL_GRANTED` | `approval_granted` | Aprovação concedida |
 | `APPROVAL_DENIED` | `approval_denied` | Aprovação negada |
 | `APPROVAL_TIMEOUT` | `approval_timeout` | Aprovação expirou por timeout |
+
+### Agent Runtime (4) -- propostos
+
+Eventos do ciclo de vida do Agent Runtime, associados à anatomia do agente (ver [`07-agent-anatomy.md`](07-agent-anatomy.md)):
+
+| Evento | Valor | Descrição |
+|--------|-------|-----------|
+| `AGENT_TURN_STARTED` | `agent_turn_started` | Início de um turno de agente no runtime local |
+| `AGENT_TURN_COMPLETED` | `agent_turn_completed` | Turno de agente concluído |
+| `AGENT_HOOK_EXECUTED` | `agent_hook_executed` | Hook do AgentHook protocol executado (before_turn, after_turn) |
+| `AGENT_TOOL_INVOKED` | `agent_tool_invoked` | Ferramenta invocada pelo agente via tool registry local |
+
+### Interceptors (3) -- propostos
+
+Eventos emitidos durante a execução de `RuntimeInterceptor`s:
+
+| Evento | Valor | Descrição |
+|--------|-------|-----------|
+| `INTERCEPTOR_BEFORE_STEP` | `interceptor_before_step` | Interceptor executou hook before_step |
+| `INTERCEPTOR_AFTER_STEP` | `interceptor_after_step` | Interceptor executou hook after_step |
+| `INTERCEPTOR_BAIL` | `interceptor_bail` | Interceptor retornou bail em should_execute, passo ignorado |
 
 ---
 

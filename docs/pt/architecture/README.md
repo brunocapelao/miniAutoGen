@@ -2,7 +2,7 @@
 
 ## Posicionamento
 
-MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece três modos de coordenação nativos -- workflow, deliberation e agentic loop -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (42 tipos em 10 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
+MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (47+ tipos em 12 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
 
 ---
 
@@ -16,6 +16,21 @@ MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece
 | 1 | Kernel | PipelineRunner, RunContext, RunResult, stores, eventos, políticas, adapters |
 
 A comunicação entre camadas é estritamente descendente: a camada superior depende da inferior, nunca o inverso. A Camada 3 está reservada e não contém implementação no estado atual do código.
+
+---
+
+## Conceitos de primeira classe
+
+A evolução arquitetural do MiniAutoGen consolida quatro conceitos de primeira classe que estruturam toda a experiência do framework:
+
+| Conceito | Descrição |
+|----------|-----------|
+| **Workspace** | Unidade organizacional de topo. Substitui o antigo "Project". Contém configuração, agentes, flows e estado de sessão. |
+| **Engine** | Abstração unificada do provedor de inteligência (API, CLI agent, gateway). Substitui o antigo "EngineProfile". |
+| **Agent** | Entidade com identidade, engine, runtime local, policies e protocol adapters. A anatomia completa é descrita em [`07-agent-anatomy.md`](07-agent-anatomy.md). |
+| **Flow** | Sequência coordenada de interações entre agentes. Substitui o antigo "Pipeline" na terminologia do utilizador. |
+
+A estratégia multi-provider é central ao design: **"O agente é commodity. O runtime é o produto."** O MiniAutoGen trata engines (Claude, GPT, Gemini, Codex CLI, etc.) como recursos intercambiáveis, focando o valor diferencial na camada de runtime -- coordenação, policies, observabilidade e interceptors. Para contexto competitivo, consulte [`../../competitive-landscape.md`](../../competitive-landscape.md).
 
 ---
 
@@ -49,7 +64,7 @@ flowchart TB
     Modes --> AL["AgenticLoopRuntime"]
     Modes --> CR["CompositeRuntime"]
     Kernel --> Policies["Policies"]
-    Kernel --> Events["Eventos (42 tipos)"]
+    Kernel --> Events["Eventos (47+ tipos)"]
     Kernel --> Stores["Stores"]
     Kernel --> Adapters["Adapters"]
     Adapters --> LLM["Provedores LLM"]
@@ -66,6 +81,9 @@ flowchart TB
 4. [Fluxos de execução](04-fluxos.md) -- sequências de execução para cada modo de coordenação
 5. [Invariantes e taxonomias](05-invariantes.md) -- regras arquiteturais invioláveis e taxonomia canônica de erros
 6. [Decisões arquiteturais](06-decisoes.md) -- ADRs com contexto, decisão e consequências
+7. [Anatomia do agente](07-agent-anatomy.md) -- as 5 camadas do Agent Runtime: Identity, Engine, Runtime, Policies, Protocol Adapters
+8. [Stack tecnológica](08-tech-stack.md) -- dependências, justificativas técnicas, diagrama de dependências
+9. [Invariantes do Sistema Operacional](09-invariantes-sistema-operacional.md) -- 6 invariantes invioláveis (imutabilidade, supervisão, checkpoint, idempotência, event sourcing, tipagem)
 
 ---
 

@@ -181,13 +181,97 @@ sequenceDiagram
 A CLI oferece quatro comandos que cobrem o ciclo de vida de um projeto.
 
 - **init** -- Gera a estrutura inicial com `miniautogen.yml` e diretório de templates. Aceita `--example`.
-- **check** -- Valida configuração: existência do YAML, resolução de agentes, integridade dos pipelines.
-- **run** -- Executa um pipeline nomeado de forma headless, delegando ao `PipelineRunner`.
+- **check** -- Valida configuração: existência do YAML, resolução de agentes, integridade dos flows.
+- **run** -- Executa um flow nomeado de forma headless, delegando ao `PipelineRunner`.
 - **sessions** -- `list` exibe execuções com filtros. `clean` remove execuções antigas por idade.
 
 ```
-init [--example] -> check -> run <pipeline> -> sessions list|clean
+init [--example] -> check -> run <flow> -> sessions list|clean
 ```
+
+---
+
+## Fluxo 7: gestão de Workspace
+
+O Workspace é a unidade organizacional de topo que substitui o antigo conceito de "Project" (ver [DA-9](06-decisoes.md#da-9)).
+
+1. **Criação:** `workspace create` gera a estrutura de diretórios, `miniautogen.yml` e registros vazios de agentes e flows.
+2. **Configuração:** o utilizador define engines disponíveis, políticas globais e stores. A configuração é validada via `check`.
+3. **Switch:** em ambientes com múltiplos workspaces, `workspace switch` altera o contexto ativo. O estado de sessão anterior é preservado.
+
+```
+workspace create <name> → workspace configure → workspace switch <name>
+```
+
+O Workspace expõe opcionalmente capacidades de Server/Gateway, permitindo que agentes externos se conectem via HTTP ou MCP bindings.
+
+---
+
+## Fluxo 8: registo de agente
+
+O registo de um agente vincula identidade, engine e runtime num único processo atómico.
+
+1. **Declaração:** o agente é declarado no `miniautogen.yml` ou programaticamente via API, com `agent_id`, `engine` binding e configuração de runtime.
+2. **Engine binding:** o `BackendResolver` instancia o driver apropriado (API, CLI, gateway) com base na configuração do engine.
+3. **Runtime setup:** hooks do `AgentHook` protocol são registados, `MemoryProvider` é injetado, tools são vinculadas ao registry do agente.
+4. **Validação:** `check` verifica que o agente satisfaz os protocolos necessários para os flows em que participa (`WorkflowAgent`, `DeliberationAgent`, `ConversationalAgent`).
+5. **Emissão de evento:** o registo bem-sucedido emite um evento de ciclo de vida para rastreabilidade.
+
+```mermaid
+sequenceDiagram
+    participant User as Utilizador
+    participant WS as Workspace
+    participant BR as BackendResolver
+    participant Agent as Agent Runtime
+
+    User->>WS: register_agent(spec)
+    WS->>BR: resolve_engine(engine_config)
+    BR-->>WS: EngineDriver
+    WS->>Agent: setup_runtime(hooks, memory, tools)
+    Agent-->>WS: Agent registado
+    WS-->>User: OK
+```
+
+Para detalhes sobre a anatomia interna do agente, consulte [`07-agent-anatomy.md`](07-agent-anatomy.md).
+
+---
+
+## Fluxo 9: flow com interceptors
+
+Os `RuntimeInterceptor`s participam na execução de flows com semântica de hooks tipados. O protocolo define quatro pontos de intervenção.
+
+1. **before_step (Waterfall):** executado antes de cada passo do flow. Interceptors são invocados em série; cada um pode transformar o input antes de passá-lo ao próximo. Emite `INTERCEPTOR_BEFORE_STEP`.
+2. **should_execute (Bail):** avalia se o passo deve ser executado. Se qualquer interceptor retornar `False`, o passo é ignorado (bail semantics). Emite `INTERCEPTOR_BAIL` se bail ocorrer.
+3. **Execução do passo:** o runtime executa o passo normalmente.
+4. **after_step (Series):** executado após cada passo. Interceptors são invocados em série para pós-processamento, logging ou transformação do resultado. Emite `INTERCEPTOR_AFTER_STEP`.
+5. **on_error:** executado em caso de falha no passo. Interceptors podem decidir se o erro é recuperável, transformar o erro ou propagar.
+
+```mermaid
+sequenceDiagram
+    participant RT as Runtime
+    participant I1 as Interceptor 1
+    participant I2 as Interceptor 2
+    participant Step as Passo do Flow
+    participant ES as EventSink
+
+    RT->>I1: before_step(input)
+    I1->>I2: before_step(transformed_input)
+    RT->>ES: INTERCEPTOR_BEFORE_STEP
+    RT->>I1: should_execute(context)
+    I1->>I2: should_execute(context)
+    alt bail
+        RT->>ES: INTERCEPTOR_BAIL
+        RT->>RT: skip step
+    else proceed
+        RT->>Step: execute(input)
+        Step-->>RT: result
+        RT->>I1: after_step(result)
+        I1->>I2: after_step(result)
+        RT->>ES: INTERCEPTOR_AFTER_STEP
+    end
+```
+
+Interceptors são composíveis e não possuem estado global. A ordem de registo determina a ordem de execução. Ver [DA-11](06-decisoes.md#da-11) para a decisão arquitetural.
 
 ---
 

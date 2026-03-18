@@ -8,7 +8,8 @@ Como o MiniAutoGen é uma biblioteca, seus containers são agrupamentos lógicos
 
 ```mermaid
 flowchart TB
-    App["Aplicação Hospedeira"] --> API["API Pública\nminiautogen/api.py\n54 tipos exportados"]
+    App["Aplicação Hospedeira"] --> Workspace["Workspace\n(unidade organizacional de topo)"]
+    Workspace --> API["API Pública\nminiautogen/api.py\n54 tipos exportados"]
 
     API --> Contracts["Core de Contratos\ncore/contracts/"]
     API --> Kernel["Microkernel de Execução\ncore/runtime/"]
@@ -22,11 +23,25 @@ flowchart TB
     Coord --> Backends["Backend Drivers\nbackends/"]
 
     Kernel --> Observability["Observabilidade\nobservability/"]
-    App --> CLIContainer["CLI\ncli/"]
+    Workspace --> CLIContainer["CLI\ncli/"]
+    Workspace --> TUIContainer["TUI / Dashboard\ntui/"]
     CLIContainer --> Kernel
+    TUIContainer --> Kernel
 ```
 
 ## Containers
+
+### Workspace
+
+O **Workspace** é o container de topo que engloba toda a organização de um projeto MiniAutoGen. Substitui o antigo conceito de "Project" (ver [DA-9](06-decisoes.md#da-9)). Um Workspace:
+
+- Contém a configuração global (`miniautogen.yml`), agentes registados, flows e estado de sessão.
+- Expõe capacidades de Server/Gateway para integrações externas (endpoints HTTP, MCP bindings).
+- É a fronteira de isolamento: cada Workspace possui o seu próprio registro de agentes, engines e stores.
+
+A aplicação hospedeira interage com o Workspace, que por sua vez delega à API pública e às interfaces de utilizador (CLI e TUI).
+
+---
 
 ### Aplicação hospedeira
 
@@ -38,7 +53,7 @@ Não faz parte do pacote. É a aplicação Python que consome o MiniAutoGen como
 
 **Módulo:** `miniautogen/api.py`
 
-Ponto de entrada único para consumidores externos. Exporta 54 tipos organizados em categorias: contratos do core, protocolos de agentes, runtimes, pipeline, policies, eventos, observabilidade, stores e backend drivers. Toda importação externa deve partir deste módulo.
+Ponto de entrada único para consumidores externos. Exporta 54 tipos organizados em categorias: contratos do core, protocolos de agentes, runtimes, flow, policies, eventos, observabilidade, stores e backend drivers. Toda importação externa deve partir deste módulo.
 
 ---
 
@@ -144,7 +159,7 @@ O domínio comunica exclusivamente com protocolos de store. Os detalhes de infra
 
 **Diretórios:** `observability/`, `core/events/`
 
-O sistema emite 42 tipos de evento distribuídos em 10 categorias:
+O sistema emite 47+ tipos de evento distribuídos em 12 categorias:
 
 | Categoria | Quantidade | Exemplos |
 | --- | --- | --- |
@@ -171,10 +186,24 @@ Interface de linha de comando baseada em Click com quatro comandos:
 
 - **init:** gera scaffold de projeto multiagente com estrutura padrão.
 - **check:** valida configuração, dependências e contratos do projeto.
-- **run:** executa pipeline em modo headless.
+- **run:** executa flow em modo headless.
 - **sessions:** lista e limpa sessões de execução persistidas.
 
 A ponte assíncrona é realizada via `run_async()` para compatibilidade com o loop AnyIO.
+
+---
+
+### TUI / Dashboard
+
+**Diretório:** `tui/`
+
+Interface visual interativa baseada em Textual ("MiniAutoGen Dash -- Your AI Team at Work"). Paralela à CLI, oferece uma experiência de monitorização e gestão em tempo real:
+
+- Visualização do estado de agentes, flows e sessões ativas.
+- CRUD completo de recursos do Workspace (agentes, flows, engines).
+- Consumo de eventos em tempo real via event sinks.
+
+A TUI e a CLI são containers paralelos que partilham o mesmo Kernel e API pública. A escolha entre ambas é uma decisão do utilizador, não uma restrição arquitetural.
 
 ---
 
