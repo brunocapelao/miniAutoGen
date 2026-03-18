@@ -14,7 +14,7 @@ def test_migrate_execution_state_to_state() -> None:
     v2 = migrate_run_context_v1_to_v2(v1)
     assert "execution_state" not in v2
     assert v2["state"] == {"step": 1, "agent": "writer"}
-    assert v2["metadata"] == [("source", "cli")]
+    assert v2["metadata"] == (("source", "cli"),)
 
 
 def test_migrate_already_v2_is_noop() -> None:
@@ -38,7 +38,7 @@ def test_migrate_metadata_dict_to_sorted_pairs() -> None:
         "metadata": {"z_key": "last", "a_key": "first"},
     }
     v2 = migrate_run_context_v1_to_v2(v1)
-    assert v2["metadata"] == [("a_key", "first"), ("z_key", "last")]
+    assert v2["metadata"] == (("a_key", "first"), ("z_key", "last"))
 
 
 def test_migrate_preserves_other_fields() -> None:
@@ -65,6 +65,20 @@ def test_migrate_does_not_mutate_input() -> None:
     original_keys = set(v1.keys())
     migrate_run_context_v1_to_v2(v1)
     assert set(v1.keys()) == original_keys
+
+
+def test_migrate_raises_when_both_state_and_execution_state_present() -> None:
+    """WS2-H2: conflict detection when both keys coexist."""
+    v_ambiguous = {
+        "run_id": "r1",
+        "started_at": "2026-01-01T00:00:00",
+        "correlation_id": "c1",
+        "state": {"existing": "value"},
+        "execution_state": {"conflicting": "value"},
+    }
+    import pytest
+    with pytest.raises(ValueError, match="Ambiguous migration"):
+        migrate_run_context_v1_to_v2(v_ambiguous)
 
 
 def test_migrated_data_deserializes_to_run_context() -> None:
