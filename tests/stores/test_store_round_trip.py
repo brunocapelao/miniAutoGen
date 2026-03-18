@@ -6,7 +6,7 @@ for both CheckpointStore and RunStore implementations.
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
 
 import pytest
 from deepdiff import DeepDiff
@@ -16,7 +16,7 @@ from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 
 
 @pytest.mark.asyncio
-async def test_checkpoint_round_trip_zero_diff(tmp_path: Any) -> None:
+async def test_checkpoint_round_trip_zero_diff(tmp_path: Path) -> None:
     """Save then load a checkpoint and assert zero structural diff."""
     store = SQLAlchemyCheckpointStore(
         db_url=f"sqlite+aiosqlite:///{tmp_path / 'ckpt.db'}"
@@ -37,7 +37,7 @@ async def test_checkpoint_round_trip_zero_diff(tmp_path: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_store_round_trip_zero_diff(tmp_path: Any) -> None:
+async def test_run_store_round_trip_zero_diff(tmp_path: Path) -> None:
     """Save then load a run and assert zero structural diff."""
     store = SQLAlchemyRunStore(
         db_url=f"sqlite+aiosqlite:///{tmp_path / 'runs.db'}"
@@ -59,7 +59,7 @@ async def test_run_store_round_trip_zero_diff(tmp_path: Any) -> None:
 
 
 @pytest.mark.asyncio
-async def test_checkpoint_round_trip_with_special_types(tmp_path: Any) -> None:
+async def test_checkpoint_round_trip_with_special_types(tmp_path: Path) -> None:
     """Round-trip with types that commonly cause fidelity issues."""
     store = SQLAlchemyCheckpointStore(
         db_url=f"sqlite+aiosqlite:///{tmp_path / 'ckpt2.db'}"
