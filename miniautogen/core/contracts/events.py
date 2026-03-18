@@ -1,10 +1,12 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, ConfigDict, Field, model_validator
+
+from miniautogen.core.contracts.base import MiniAutoGenBaseModel
 
 
-class ExecutionEvent(BaseModel):
+class ExecutionEvent(MiniAutoGenBaseModel):
     """Canonical execution event emitted by the runtime."""
 
     type: str = Field(

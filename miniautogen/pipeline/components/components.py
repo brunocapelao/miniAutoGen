@@ -1,6 +1,7 @@
 import asyncio
-import json
 import logging
+
+from miniautogen._json import loads
 from typing import Any
 
 from jinja2 import Environment, select_autoescape
@@ -166,8 +167,8 @@ class Jinja2SingleTemplateComponent(PipelineComponent):
 
         prompt_str = template.render(self.variables)
         try:
-            prompt = json.loads(prompt_str)
-        except json.JSONDecodeError:
+            prompt = loads(prompt_str)
+        except (ValueError, TypeError):
             # If not JSON, pass as string (user might just want string prompt)
             prompt = prompt_str
 

@@ -30,6 +30,7 @@ _ALLOWED_PREFIXES = (
     "miniautogen.api",
     "miniautogen.cli",
     "miniautogen.tui",
+    "miniautogen._json",
 )
 
 

@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from miniautogen.core.contracts.base import MiniAutoGenBaseModel
 
 
-class RunContext(BaseModel):
+class RunContext(MiniAutoGenBaseModel):
     """Typed execution context for a single framework run."""
 
     run_id: str
