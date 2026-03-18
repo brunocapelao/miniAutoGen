@@ -90,7 +90,7 @@ async for event in driver.send_turn(
     SendTurnRequest(session_id=session.session_id, messages=[...])
 ):
     if event.type == "message_completed":
-        print(event.payload["text"])
+        print(event.get_payload("text"))
 ```
 
 Este padrão substitui o uso direto do `OpenAICompatibleProvider` e oferece:

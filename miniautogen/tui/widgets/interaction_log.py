@@ -175,7 +175,7 @@ class InteractionLog(Widget):
         appropriate rendering method.
         """
         etype = event.type
-        payload = event.payload
+        payload = event.payload_dict()
         agent_id = payload.get("agent_id", "system")
         agent_name = payload.get("agent_name", agent_id)
 

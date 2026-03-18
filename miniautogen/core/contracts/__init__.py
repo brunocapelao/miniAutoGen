@@ -28,7 +28,7 @@ from .events import ExecutionEvent
 from .mcp_binding import McpServerBinding
 from .memory_profile import MemoryProfile
 from .message import Message
-from .run_context import RunContext
+from .run_context import FrozenState, RunContext
 from .run_result import RunResult
 from .skill_spec import SkillSpec
 from .store import StoreProtocol
@@ -52,6 +52,7 @@ __all__ = [
     "EngineProfile",
     "ExecutionEvent",
     "FinalDocument",
+    "FrozenState",
     "LoopStopReason",
     "McpServerBinding",
     "MemoryProfile",

@@ -567,4 +567,4 @@ async def test_timeout_emits_run_timed_out_event() -> None:
 
     timed_out_events = [e for e in event_sink.events if e.type == "run_timed_out"]
     assert len(timed_out_events) == 1
-    assert timed_out_events[0].payload["timeout_seconds"] == 0.1
+    assert timed_out_events[0].get_payload("timeout_seconds") == 0.1

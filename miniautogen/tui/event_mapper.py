@@ -77,4 +77,4 @@ class EventMapper:
     @staticmethod
     def extract_agent_id(event: ExecutionEvent) -> str | None:
         """Extract the agent_id from an event payload, if present."""
-        return event.payload.get("agent_id")
+        return event.get_payload("agent_id")
