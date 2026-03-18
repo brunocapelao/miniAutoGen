@@ -55,6 +55,76 @@ class EngineResolver:
         self._registered_profiles: set[str] = set()
         self._register_default_factories()
 
+    def resolve_with_discovery(
+        self, config: ProjectConfig,
+    ) -> dict[str, EngineProfileConfig]:
+        """Merge explicit config with auto-discovered engines.
+
+        Priority: explicit YAML engines always override discovered engines.
+        Discovered engines fill in the gaps (env vars, local servers).
+
+        Returns:
+            Merged dict of engine name -> EngineProfileConfig.
+        """
+        from miniautogen.backends.discovery import EngineDiscovery
+
+        discovery = EngineDiscovery()
+        discovered = discovery.discover_all()
+
+        # Start with discovered, then overlay explicit (explicit wins)
+        merged = dict(discovered)
+        merged.update(config.engine_profiles)
+        return merged
+
+    def list_available_engines(
+        self, config: ProjectConfig,
+    ) -> list[dict[str, str]]:
+        """List all available engines with source information.
+
+        Returns a list of dicts with keys: name, source, provider, model.
+        Source is one of: "yaml", "env", "local".
+        """
+        from miniautogen.backends.discovery import EngineDiscovery
+
+        discovery = EngineDiscovery()
+        env_engines = discovery.discover_from_env()
+        local_engines = discovery.discover_local_servers()
+
+        result: list[dict[str, str]] = []
+
+        # Collect all unique engine names preserving priority order
+        all_names: dict[str, str] = {}
+
+        # Local has lowest priority
+        for name in local_engines:
+            all_names[name] = "local"
+
+        # Env overrides local
+        for name in env_engines:
+            all_names[name] = "env"
+
+        # YAML overrides everything
+        for name in config.engine_profiles:
+            all_names[name] = "yaml"
+
+        # Build result list
+        for name, source in sorted(all_names.items()):
+            if source == "yaml":
+                profile = config.engine_profiles[name]
+            elif source == "env":
+                profile = env_engines[name]
+            else:
+                profile = local_engines[name]
+
+            result.append({
+                "name": name,
+                "source": source,
+                "provider": profile.provider,
+                "model": profile.model or "(default)",
+            })
+
+        return result
+
     def resolve(self, profile_name: str, config: ProjectConfig) -> AgentDriver:
         """Resolve an engine profile name to a cached driver instance.
 

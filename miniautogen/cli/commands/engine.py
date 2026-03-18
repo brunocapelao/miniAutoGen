@@ -153,6 +153,67 @@ def engine_create(
         raise SystemExit(1)
 
 
+@engine_group.command("discover")
+@click.option(
+    "--format", "output_format",
+    type=click.Choice(["text", "json"]),
+    default="text",
+    help="Output format.",
+)
+def engine_discover(output_format: str) -> None:
+    """Show auto-detected engines from environment and local servers."""
+    from miniautogen.backends.discovery import EngineDiscovery
+
+    discovery = EngineDiscovery()
+    env_engines = discovery.discover_from_env()
+    local_engines = discovery.discover_local_servers()
+
+    # Build annotated list
+    entries: list[dict[str, str]] = []
+    for name, profile in local_engines.items():
+        entries.append({
+            "source": "local",
+            "name": name,
+            "provider": profile.provider,
+            "model": profile.model or "(default)",
+            "endpoint": profile.endpoint or "(default)",
+        })
+    for name, profile in env_engines.items():
+        entries.append({
+            "source": "env",
+            "name": name,
+            "provider": profile.provider,
+            "model": profile.model or "(default)",
+            "endpoint": profile.endpoint or "(default)",
+        })
+
+    if output_format == "json":
+        echo_json(entries)
+        return
+
+    if not entries:
+        click.echo("No engines discovered.")
+        click.echo(
+            "Set API key environment variables (e.g. OPENAI_API_KEY) "
+            "or start a local server (e.g. Ollama on port 11434).",
+        )
+        return
+
+    click.echo("\nDiscovered engines:\n")
+    rows = [
+        [e["source"], e["name"], e["provider"], e["model"], e["endpoint"]]
+        for e in entries
+    ]
+    echo_table(["Source", "Name", "Provider", "Model", "Endpoint"], rows)
+
+    count = len(entries)
+    click.echo(
+        f"\n  {count} engine(s) discovered. Use 'miniautogen engine create' "
+        "to add them to your project,\n  or they will be available "
+        "automatically when running pipelines.",
+    )
+
+
 @engine_group.command("list")
 @click.option(
     "--format", "output_format",
