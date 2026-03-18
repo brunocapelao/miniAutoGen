@@ -1493,3 +1493,166 @@ O documento é considerado aprovado quando todos os critérios seguintes forem s
 | 21 | Clarificações necessárias foram todas resolvidas com decisões concretas | APROVADO |
 | 22 | Separação conceptual CLI Administrativo vs Operações está documentada | APROVADO |
 | 23 | Backup antes de escrita YAML está especificado como NFR | APROVADO |
+
+---
+
+# Apêndice A: Modelo de Objectos do Sistema
+
+Mapa hierárquico completo dos elementos do MiniAutoGen, do projecto ao agente. Cada elemento é um recurso CRUD-able via CLI e TUI.
+
+## Hierarquia de Recursos
+
+```
+Project (miniautogen.yml)
+│
+├── Engine Profiles (motores LLM)
+│   ├── engine: "gpt4o"        kind: api,   provider: litellm
+│   ├── engine: "claude"       kind: api,   provider: litellm
+│   └── engine: "local-gemma"  kind: local,  provider: gemini-cli
+│
+├── Agents (os "funcionários")
+│   ├── agent: "planner"    → engine: gpt4o,  role: Architect
+│   ├── agent: "writer"     → engine: claude,  role: Developer
+│   ├── agent: "reviewer"   → engine: gpt4o,  role: QA Lead
+│   └── agent: "editor"     → engine: claude,  role: Refiner
+│       │
+│       ├── AgentSpec (identidade)
+│       │   ├── name, role, goal, backstory
+│       │   ├── engine_profile → ref to Engine
+│       │   ├── skills: SkillRef
+│       │   └── version
+│       │
+│       ├── ToolAccessConfig
+│       │   ├── mode: allowlist | denylist | all
+│       │   └── tools: [web_search, file_read, code_gen]
+│       │
+│       ├── PermissionsConfig
+│       │   ├── shell: bool
+│       │   ├── network: bool
+│       │   └── filesystem: read-only | read-write | denied
+│       │
+│       ├── MemoryConfig
+│       │   ├── session_memory, retrieval_memory
+│       │   └── max_context_tokens
+│       │
+│       ├── DelegationConfig
+│       │   ├── allow_delegation: bool
+│       │   └── can_delegate_to: [agent_ids]
+│       │
+│       └── RuntimeConfig
+│           ├── max_turns, timeout_seconds
+│           └── retry_policy
+│
+├── Pipelines (a orquestração)
+│   ├── pipeline: "main"        mode: workflow
+│   ├── pipeline: "review-loop" mode: agentic_loop
+│   └── pipeline: "research"    mode: deliberation
+│       │
+│       ├── Coordination Mode (como os agents colaboram)
+│       │   ├── WorkflowPlan      → steps sequenciais/paralelos
+│       │   ├── DeliberationPlan  → rounds com leader + peer review
+│       │   ├── AgenticLoopPlan   → router seleciona próximo speaker
+│       │   └── CompositePlan     → encadeia sub-pipelines
+│       │
+│       ├── Participants
+│       │   └── [agent_refs] → refs to Agents
+│       │
+│       └── Policies (regras laterais)
+│           ├── RetryPolicy       → max retries, backoff
+│           ├── BudgetPolicy      → max tokens/cost
+│           ├── TimeoutPolicy     → max duration
+│           ├── ApprovalPolicy    → require HITL for actions
+│           ├── ValidationPolicy  → cross-check outputs
+│           └── ExecutionPolicy   → composite of above
+│
+├── Server / Gateway
+│   ├── host, port, daemon mode
+│   ├── PID management
+│   └── Health check endpoint
+│
+└── Defaults
+    ├── default engine_profile
+    └── default policies
+```
+
+## Fluxo de Execução (Runtime)
+
+O que acontece quando um pipeline é executado via `miniautogen run`:
+
+```
+Pipeline
+  │
+  ▼
+PipelineRunner (executor único do microkernel)
+  │
+  ├── RunContext (estado da execução)
+  │   ├── run_id, correlation_id
+  │   ├── started_at, timeout_seconds
+  │   ├── input_payload
+  │   └── execution_state (mutável)
+  │
+  ├── Stores (persistência)
+  │   ├── RunStore         → guarda metadados do run
+  │   ├── MessageStore     → guarda mensagens dos agents
+  │   └── CheckpointStore  → guarda snapshots para resume
+  │
+  ├── EventSink (observabilidade)
+  │   ├── → InMemoryEventSink
+  │   ├── → LoggingEventSink
+  │   ├── → TuiEventSink (→ MiniAutoGen Dash)
+  │   └── → CompositeEventSink (fan-out)
+  │
+  ├── ApprovalGate (HITL)
+  │   ├── ApprovalRequest → ApprovalResponse
+  │   └── AutoApproveGate (modo headless)
+  │
+  └── ExecutionEvents (55 tipos em 8 categorias)
+      ├── Core:          RUN_STARTED → COMPONENT_STARTED → COMPONENT_FINISHED → RUN_FINISHED
+      ├── Tools:         TOOL_INVOKED → TOOL_SUCCEEDED / TOOL_FAILED
+      ├── Backend:       BACKEND_TURN_STARTED → BACKEND_MESSAGE_DELTA → BACKEND_TURN_COMPLETED
+      ├── Approval:      APPROVAL_REQUESTED → APPROVAL_GRANTED / DENIED
+      ├── Persistência:  CHECKPOINT_SAVED / CHECKPOINT_RESTORED
+      ├── Policies:      BUDGET_EXCEEDED, POLICY_APPLIED, VALIDATION_FAILED
+      ├── Deliberação:   DELIBERATION_STARTED → ROUND_COMPLETED → DELIBERATION_FINISHED
+      └── Loop Agêntico: AGENTIC_LOOP_STARTED → ROUTER_DECISION → AGENT_REPLIED → LOOP_STOPPED
+```
+
+## Tabela de Referência: 7 Elementos do Sistema
+
+| # | Elemento | Descrição | Persistência | CRUD |
+|---|----------|-----------|-------------|------|
+| 1 | **Project** | Container raiz, configuração global | `miniautogen.yml` | init |
+| 2 | **Engine** | Motor LLM (API ou local) | `engine_profiles:` no YAML | create/list/show/update/delete |
+| 3 | **Agent** | Personagem com role, tools, permissions | `agents:` no YAML + `AgentSpec` | create/list/show/update/delete |
+| 4 | **Pipeline** | Orquestração (mode + participants + policies) | `pipelines:` no YAML | create/list/show/update/delete |
+| 5 | **Run** | Execução concreta de um pipeline | `RunStore` + `RunContext` | list/show/clean |
+| 6 | **Event** | Facto atómico do que aconteceu | `EventSink` (55 tipos) | list/filter |
+| 7 | **Checkpoint** | Snapshot para resume de execução durável | `CheckpointStore` | list/restore |
+
+## Grafo de Dependências entre Recursos
+
+```
+Project ←── obrigatório para tudo
+  │
+  ├── Engine ←── independente (criado primeiro)
+  │     ▲
+  │     │ referenciado por
+  │     │
+  ├── Agent ──→ depende de Engine (engine_profile)
+  │     ▲
+  │     │ referenciado por
+  │     │
+  ├── Pipeline ──→ depende de Agents (participants)
+  │     │
+  │     ▼ produz
+  │
+  ├── Run ──→ produzido por Pipeline + PipelineRunner
+  │     │
+  │     ├──→ Events (emitidos durante execução)
+  │     └──→ Checkpoints (salvos para resume)
+  │
+  └── Server ←── independente (gateway HTTP)
+```
+
+Esta hierarquia de dependências determina a ordem obrigatória de criação:
+**Project → Engine → Agent → Pipeline → Run**
