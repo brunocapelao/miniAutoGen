@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from uuid import uuid4
+import base64
+from decimal import Decimal
 
 import pytest
 
-from miniautogen._json import HAS_ORJSON, dumps, loads
+from miniautogen._json import HAS_ORJSON, _default, dumps, loads
 
 
 class TestDumps:
@@ -68,6 +68,36 @@ class TestRoundTrip:
     def test_round_trip_empty_structures(self) -> None:
         for obj in ({}, [], ""):
             assert loads(dumps(obj)) == obj
+
+
+class TestDefaultHandler:
+    """Tests for the _default fallback serializer."""
+
+    def test_bytes_serialized_as_base64(self) -> None:
+        raw = b"\x00\xff\xfe"
+        result = _default(raw)
+        assert result == base64.b64encode(raw).decode()
+
+    def test_decimal_serialized_as_str(self) -> None:
+        d = Decimal("3.14159")
+        result = _default(d)
+        assert result == "3.14159"
+
+    def test_unknown_type_raises_type_error(self) -> None:
+        with pytest.raises(TypeError, match="not JSON serializable"):
+            _default(object())
+
+    def test_dumps_with_bytes_value(self) -> None:
+        raw = b"\xde\xad\xbe\xef"
+        result = dumps({"data": raw})
+        restored = loads(result)
+        assert restored["data"] == base64.b64encode(raw).decode()
+
+    def test_dumps_with_decimal_value(self) -> None:
+        d = Decimal("99.99")
+        result = dumps({"price": d})
+        restored = loads(result)
+        assert restored["price"] == "99.99"
 
 
 class TestOrjsonDetection:
