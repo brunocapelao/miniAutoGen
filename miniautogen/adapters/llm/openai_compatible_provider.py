@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any, Optional
 
 import httpx
@@ -15,6 +16,12 @@ class OpenAICompatibleProvider(LLMProvider):
         client: Any | None = None,
         timeout_seconds: float = 30.0,
     ) -> None:
+        warnings.warn(
+            "OpenAICompatibleProvider is deprecated. Use AgentAPIDriver from "
+            "miniautogen.backends.agentapi instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.client = client

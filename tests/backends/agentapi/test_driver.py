@@ -54,7 +54,7 @@ class TestAgentAPIDriverStartSession:
             StartSessionRequest(backend_id="test"),
         )
         assert resp.capabilities.streaming is False
-        assert resp.capabilities.sessions is False
+        assert resp.capabilities.sessions is True
         assert resp.capabilities.cancel is False
 
     @pytest.mark.asyncio

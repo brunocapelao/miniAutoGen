@@ -25,9 +25,15 @@ click = ">=8.0"
 pyyaml = ">=6.0"
 ruamel-yaml = ">=0.18.0"
 textual = {version = ">=1.0.0", optional = true}
+anthropic = {version = ">=0.40.0", optional = true}
+google-genai = {version = ">=1.0.0", optional = true}
 
 [tool.poetry.extras]
 tui = ["textual"]
+anthropic = ["anthropic"]
+google = ["google-genai"]
+all-providers = ["openai", "anthropic", "google-genai"]
+all = ["textual", "openai", "anthropic", "google-genai"]
 
 [tool.poetry.group.dev.dependencies]
 ipykernel = "6.28.0"

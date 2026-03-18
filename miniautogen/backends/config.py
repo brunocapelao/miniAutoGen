@@ -14,9 +14,14 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class DriverType(str, Enum):
-    ACP = "acp"
+    ACP = "acp"             # Deprecated: use CLI
     AGENT_API = "agentapi"
-    PTY = "pty"
+    PTY = "pty"             # Deprecated: use CLI
+    OPENAI_SDK = "openai_sdk"
+    ANTHROPIC_SDK = "anthropic_sdk"
+    GOOGLE_GENAI = "google_genai"
+    LITELLM = "litellm"
+    CLI = "cli"
 
 
 class AuthConfig(BaseModel):
@@ -54,7 +59,7 @@ class BackendConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_driver_requirements(self) -> "BackendConfig":
-        if self.driver in (DriverType.ACP, DriverType.PTY) and not self.command:
+        if self.driver in (DriverType.ACP, DriverType.PTY, DriverType.CLI) and not self.command:
             msg = f"command is required for driver type '{self.driver.value}'"
             raise ValueError(msg)
         if self.driver == DriverType.AGENT_API and not self.endpoint:

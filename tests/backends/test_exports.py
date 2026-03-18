@@ -25,6 +25,15 @@ class TestBackendsPackageExports:
             BackendResolver,
         )
 
+    def test_import_engine_resolver(self) -> None:
+        from miniautogen.backends import EngineResolver  # noqa: F401
+
+    def test_import_base_driver(self) -> None:
+        from miniautogen.backends import BaseDriver  # noqa: F401
+
+    def test_import_message_transformer(self) -> None:
+        from miniautogen.backends import MessageTransformer  # noqa: F401
+
     def test_errors_importable(self) -> None:
         from miniautogen.backends.errors import (  # noqa: F401
             AgentDriverError,

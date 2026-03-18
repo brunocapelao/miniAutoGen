@@ -30,16 +30,26 @@ class DefaultsConfig(BaseModel):
 
 
 class EngineProfileConfig(BaseModel):
-    """Engine profile for inference binding."""
+    """Engine profile for inference binding.
+
+    v2.1: Added fallbacks, max_retries, retry_delay, max_tokens,
+    timeout_seconds, metadata. Changed default provider to openai-compat.
+    """
 
     kind: str = "api"
-    provider: str = "litellm"
+    provider: str = "openai-compat"
     model: str | None = None
     command: str | None = None
     temperature: float = 0.2
     endpoint: str | None = None
     api_key: str | None = None
+    max_tokens: int | None = None
+    timeout_seconds: float = 120.0
+    fallbacks: list[str] = Field(default_factory=list)
+    max_retries: int = 3
+    retry_delay: float = 1.0
     capabilities: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class MemoryProfileConfig(BaseModel):

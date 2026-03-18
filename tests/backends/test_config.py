@@ -15,6 +15,18 @@ class TestDriverType:
         assert DriverType.AGENT_API.value == "agentapi"
         assert DriverType.PTY.value == "pty"
 
+    def test_new_driver_types(self) -> None:
+        assert DriverType.OPENAI_SDK.value == "openai_sdk"
+        assert DriverType.ANTHROPIC_SDK.value == "anthropic_sdk"
+        assert DriverType.GOOGLE_GENAI.value == "google_genai"
+        assert DriverType.LITELLM.value == "litellm"
+        assert DriverType.CLI.value == "cli"
+
+    def test_legacy_types_still_exist(self) -> None:
+        # ACP and PTY kept for backward compat but deprecated
+        assert DriverType.ACP.value == "acp"
+        assert DriverType.PTY.value == "pty"
+
 
 class TestBackendConfig:
     def test_minimal_acp(self) -> None:
@@ -90,6 +102,25 @@ class TestBackendConfig:
     def test_pty_without_command_raises(self) -> None:
         with pytest.raises(ValidationError, match="command"):
             BackendConfig(backend_id="x", driver=DriverType.PTY)
+
+    def test_cli_requires_command(self) -> None:
+        with pytest.raises(ValidationError, match="command"):
+            BackendConfig(backend_id="x", driver=DriverType.CLI)
+
+    def test_cli_with_command_valid(self) -> None:
+        cfg = BackendConfig(
+            backend_id="claude",
+            driver=DriverType.CLI,
+            command=["claude", "--agent"],
+        )
+        assert cfg.driver == DriverType.CLI
+
+    def test_sdk_driver_minimal(self) -> None:
+        cfg = BackendConfig(
+            backend_id="openai",
+            driver=DriverType.OPENAI_SDK,
+        )
+        assert cfg.driver == DriverType.OPENAI_SDK
 
     def test_bearer_auth_without_token_env_raises(self) -> None:
         with pytest.raises(ValidationError, match="token_env"):

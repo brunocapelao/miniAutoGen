@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any, Optional, cast
 
 import openai
@@ -17,6 +18,12 @@ class OpenAIProvider(LLMProvider):
         client: object | None = None,
         retry_policy: RetryPolicy | None = None,
     ):
+        warnings.warn(
+            "OpenAIProvider is deprecated. Use OpenAISDKDriver from "
+            "miniautogen.backends.openai_sdk instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.client = client or openai.AsyncOpenAI(api_key=api_key)
         self.logger = logging.getLogger(__name__)
         self.retry_policy = retry_policy or RetryPolicy()
@@ -57,6 +64,12 @@ class LiteLLMProvider(LLMProvider):
         client: object | None = None,
         retry_policy: RetryPolicy | None = None,
     ):
+        warnings.warn(
+            "LiteLLMProvider is deprecated. Use LiteLLMDriver (optional) or "
+            "configure engine_profiles in miniautogen.yaml instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.default_model = default_model
         self.client = client
         self.logger = logging.getLogger(__name__)

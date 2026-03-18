@@ -47,7 +47,7 @@ class AgentAPIDriver(AgentDriver):
         self._model = model
         self._timeout_seconds = timeout_seconds
         self._caps = BackendCapabilities(
-            sessions=False,
+            sessions=True,
             streaming=False,
             cancel=False,
             resume=False,
