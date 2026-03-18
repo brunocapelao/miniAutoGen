@@ -1,0 +1,211 @@
+/* MiniAutoGen Dash -- Main Textual CSS Stylesheet
+ *
+ * Grid layout for workspace (sidebar + main).
+ * Styling for all widgets: StepBlock, ToolCallCard, ApprovalBanner,
+ * TeamSidebar, WorkPanel, InteractionLog, HintBar, etc.
+ * Responsive breakpoints and transitions.
+ */
+
+/* ── Screen & Layout ─────────────────────────────────────── */
+
+Screen {
+    layout: horizontal;
+    background: $background;
+}
+
+#workspace {
+    layout: horizontal;
+    height: 1fr;
+}
+
+/* ── TeamSidebar ─────────────────────────────────────────── */
+
+TeamSidebar {
+    width: 28;
+    dock: left;
+    background: $surface;
+    border-right: solid $primary-background;
+    transition: background 200ms;
+}
+
+TeamSidebar .sidebar-title {
+    text-style: bold;
+    text-align: center;
+    padding: 1;
+    color: $text;
+}
+
+TeamSidebar VerticalScroll {
+    height: 1fr;
+}
+
+/* ── AgentCard ───────────────────────────────────────────── */
+
+AgentCard {
+    height: 3;
+    padding: 0 1;
+    transition: background 150ms;
+}
+
+AgentCard:hover {
+    background: $primary-background;
+}
+
+AgentCard.--highlighted {
+    background: $accent 20%;
+}
+
+/* ── WorkPanel ───────────────────────────────────────────── */
+
+WorkPanel {
+    height: 1fr;
+}
+
+WorkPanel #progress-section {
+    dock: bottom;
+    height: 3;
+    padding: 0 1;
+    background: $surface;
+}
+
+WorkPanel #step-progress {
+    width: 1fr;
+}
+
+WorkPanel #step-label {
+    text-align: center;
+    color: $text-muted;
+}
+
+/* ── InteractionLog ──────────────────────────────────────── */
+
+InteractionLog {
+    height: 1fr;
+}
+
+InteractionLog RichLog {
+    height: 1fr;
+    scrollbar-size: 1 1;
+}
+
+/* ── StepBlock ───────────────────────────────────────────── */
+
+StepBlock {
+    height: auto;
+    margin: 0 0 1 0;
+    padding: 0 1;
+    transition: background 200ms;
+}
+
+StepBlock .step-header {
+    text-style: bold;
+}
+
+StepBlock .step-messages {
+    margin: 0 0 0 2;
+}
+
+StepBlock .step-message {
+    margin: 0 0 0 1;
+}
+
+/* ── ToolCallCard ────────────────────────────────────────── */
+
+ToolCallCard {
+    height: auto;
+    margin: 0 0 0 2;
+    padding: 0 1;
+}
+
+ToolCallCard .tool-indicator {
+    width: 1;
+    color: $accent;
+}
+
+ToolCallCard .tool-content {
+    margin: 0 0 0 1;
+}
+
+/* ── ApprovalBanner ──────────────────────────────────────── */
+
+ApprovalBanner {
+    height: auto;
+    margin: 1 2;
+    padding: 1 2;
+    border: double $warning;
+    background: $surface;
+    transition: background 200ms;
+}
+
+ApprovalBanner .approval-title {
+    text-style: bold;
+    color: $warning;
+}
+
+ApprovalBanner .approval-description {
+    margin: 1 0;
+}
+
+ApprovalBanner .approval-files {
+    margin: 0 0 1 2;
+    color: $text-muted;
+}
+
+ApprovalBanner .approval-buttons {
+    height: 3;
+}
+
+ApprovalBanner Button {
+    margin: 0 1;
+}
+
+/* ── PipelineTabs ────────────────────────────────────────── */
+
+PipelineTabs {
+    dock: top;
+    height: 1;
+    background: $surface;
+}
+
+PipelineTabs .tab {
+    padding: 0 2;
+}
+
+PipelineTabs .tab.--active {
+    text-style: bold;
+    background: $primary-background;
+}
+
+/* ── EmptyState ──────────────────────────────────────────── */
+
+EmptyState {
+    content-align: center middle;
+    text-align: center;
+    height: 1fr;
+    color: $text-muted;
+}
+
+EmptyState #empty-title {
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+EmptyState #empty-pipelines {
+    margin-top: 1;
+    color: $text;
+}
+
+EmptyState #empty-instructions {
+    margin-top: 1;
+    color: $text-muted;
+}
+
+/* ── HintBar ─────────────────────────────────────────────── */
+
+HintBar {
+    dock: bottom;
+    height: 1;
+    padding: 0 1;
+    background: $surface;
+    color: $text-muted;
+}

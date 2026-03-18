@@ -29,6 +29,7 @@ _FORBIDDEN_PREFIXES = (
 _ALLOWED_PREFIXES = (
     "miniautogen.api",
     "miniautogen.cli",
+    "miniautogen.tui",
 )
 
 
