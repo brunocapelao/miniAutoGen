@@ -46,24 +46,50 @@ class FrozenState(MiniAutoGenBaseModel):
 
 
 class RunContext(MiniAutoGenBaseModel):
-    """Typed execution context for a single framework run."""
+    """Typed, frozen execution context for a single framework run."""
+
+    model_config = ConfigDict(frozen=True)
 
     run_id: str
     started_at: datetime
     correlation_id: str
-    execution_state: dict[str, Any] = Field(default_factory=dict)
+    state: FrozenState = FrozenState()
     input_payload: Any = None
     timeout_seconds: float | None = None
     namespace: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
+    metadata: tuple[tuple[str, Any], ...] = ()
+
+    def with_state(self, **updates: Any) -> "RunContext":
+        """Return a new RunContext with state evolved by the given updates."""
+        new_state = self.state.evolve(**updates)
+        return self.model_copy(update={"state": new_state})
 
     def with_previous_result(self, result: Any) -> "RunContext":
-        """Create a new RunContext with the previous result injected.
+        """Return a new RunContext with the previous result injected.
 
         The previous result is set as ``input_payload`` and a reference
-        is stored in ``metadata["previous_result"]`` for traceability.
+        is stored in ``metadata`` for traceability.
         """
-        new_metadata = {**self.metadata, "previous_result": result}
+        new_metadata = dict(self.metadata)
+        new_metadata["previous_result"] = result
         return self.model_copy(
-            update={"input_payload": result, "metadata": new_metadata},
+            update={
+                "input_payload": result,
+                "metadata": tuple(sorted(new_metadata.items())),
+            },
         )
+
+    def evolve_metadata(self, **updates: Any) -> "RunContext":
+        """Return a new RunContext with metadata evolved by the given updates."""
+        current = dict(self.metadata)
+        current.update(updates)
+        return self.model_copy(
+            update={"metadata": tuple(sorted(current.items()))},
+        )
+
+    def get_metadata(self, key: str, default: Any = None) -> Any:
+        """Look up a metadata key without exposing the internal tuple."""
+        for k, v in self.metadata:
+            if k == key:
+                return v
+        return default
