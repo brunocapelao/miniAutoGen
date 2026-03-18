@@ -8,24 +8,32 @@ from __future__ import annotations
 
 from typing import Any
 
-import orjson
 from pydantic import BaseModel
 
 
 class MiniAutoGenBaseModel(BaseModel):
     """Base model with orjson-backed JSON serialization.
 
-    Overrides Pydantic v2's default JSON encoder/decoder so that
-    all ``model_dump_json()`` and ``model_validate_json()`` calls
-    use orjson transparently.
+    Overrides Pydantic v2's ``model_dump_json()`` and
+    ``model_validate_json()`` instance/class methods so that all
+    serialization goes through the centralized ``miniautogen._json``
+    shim (orjson when available, stdlib as fallback).
     """
 
-    @classmethod
-    def model_json_loads(cls, data: str | bytes) -> Any:
-        """Deserialize JSON using orjson."""
-        return orjson.loads(data)
+    def model_dump_json(self, **kwargs: Any) -> str:  # type: ignore[override]
+        """Serialize the model to a JSON string via the miniautogen._json shim."""
+        from miniautogen._json import dumps
+
+        return dumps(self.model_dump(mode="json"))
 
     @classmethod
-    def model_json_dumps(cls, data: Any, **kwargs: Any) -> str:
-        """Serialize to JSON using orjson (returns str, not bytes)."""
-        return orjson.dumps(data).decode()
+    def model_validate_json(  # type: ignore[override]
+        cls,
+        json_data: str | bytes,
+        **kwargs: Any,
+    ) -> "MiniAutoGenBaseModel":
+        """Deserialize a JSON string or bytes via the miniautogen._json shim."""
+        from miniautogen._json import loads
+
+        data = loads(json_data) if isinstance(json_data, (str, bytes)) else json_data
+        return cls.model_validate(data)
