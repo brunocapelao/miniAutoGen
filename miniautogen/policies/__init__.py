@@ -54,3 +54,11 @@ __all__ = [
     "check_permission",
     "validate_with_policy",
 ]
+
+# ── Register policy error mappings with core classifier ───────────────────
+# This keeps core/runtime/classifier.py free of policies imports.
+from miniautogen.core.contracts.enums import ErrorCategory
+from miniautogen.core.runtime.classifier import register_error_mapping
+
+register_error_mapping(PermissionDeniedError, ErrorCategory.VALIDATION)
+register_error_mapping(BudgetExceededError, ErrorCategory.VALIDATION)
