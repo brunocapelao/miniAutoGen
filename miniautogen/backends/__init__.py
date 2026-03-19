@@ -43,3 +43,16 @@ __all__ = [
     "StartSessionResponse",
     "agentapi_factory",
 ]
+
+# ── Register backend error mappings with core classifier ──────────────────
+# This keeps core/runtime/classifier.py free of backend imports.
+# Order matters: subclasses before superclasses.
+import asyncio
+
+from miniautogen.backends.errors import AgentDriverError, BackendUnavailableError
+from miniautogen.core.contracts.enums import ErrorCategory
+from miniautogen.core.runtime.classifier import register_error_mapping
+
+register_error_mapping(asyncio.CancelledError, ErrorCategory.CANCELLATION)
+register_error_mapping(BackendUnavailableError, ErrorCategory.ADAPTER)
+register_error_mapping(AgentDriverError, ErrorCategory.ADAPTER)
