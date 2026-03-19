@@ -3,10 +3,10 @@ project:
   version: "0.1.0"
 
 defaults:
-  engine_profile: default_api
+  engine: default_api
   memory_profile: default
 
-engine_profiles:
+engines:
   default_api:
     kind: api
     provider: "{{ provider }}"
@@ -21,7 +21,7 @@ memory_profiles:
     compaction:
       enabled: false
 
-pipelines:
+flows:
   main:
     target: pipelines.main:build_pipeline
 

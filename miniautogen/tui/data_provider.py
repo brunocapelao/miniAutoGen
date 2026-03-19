@@ -87,7 +87,7 @@ class DashDataProvider:
             return {
                 "project_name": config.project.name,
                 "version": config.project.version,
-                "default_engine": config.defaults.engine_profile,
+                "default_engine": config.defaults.engine,
                 "default_memory": config.defaults.memory_profile,
                 "engine_count": len(config.engine_profiles),
                 "agent_count": len(self.get_agents()),
@@ -273,7 +273,7 @@ class DashDataProvider:
         from miniautogen.cli.services.yaml_ops import write_yaml
 
         data = read_yaml(self._config_path)
-        pipelines = data.get("pipelines", {})
+        pipelines = data.get("flows", data.get("pipelines", {}))
         if name not in pipelines:
             available = ", ".join(pipelines) or "(none)"
             msg = f"Pipeline '{name}' not found. Available: {available}"

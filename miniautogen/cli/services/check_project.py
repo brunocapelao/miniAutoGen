@@ -94,7 +94,7 @@ def _check_agents(
             # Check engine_profile reference
             ep = data.get("engine_profile")
             if ep and ep not in config.engine_profiles:
-                default_ep = config.defaults.engine_profile
+                default_ep = config.defaults.engine
                 if ep != default_ep:
                     has_sub_failures = True
                     results.append(CheckResult(
@@ -308,7 +308,7 @@ def _check_engine_profiles(
 ) -> list[CheckResult]:
     """Check default engine profile exists."""
     results: list[CheckResult] = []
-    default_ep = config.defaults.engine_profile
+    default_ep = config.defaults.engine
     if default_ep not in config.engine_profiles:
         results.append(CheckResult(
             name="default_engine_profile",
@@ -403,7 +403,7 @@ def _check_pipeline_participants(
     if not isinstance(raw, dict):
         return results
 
-    pipelines = raw.get("pipelines", {})
+    pipelines = raw.get("flows", raw.get("pipelines", {}))
     for pname, pcfg in pipelines.items():
         if not isinstance(pcfg, dict):
             continue

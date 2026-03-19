@@ -130,8 +130,8 @@ def run_command(
 
     if pipeline_name not in config.pipelines:
         raise PipelineNotFoundError(
-            f"Pipeline '{pipeline_name}' not found in config",
-            hint=f"Run 'miniautogen pipeline list' to see available pipelines.",
+            f"Flow '{pipeline_name}' not found in config",
+            hint=f"Run 'miniautogen flow list' to see available flows.",
         )
 
     # Resolve input
@@ -156,8 +156,8 @@ def run_command(
         leader = pdata.get("leader")
 
         echo_info(f"Loading config from {root / 'miniautogen.yaml'}")
-        echo_info(f"Resolved pipeline '{pipeline_name}' -> {target}")
-        echo_info(f"Pipeline mode: {mode}")
+        echo_info(f"Resolved flow '{pipeline_name}' -> {target}")
+        echo_info(f"Flow mode: {mode}")
         if participants:
             echo_info(f"Participants: {participants}")
         if leader:
@@ -174,13 +174,13 @@ def run_command(
         click.echo("")
 
     if resume:
-        echo_info(f"Resuming run '{resume}' for pipeline '{pipeline_name}'...")
+        echo_info(f"Resuming run '{resume}' for flow '{pipeline_name}'...")
 
     # Start spinner for interactive terminals
     spinner = None
     use_spinner = output_format == "text" and sys.stderr.isatty() and not verbose
     if use_spinner:
-        spinner = _Spinner(f"Running pipeline '{pipeline_name}'...")
+        spinner = _Spinner(f"Running flow '{pipeline_name}'...")
         spinner.start()
 
     try:
@@ -205,13 +205,13 @@ def run_command(
         events = result.get("events", 0)
         if status == "completed":
             echo_success(
-                f"Pipeline '{pipeline_name}' completed successfully"
+                f"Flow '{pipeline_name}' completed successfully"
             )
             if events:
                 echo_info(f"Events emitted: {events}")
         else:
             echo_error(
-                f"Pipeline '{pipeline_name}' failed: "
+                f"Flow '{pipeline_name}' failed: "
                 f"{result.get('error', 'unknown')}"
             )
             raise SystemExit(1)

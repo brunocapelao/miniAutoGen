@@ -10,7 +10,7 @@ def test_init_creates_project(tmp_path, monkeypatch) -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["init", "myproject"])
     assert result.exit_code == 0
-    assert "Project created" in result.output
+    assert "Workspace created" in result.output
     assert "Next steps:" in result.output
     assert (tmp_path / "myproject" / "miniautogen.yaml").is_file()
 

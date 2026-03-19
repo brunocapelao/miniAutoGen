@@ -18,7 +18,7 @@ def test_scaffold_creates_config(tmp_path) -> None:
     content = config.read_text()
     assert "myproject" in content
     assert "memory_profiles" in content
-    assert "engine_profiles" in content
+    assert "engines" in content
 
 
 def test_scaffold_creates_full_structure(tmp_path) -> None:

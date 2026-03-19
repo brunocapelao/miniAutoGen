@@ -10,6 +10,13 @@ def _cfg():
     return yaml.safe_load((Path.cwd() / "miniautogen.yaml").read_text())
 
 
+def _engines(cfg=None):
+    """Get engines dict from raw YAML, supporting both old and new keys."""
+    if cfg is None:
+        cfg = _cfg()
+    return cfg.get("engines", cfg.get("engine_profiles", {}))
+
+
 def test_engine_create_silent(init_project) -> None:
     runner = init_project
     result = runner.invoke(cli, [
@@ -25,9 +32,9 @@ def test_engine_create_silent(init_project) -> None:
 
     # Verify written to YAML
     cfg = _cfg()
-    assert "gpt4" in cfg["engine_profiles"]
-    assert cfg["engine_profiles"]["gpt4"]["model"] == "gpt-4o"
-    assert cfg["engine_profiles"]["gpt4"]["api_key"] == "${OPENAI_API_KEY}"
+    assert "gpt4" in _engines(cfg)
+    assert _engines(cfg)["gpt4"]["model"] == "gpt-4o"
+    assert _engines(cfg)["gpt4"]["api_key"] == "${OPENAI_API_KEY}"
 
 
 def test_engine_create_with_capabilities(init_project) -> None:
@@ -42,7 +49,7 @@ def test_engine_create_with_capabilities(init_project) -> None:
     ], input="y\n")
     assert result.exit_code == 0, result.output
     cfg = _cfg()
-    assert cfg["engine_profiles"]["gemini"]["capabilities"] == ["chat", "embedding"]
+    assert _engines(cfg)["gemini"]["capabilities"] == ["chat", "embedding"]
 
 
 def test_engine_create_interactive(init_project) -> None:
@@ -72,7 +79,7 @@ def test_engine_create_cancelled(init_project) -> None:
     assert "cancelled" in result.output.lower()
     # Engine should NOT be created
     cfg = _cfg()
-    assert "gpt4" not in cfg.get("engine_profiles", {})
+    assert "gpt4" not in _engines(cfg)
 
 
 def test_engine_create_duplicate_fails(init_project) -> None:
@@ -116,7 +123,7 @@ def test_engine_create_credential_safety(init_project) -> None:
     ], input="y\n")
     assert result.exit_code == 0
     cfg = _cfg()
-    assert cfg["engine_profiles"]["safe"]["api_key"] == "${MY_SECRET_KEY}"
+    assert _engines(cfg)["safe"]["api_key"] == "${MY_SECRET_KEY}"
 
 
 def test_engine_list(init_project) -> None:
@@ -163,13 +170,13 @@ def test_engine_update(init_project) -> None:
     assert "updated" in result.output.lower()
 
     cfg = _cfg()
-    assert cfg["engine_profiles"]["default_api"]["model"] == "gpt-4o-mini"
+    assert _engines(cfg)["default_api"]["model"] == "gpt-4o-mini"
 
 
 def test_engine_update_dry_run(init_project) -> None:
     runner = init_project
     cfg_before = _cfg()
-    original_model = cfg_before["engine_profiles"]["default_api"]["model"]
+    original_model = _engines(cfg_before)["default_api"]["model"]
 
     result = runner.invoke(cli, [
         "engine", "update", "default_api",
@@ -180,7 +187,7 @@ def test_engine_update_dry_run(init_project) -> None:
     assert "dry run" in result.output.lower()
 
     cfg = _cfg()
-    assert cfg["engine_profiles"]["default_api"]["model"] == original_model
+    assert _engines(cfg)["default_api"]["model"] == original_model
 
 
 def test_engine_update_not_found(init_project) -> None:
@@ -210,7 +217,7 @@ def test_engine_delete(init_project) -> None:
     assert "deleted" in result.output.lower()
 
     cfg = _cfg()
-    assert "extra" not in cfg.get("engine_profiles", {})
+    assert "extra" not in _engines(cfg)
 
 
 def test_engine_delete_default_blocked(init_project) -> None:

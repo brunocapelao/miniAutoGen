@@ -16,6 +16,29 @@ from miniautogen.cli.services.yaml_ops import (
 )
 
 
+def _get_engines_section(data: dict[str, Any]) -> dict[str, Any]:
+    """Get the engines section, supporting both old and new key names."""
+    if "engines" in data:
+        return data["engines"]
+    if "engine_profiles" in data:
+        from miniautogen.cli.deprecation import emit_deprecation
+
+        emit_deprecation("engine_profiles", "engines", since="0.5.0")
+        # Migrate in-memory: move to new key
+        data["engines"] = data.pop("engine_profiles")
+        return data["engines"]
+    return data.setdefault("engines", {})
+
+
+def _detect_engines_key(data: dict[str, Any]) -> str:
+    """Return the YAML key name used for engines in this data (before migration)."""
+    if "engines" in data:
+        return "engines"
+    if "engine_profiles" in data:
+        return "engine_profiles"
+    return "engines"
+
+
 def _config_path(project_root: Path) -> Path:
     return project_root / "miniautogen.yaml"
 
@@ -59,7 +82,7 @@ def create_engine(
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
 
-    engines = data.setdefault("engine_profiles", {})
+    engines = _get_engines_section(data)
     if name in engines:
         msg = f"Engine '{name}' already exists. Use 'miniautogen engine update {name}' to modify it."
         raise ValueError(msg)
@@ -92,7 +115,7 @@ def list_engines(
     """List all engine profiles from project config."""
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    engines = data.get("engine_profiles", {})
+    engines = _get_engines_section(data)
     result = []
     for ename, ecfg in engines.items():
         result.append({
@@ -113,7 +136,7 @@ def show_engine(
     validate_resource_name(name, "engine")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    engines = data.get("engine_profiles", {})
+    engines = _get_engines_section(data)
     if name not in engines:
         available = ", ".join(engines) or "(none)"
         msg = f"Engine '{name}' not found. Available: {available}"
@@ -141,7 +164,7 @@ def update_engine(
     validate_resource_name(name, "engine")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    engines = data.get("engine_profiles", {})
+    engines = _get_engines_section(data)
     if name not in engines:
         available = ", ".join(engines) or "(none)"
         msg = f"Engine '{name}' not found. Available: {available}"
@@ -171,7 +194,7 @@ def update_engine(
         update_yaml_preserving(
             cfg_path,
             {name: after},
-            section="engine_profiles",
+            section=_detect_engines_key(read_yaml(cfg_path)),
         )
 
     return result
@@ -191,7 +214,7 @@ def delete_engine(
 
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    engines = data.get("engine_profiles", {})
+    engines = _get_engines_section(data)
     if name not in engines:
         available = ", ".join(engines) or "(none)"
         msg = f"Engine '{name}' not found. Available: {available}"

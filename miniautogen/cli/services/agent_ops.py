@@ -69,7 +69,7 @@ def create_agent(
 
     # Verify engine profile exists
     cfg_data = read_yaml(_config_path(project_root))
-    engine_profiles = cfg_data.get("engine_profiles", {})
+    engine_profiles = cfg_data.get("engines", cfg_data.get("engine_profiles", {}))
     if engine_profile not in engine_profiles:
         msg = (
             f"Engine profile '{engine_profile}' not found. "
@@ -161,7 +161,7 @@ def update_agent(
 
     if "engine_profile" in updates:
         cfg_data = read_yaml(_config_path(project_root))
-        engine_profiles = cfg_data.get("engine_profiles", {})
+        engine_profiles = cfg_data.get("engines", cfg_data.get("engine_profiles", {}))
         if updates["engine_profile"] not in engine_profiles:
             available = ", ".join(engine_profiles) or "(none)"
             msg = (
@@ -200,7 +200,7 @@ def delete_agent(
 
     # Check for pipeline references in miniautogen.yaml
     cfg_data = read_yaml(_config_path(project_root))
-    pipelines = cfg_data.get("pipelines", {})
+    pipelines = cfg_data.get("flows", cfg_data.get("pipelines", {}))
     referencing: list[str] = []
     for pname, pcfg in pipelines.items():
         if isinstance(pcfg, dict):

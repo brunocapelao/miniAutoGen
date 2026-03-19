@@ -17,8 +17,9 @@ def test_pipeline_create_silent(init_project) -> None:
     assert "created" in result.output.lower()
 
     cfg = yaml.safe_load((Path.cwd() / "miniautogen.yaml").read_text())
-    assert "etl" in cfg["pipelines"]
-    assert cfg["pipelines"]["etl"]["mode"] == "workflow"
+    pipelines = cfg.get("flows", cfg.get("pipelines", {}))
+    assert "etl" in pipelines
+    assert pipelines["etl"]["mode"] == "workflow"
 
 
 def test_pipeline_create_cancelled(init_project) -> None:

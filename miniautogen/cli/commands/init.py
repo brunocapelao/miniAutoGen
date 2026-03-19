@@ -51,14 +51,14 @@ def init_command(
             include_examples=not no_examples,
             force=force,
         )
-        echo_success(f"Project created: {project_dir}\n")
+        echo_success(f"Workspace created: {project_dir}\n")
 
         # Next steps guidance
         echo_info("Next steps:")
         echo_info(f"  cd {name}")
         echo_info(f"  miniautogen engine create default --provider openai --model gpt-4o")
         echo_info(f"  miniautogen agent create researcher --engine default --role \"Researcher\"")
-        echo_info(f"  miniautogen pipeline create main --mode workflow")
+        echo_info(f"  miniautogen flow create main --mode workflow")
         echo_info(f"  miniautogen check")
         echo_info(f"  miniautogen run main")
     except FileExistsError:

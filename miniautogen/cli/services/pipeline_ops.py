@@ -13,6 +13,24 @@ from miniautogen.cli.services.yaml_ops import (
 )
 
 
+def _get_pipelines_section(data: dict[str, Any]) -> dict[str, Any]:
+    """Get the pipelines/flows section, supporting both old and new key names."""
+    if "flows" in data:
+        return data["flows"]
+    if "pipelines" in data:
+        return data["pipelines"]
+    return data.setdefault("pipelines", {})
+
+
+def _detect_pipelines_key(data: dict[str, Any]) -> str:
+    """Return the YAML key name used for pipelines/flows in this data."""
+    if "flows" in data:
+        return "flows"
+    if "pipelines" in data:
+        return "pipelines"
+    return "flows"
+
+
 def _config_path(project_root: Path) -> Path:
     return project_root / "miniautogen.yaml"
 
@@ -35,7 +53,7 @@ def create_pipeline(
     validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    pipelines = data.setdefault("pipelines", {})
+    pipelines = _get_pipelines_section(data)
 
     if name in pipelines:
         msg = f"Pipeline '{name}' already exists. Use 'miniautogen pipeline update {name}' to modify it."
@@ -106,7 +124,7 @@ def list_pipelines(
     """List all pipelines from project config."""
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    pipelines = data.get("pipelines", {})
+    pipelines = _get_pipelines_section(data)
     result = []
     for pname, pcfg in pipelines.items():
         if isinstance(pcfg, dict):
@@ -134,7 +152,7 @@ def show_pipeline(
     validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    pipelines = data.get("pipelines", {})
+    pipelines = _get_pipelines_section(data)
     if name not in pipelines:
         available = ", ".join(pipelines) or "(none)"
         msg = f"Pipeline '{name}' not found. Available: {available}"
@@ -165,7 +183,7 @@ def update_pipeline(
     validate_resource_name(name, "pipeline")
     cfg_path = _config_path(project_root)
     data = read_yaml(cfg_path)
-    pipelines = data.get("pipelines", {})
+    pipelines = _get_pipelines_section(data)
     if name not in pipelines:
         available = ", ".join(pipelines) or "(none)"
         msg = f"Pipeline '{name}' not found. Available: {available}"
@@ -221,6 +239,6 @@ def update_pipeline(
 
     result = {"before": before, "after": after}
     if not dry_run:
-        update_yaml_preserving(cfg_path, {name: after}, section="pipelines")
+        update_yaml_preserving(cfg_path, {name: after}, section=_detect_pipelines_key(read_yaml(cfg_path)))
 
     return result

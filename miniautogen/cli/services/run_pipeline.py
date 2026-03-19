@@ -1,4 +1,4 @@
-"""Pipeline execution service for the CLI.
+"""Flow execution service for the CLI.
 
 Resolves pipeline targets and executes them via PipelineRunner.
 Supports input passing and run resumption from checkpoints.
@@ -90,7 +90,7 @@ async def execute_pipeline(
         Result dict with run_id, status, output.
     """
     if pipeline_name not in config.pipelines:
-        msg = f"Pipeline '{pipeline_name}' not found in config"
+        msg = f"Flow '{pipeline_name}' not found in config"
         raise KeyError(msg)
 
     if timeout is not None and timeout <= 0:

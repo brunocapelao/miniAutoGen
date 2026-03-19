@@ -26,7 +26,7 @@ class TestInitCheckRunWorkflow:
         # Step 1: Init
         result = runner.invoke(cli, ["init", "myproject"])
         assert result.exit_code == 0, f"init failed: {result.output}"
-        assert "Project created" in result.output
+        assert "Workspace created" in result.output
 
         project_dir = tmp_path / "myproject"
         assert project_dir.is_dir()
@@ -81,12 +81,13 @@ class TestInitCheckRunWorkflow:
         config_path = tmp_path / "myproject" / CONFIG_FILENAME
         with config_path.open() as f:
             config = yaml.safe_load(f)
+        engines = config.get("engines", config.get("engine_profiles", {}))
         assert (
-            config["engine_profiles"]["default_api"]["model"]
+            engines["default_api"]["model"]
             == "gemini-2.5-pro"
         )
         assert (
-            config["engine_profiles"]["default_api"]["provider"]
+            engines["default_api"]["provider"]
             == "gemini"
         )
 
@@ -324,9 +325,9 @@ class TestProjectStructureVerification:
             config = yaml.safe_load(f)
 
         assert config["project"]["name"] == "myproject"
-        assert "engine_profiles" in config
+        assert "engines" in config or "engine_profiles" in config
         assert "memory_profiles" in config
-        assert "pipelines" in config
+        assert "flows" in config or "pipelines" in config
         assert "defaults" in config
 
     def test_agent_yaml_is_valid(
