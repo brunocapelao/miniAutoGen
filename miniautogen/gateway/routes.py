@@ -10,6 +10,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, field_validator, Field
 
+from miniautogen.gateway.rate_limit import limiter
+
 router = APIRouter()
 
 # Pattern: alphanumeric, hyphens, underscores only
@@ -95,6 +97,7 @@ async def health() -> HealthResponse:
 
 
 @router.post("/api/v1/runs", status_code=201)
+@limiter.limit("10/minute")
 async def create_run(request: Request, body: RunCreateRequest) -> RunResponse:
     """Create and queue a new pipeline run."""
     run_id = body.run_id or str(uuid.uuid4())
@@ -114,6 +117,7 @@ async def create_run(request: Request, body: RunCreateRequest) -> RunResponse:
 
 
 @router.get("/api/v1/runs")
+@limiter.limit("60/minute")
 async def list_runs(
     request: Request,
     status: str | None = None,
@@ -137,6 +141,7 @@ async def list_runs(
 
 
 @router.get("/api/v1/runs/{run_id}")
+@limiter.limit("60/minute")
 async def get_run(request: Request, run_id: ValidRunId) -> RunResponse:
     """Get run status and result."""
     run_store = request.app.state.run_store
@@ -155,6 +160,7 @@ async def get_run(request: Request, run_id: ValidRunId) -> RunResponse:
 
 
 @router.post("/api/v1/runs/{run_id}/cancel")
+@limiter.limit("10/minute")
 async def cancel_run(request: Request, run_id: ValidRunId) -> RunResponse:
     """Cancel a running pipeline."""
     run_store = request.app.state.run_store
@@ -169,6 +175,7 @@ async def cancel_run(request: Request, run_id: ValidRunId) -> RunResponse:
 
 
 @router.get("/api/v1/runs/{run_id}/events")
+@limiter.limit("60/minute")
 async def get_run_events(
     request: Request,
     run_id: ValidRunId,
