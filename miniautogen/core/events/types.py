@@ -70,6 +70,17 @@ class EventType(str, Enum):
     SUPERVISION_ESCALATED = "supervision_escalated"
     SUPERVISION_RETRY_SUCCEEDED = "supervision_retry_succeeded"
 
+    # Agent Runtime events (Phase B)
+    AGENT_TURN_STARTED = "agent_turn_started"
+    AGENT_TURN_COMPLETED = "agent_turn_completed"
+    AGENT_HOOK_EXECUTED = "agent_hook_executed"
+    AGENT_TOOL_INVOKED = "agent_tool_invoked"
+
+    # RuntimeInterceptor events (Phase B)
+    INTERCEPTOR_BEFORE_STEP = "interceptor_before_step"
+    INTERCEPTOR_AFTER_STEP = "interceptor_after_step"
+    INTERCEPTOR_BAIL = "interceptor_bail"
+
     # Run state machine events
     RUN_STATE_CHANGED = "run_state_changed"
 
@@ -127,4 +138,17 @@ SUPERVISION_EVENT_TYPES: set[EventType] = {
     EventType.SUPERVISION_CIRCUIT_OPENED,
     EventType.SUPERVISION_ESCALATED,
     EventType.SUPERVISION_RETRY_SUCCEEDED,
+}
+
+AGENT_RUNTIME_EVENT_TYPES: set[EventType] = {
+    EventType.AGENT_TURN_STARTED,
+    EventType.AGENT_TURN_COMPLETED,
+    EventType.AGENT_HOOK_EXECUTED,
+    EventType.AGENT_TOOL_INVOKED,
+}
+
+INTERCEPTOR_EVENT_TYPES: set[EventType] = {
+    EventType.INTERCEPTOR_BEFORE_STEP,
+    EventType.INTERCEPTOR_AFTER_STEP,
+    EventType.INTERCEPTOR_BAIL,
 }
