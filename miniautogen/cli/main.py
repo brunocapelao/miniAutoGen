@@ -57,8 +57,13 @@ from miniautogen.cli.commands.agent import agent_group  # noqa: E402
 
 cli.add_command(agent_group)
 
+from miniautogen.cli.commands.flow import flow_group  # noqa: E402
+
+cli.add_command(flow_group)
+
 from miniautogen.cli.commands.pipeline import pipeline_group  # noqa: E402
 
+pipeline_group.hidden = True
 cli.add_command(pipeline_group)
 
 from miniautogen.cli.commands.server import server_group  # noqa: E402
