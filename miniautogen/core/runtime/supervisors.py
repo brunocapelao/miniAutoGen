@@ -174,7 +174,20 @@ class StepSupervisor:
                 reason=reason,
                 should_checkpoint=is_resume,
             )
-            # Record the restart timestamp
+            # Record the restart timestamp OPTIMISTICALLY.
+            #
+            # NOTE: This timestamp is recorded before the caller confirms
+            # that the restart actually succeeded. This is a deliberate
+            # fail-safe design choice:
+            #
+            # - Over-counting restarts (phantom timestamps) causes the
+            #   restart budget to exhaust sooner, which is SAFE (fails closed).
+            # - Under-counting restarts would allow more retries than
+            #   configured, which is UNSAFE.
+            #
+            # A future improvement could return a callback that the caller
+            # invokes after confirming the retry was set up, but the current
+            # approach is correct for safety.
             self._restart_timestamps[child_id].append(now)
             await self._emit_restart_started(child_id=child_id, attempt=restart_count + 1)
             await self._emit_decision(
