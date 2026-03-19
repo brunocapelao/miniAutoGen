@@ -138,4 +138,4 @@ class TestBaseDriverErrorNormalization:
             events.append(ev)
         assert len(events) == 1
         assert events[0].type == "backend_error"
-        assert "boom" in events[0].payload.get("error", "")
+        assert events[0].payload.get("error") == "TurnExecutionError"

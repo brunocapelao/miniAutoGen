@@ -226,7 +226,7 @@ class TestPeerReviewFailure:
 
         assert result.status == "failed"
         assert "bad_reviewer" in result.error
-        assert "Review crashed" in result.error
+        assert "RuntimeError" in result.error
         # A failed event should have been emitted
         event_types = [e.type for e in sink.events]
         assert any("failed" in t for t in event_types)
@@ -259,7 +259,7 @@ class TestFinalDocumentFailure:
         result = await runtime.run(agents=[], context=ctx, plan=plan)
 
         assert result.status == "failed"
-        assert "Doc generation failed" in result.error
+        assert "RuntimeError" in result.error
         assert "leader" in result.error.lower()
         # Failed event emitted
         event_types = [e.type for e in sink.events]

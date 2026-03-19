@@ -158,7 +158,7 @@ class TestDeliberationBackwardCompatibility:
         result = await runtime.run(agents=[], context=_make_context(), plan=plan)
 
         assert result.status == RunStatus.FAILED
-        assert "boom" in (result.error or "")
+        assert "RuntimeError" in (result.error or "")
         assert agent.contribute_calls == 1
 
     @pytest.mark.asyncio
@@ -174,7 +174,7 @@ class TestDeliberationBackwardCompatibility:
         result = await runtime.run(agents=[], context=_make_context(), plan=plan)
 
         assert result.status == RunStatus.FAILED
-        assert "review-boom" in (result.error or "")
+        assert "RuntimeError" in (result.error or "")
 
 
 # ---------------------------------------------------------------------------

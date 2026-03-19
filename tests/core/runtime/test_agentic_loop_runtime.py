@@ -331,7 +331,7 @@ async def test_agent_failure_returns_error() -> None:
     result = await runtime.run(agents=[], context=_make_context(), plan=plan)
 
     assert result.status == "failed"
-    assert "agent exploded" in result.error
+    assert result.error == "RuntimeError"
 
 
 @pytest.mark.asyncio

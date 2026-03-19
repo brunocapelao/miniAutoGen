@@ -282,7 +282,7 @@ class AgenticLoopRuntime:
             return RunResult(
                 run_id=run_id,
                 status=RunStatus.FAILED,
-                error=str(exc),
+                error=type(exc).__name__,
             )
 
         # --- Emit AGENTIC_LOOP_STOPPED ---

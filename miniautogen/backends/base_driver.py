@@ -121,7 +121,7 @@ class BaseDriver(AgentDriver):
             type="backend_error",
             session_id=session_id,
             payload={
-                "error": str(exc),
+                "error": type(exc).__name__,
                 "error_type": type(exc).__name__,
             },
         )

@@ -265,7 +265,7 @@ async def test_agent_failure_returns_error() -> None:
 
     assert result.status == "failed"
     assert result.error is not None
-    assert "LLM timeout" in result.error
+    assert "RuntimeError" in result.error
 
 
 @pytest.mark.asyncio
@@ -290,7 +290,7 @@ async def test_leader_consolidation_failure_returns_error() -> None:
 
     assert result.status == "failed"
     assert result.error is not None
-    assert "Consolidation failed" in result.error
+    assert "RuntimeError" in result.error
 
 
 @pytest.mark.asyncio

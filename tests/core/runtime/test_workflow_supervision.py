@@ -212,7 +212,7 @@ class TestBackwardCompatibility:
         result = await runtime.run(agents=[], context=_make_context(), plan=plan)
 
         assert result.status == RunStatus.FAILED
-        assert "boom" in (result.error or "")
+        assert "RuntimeError" in (result.error or "")
         # Only called once -- no retry
         assert agent.call_count == 1
 
@@ -237,7 +237,7 @@ class TestBackwardCompatibility:
         result = await runtime.run(agents=[], context=_make_context(), plan=plan)
 
         assert result.status == RunStatus.FAILED
-        assert "branch-fail" in (result.error or "")
+        assert "RuntimeError" in (result.error or "")
         assert fail_agent.call_count == 1
 
 

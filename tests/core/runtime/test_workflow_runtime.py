@@ -200,7 +200,7 @@ async def test_step_failure_returns_error_result() -> None:
 
     assert result.status == "failed"
     assert result.error is not None
-    assert "step exploded" in result.error
+    assert "RuntimeError" in result.error
 
 
 @pytest.mark.asyncio
@@ -226,7 +226,7 @@ async def test_fan_out_one_branch_fails() -> None:
 
     assert result.status == "failed"
     assert result.error is not None
-    assert "step exploded" in result.error
+    assert "RuntimeError" in result.error
 
 
 @pytest.mark.asyncio
@@ -319,6 +319,5 @@ async def test_fan_out_multiple_failures_returns_all_errors() -> None:
 
     assert result.status == "failed"
     assert result.error is not None
-    # The error message must mention BOTH failures, not just the first one
-    assert "branch-A exploded" in result.error
-    assert "branch-B exploded" in result.error
+    # The error message must mention BOTH failures (by type name), not just the first one
+    assert result.error.count("RuntimeError") == 2

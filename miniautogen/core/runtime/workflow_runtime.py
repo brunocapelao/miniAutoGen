@@ -113,10 +113,10 @@ class WorkflowRuntime:
 
         except BaseException as exc:
             if isinstance(exc, BaseExceptionGroup):
-                error_messages = [str(e) for e in exc.exceptions]
+                error_messages = [type(e).__name__ for e in exc.exceptions]
                 combined_error = "; ".join(error_messages)
             elif isinstance(exc, Exception):
-                combined_error = str(exc)
+                combined_error = type(exc).__name__
             else:
                 raise  # Let KeyboardInterrupt, SystemExit propagate
             try:

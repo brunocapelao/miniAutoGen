@@ -181,7 +181,7 @@ class DeliberationRuntime:
                         if supervision is None:
                             error_msg = (
                                 f"Agent '{participant_name}' failed "
-                                f"during contribution: {exc}"
+                                f"during contribution: {type(exc).__name__}"
                             )
                             logger.error(
                                 "contribution_failed",
@@ -215,7 +215,7 @@ class DeliberationRuntime:
                             continue
 
                         # STOP or ESCALATE → fail the deliberation
-                        error_msg = f"Agent '{participant_name}' failed during contribution: {exc}"
+                        error_msg = f"Agent '{participant_name}' failed during contribution: {type(exc).__name__}"
                         logger.error(
                             "contribution_failed",
                             participant=participant_name,
@@ -272,7 +272,7 @@ class DeliberationRuntime:
                             if supervision is None:
                                 error_msg = (
                                     f"Agent '{participant_name}' failed during "
-                                    f"peer review of '{contribution.role_name}': {exc}"
+                                    f"peer review of '{contribution.role_name}': {type(exc).__name__}"
                                 )
                                 logger.error(
                                     "peer_review_failed",
@@ -309,7 +309,7 @@ class DeliberationRuntime:
                             # STOP or ESCALATE → fail the deliberation
                             error_msg = (
                                 f"Agent '{participant_name}' failed during "
-                                f"peer review of '{contribution.role_name}': {exc}"
+                                f"peer review of '{contribution.role_name}': {type(exc).__name__}"
                             )
                             logger.error(
                                 "peer_review_failed",
@@ -349,7 +349,7 @@ class DeliberationRuntime:
                     round_num=round_num + 1,
                 )
             except Exception as exc:
-                error_msg = f"Leader '{leader_name}' failed during consolidation: {exc}"
+                error_msg = f"Leader '{leader_name}' failed during consolidation: {type(exc).__name__}"
                 logger.error(
                     "consolidation_failed",
                     leader=leader_name,
@@ -389,7 +389,7 @@ class DeliberationRuntime:
             rendered = render_final_document_markdown(final_doc)
             logger.info("final_document_produced", leader=leader_name)
         except Exception as exc:
-            error_msg = f"Leader '{leader_name}' failed producing final document: {exc}"
+            error_msg = f"Leader '{leader_name}' failed producing final document: {type(exc).__name__}"
             logger.error(
                 "final_document_failed",
                 leader=leader_name,

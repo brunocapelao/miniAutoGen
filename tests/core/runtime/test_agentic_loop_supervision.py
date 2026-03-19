@@ -147,7 +147,7 @@ class TestAgenticLoopBackwardCompatibility:
         )
 
         assert result.status == RunStatus.FAILED
-        assert "boom" in (result.error or "")
+        assert result.error == "RuntimeError"
         assert agent.call_count == 1
 
 
@@ -268,7 +268,7 @@ class TestRouterNotSupervised:
         )
 
         assert result.status == RunStatus.FAILED
-        assert "router exploded" in (result.error or "")
+        assert result.error == "RuntimeError"
 
 
 # ---------------------------------------------------------------------------
