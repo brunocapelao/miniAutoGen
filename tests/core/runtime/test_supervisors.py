@@ -310,7 +310,7 @@ class TestStepSupervisorAuditTrail:
         payload = failure_events[0].payload_dict()
         assert payload["exception_type"] == "ConnectionError"
         assert payload["error_category"] == "transient"
-        assert payload["message"] == "network down"
+        assert payload["message"] == "ConnectionError"
         assert payload["attempt"] == 3
         assert payload["step_id"] == "step-1"
 

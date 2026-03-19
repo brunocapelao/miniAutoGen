@@ -247,7 +247,7 @@ class StepSupervisor:
                 "step_id": child_id,
                 "exception_type": type(error).__name__,
                 "error_category": error_category.value,
-                "message": str(error),
+                "message": type(error).__name__,
                 "attempt": attempt,
             },
         )
