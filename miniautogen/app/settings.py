@@ -10,5 +10,6 @@ class MiniAutoGenSettings(BaseSettings):
     default_retry_attempts: int = Field(1, alias="MINIAUTOGEN_DEFAULT_RETRY_ATTEMPTS")
     gateway_base_url: str | None = Field(None, alias="MINIAUTOGEN_GATEWAY_BASE_URL")
     gateway_api_key: str | None = Field(None, alias="MINIAUTOGEN_GATEWAY_API_KEY")
+    env: str = Field("development", alias="ENV")
 
     model_config = SettingsConfigDict(populate_by_name=True, extra="ignore")
