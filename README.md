@@ -19,11 +19,19 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 
 - `PipelineRunner` como runtime oficial com timeout, checkpoint e lifecycle de eventos
 - Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
-- 3 stores especializados (messages, runs, checkpoints) com backends InMemory e SQLAlchemy
-- 8 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
-- 42 tipos de evento para observabilidade via structlog
+- 5 stores especializados (messages, runs, checkpoints, effects, events) com backends InMemory e SQLAlchemy
+- 10 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
+- 72+ tipos de evento para observabilidade via structlog
 - Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
 - CLI com comandos `init`, `check`, `run` e `sessions`
+- Taxonomia canónica de erros com 8 categorias e `classify_error()` extensível
+- Effect Engine com idempotência via `EffectInterceptor` e `EffectJournal`
+- Supervisão hierárquica (StepSupervisor + FlowSupervisor) em todos os 3 runtimes
+- `RunStateMachine` com transições formais de estado (PENDING→RUNNING→terminal)
+- `EventBus` assíncrono com subscrições tipadas e `ReactivePolicy`
+- `CheckpointManager` para coordenação de checkpoint + eventos
+- `HeartbeatToken` para detecção de agentes zombie
+- `CircuitBreakerRegistry` global para circuit breaking partilhado
 
 ---
 

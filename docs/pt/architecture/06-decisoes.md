@@ -37,6 +37,16 @@ Este documento consolida as decisões arquiteturais (DA) que governam o design d
 
 **Consequências:** Requer migração de configuração (`miniautogen.yml`) e atualização da API pública. Aliases de compatibilidade serão mantidos durante uma versão de transição.
 
+**Status (2026-03):** Pendente. A renomeação não foi aplicada no código. A CLI, config schema e código interno continuam a usar a terminologia original:
+
+| Decisão | Alvo | Estado Atual no Código |
+|---------|------|----------------------|
+| Project → Workspace | `workspace create` | `miniautogen init` (cria "project") |
+| Pipeline → Flow | `flow create/run` | `pipeline create/run` |
+| EngineProfile → Engine | `engines:` no YAML | `engine_profiles:` no YAML |
+
+A migração requer: renomeação de comandos CLI, atualização do schema `miniautogen.yaml`, aliases de compatibilidade e atualização de testes. Sem timeline definida.
+
 ---
 
 ## DA-10: Agent Runtime como camada local sobre Engine {#da-10}

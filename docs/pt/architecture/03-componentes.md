@@ -130,7 +130,7 @@ O `PipelineRunner` é o único executor oficial do framework. Centraliza o ciclo
 - Persistir estado de execução em `RunStore` e checkpoints em `CheckpointStore`.
 - Aplicar `RetryPolicy` com backoff exponencial sobre a execução do flow.
 
-Dependências injetáveis: `EventSink`, `RunStore`, `CheckpointStore`, `ExecutionPolicy`, `ApprovalGate`, `RetryPolicy`. Todas opcionais, com defaults seguros (`NullEventSink`).
+Dependências injetáveis: `EventSink`, `RunStore`, `CheckpointStore`, `ExecutionPolicy`, `ApprovalGate`, `RetryPolicy`, `PolicyChain`. Todas opcionais, com defaults seguros (`NullEventSink`).
 
 ---
 
@@ -169,7 +169,7 @@ Todos em `miniautogen/pipeline/`:
 
 Módulo: `miniautogen/core/events/`
 
-O framework emite 47+ tipos de evento canônico organizados em 12 categorias:
+O framework emite 72+ tipos de evento canônico organizados em 15 categorias:
 
 | Categoria | Eventos |
 | --- | --- |
@@ -183,6 +183,9 @@ O framework emite 47+ tipos de evento canônico organizados em 12 categorias:
 | Deliberação | `DELIBERATION_STARTED`, `DELIBERATION_ROUND_COMPLETED`, `DELIBERATION_FINISHED`, `DELIBERATION_FAILED` |
 | Backend drivers | `BACKEND_SESSION_STARTED`, `BACKEND_TURN_STARTED`, `BACKEND_MESSAGE_DELTA`, `BACKEND_MESSAGE_COMPLETED`, `BACKEND_TOOL_CALL_REQUESTED`, `BACKEND_TOOL_CALL_EXECUTED`, `BACKEND_ARTIFACT_EMITTED`, `BACKEND_WARNING`, `BACKEND_ERROR`, `BACKEND_TURN_COMPLETED`, `BACKEND_SESSION_CLOSED` |
 | Aprovação | `APPROVAL_REQUESTED`, `APPROVAL_GRANTED`, `APPROVAL_DENIED`, `APPROVAL_TIMEOUT` |
+| Efeitos | `EFFECT_REGISTERED`, `EFFECT_EXECUTED`, `EFFECT_SKIPPED`, `EFFECT_FAILED`, `EFFECT_DENIED`, `EFFECT_STALE_RECLAIMED`, `EFFECT_UNPROTECTED` |
+| Supervisão | `SUPERVISION_FAILURE_RECEIVED`, `SUPERVISION_DECISION_MADE`, `SUPERVISION_RESTART_STARTED`, `SUPERVISION_CIRCUIT_OPENED`, `SUPERVISION_ESCALATED`, `SUPERVISION_RETRY_SUCCEEDED` |
+| Estado do run | `RUN_STATE_CHANGED` |
 
 ### Event sinks
 
@@ -216,6 +219,8 @@ Policies operam lateralmente ao Core. O Core emite eventos e as policies observa
 | `ValidationPolicy` | `validation.py` | Validação de entrada e saída. |
 | `PermissionPolicy` | `permission.py` | Controle de acesso baseado em permissões. |
 | `PolicyChain` / `PolicyEvaluator` | `chain.py` | Composição e avaliação sequencial de múltiplas policies. |
+| `EffectPolicy` | `effect.py` | Controle de efeitos colaterais: limites por step, tipos permitidos, idempotência obrigatória. |
+| `ReactivePolicy` / `ReactiveBudgetTracker` | `reactive.py` | Policies event-driven que reagem a eventos do `EventBus` em tempo real. |
 
 ---
 
@@ -223,13 +228,15 @@ Policies operam lateralmente ao Core. O Core emite eventos e as policies observa
 
 Módulo: `miniautogen/stores/`
 
-Três tipos de store com duas implementações cada:
+Cinco tipos de store com duas implementações cada:
 
 | Store | InMemory | SQLAlchemy |
 | --- | --- | --- |
 | `MessageStore` | `InMemoryMessageStore` | `SQLAlchemyMessageStore` |
 | `RunStore` | `InMemoryRunStore` | `SQLAlchemyRunStore` |
 | `CheckpointStore` | `InMemoryCheckpointStore` | `SQLAlchemyCheckpointStore` |
+| `EffectJournal` | `InMemoryEffectJournal` | `SQLAlchemyEffectJournal` |
+| `EventStore` | `InMemoryEventStore` | `SQLAlchemyEventStore` |
 
 As implementações InMemory servem para testes e execuções efémeras. As implementações SQLAlchemy utilizam sessões assíncronas para persistência durável. O `StoreProtocol` em `core/contracts/store.py` define o contrato que ambas as variantes cumprem.
 

@@ -2,7 +2,7 @@
 
 ## Posicionamento
 
-MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (47+ tipos em 12 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
+MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (72+ tipos em 15+ categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
 
 ---
 
@@ -25,10 +25,10 @@ A evolução arquitetural do MiniAutoGen consolida quatro conceitos de primeira 
 
 | Conceito | Descrição |
 |----------|-----------|
-| **Workspace** | Unidade organizacional de topo. Substitui o antigo "Project". Contém configuração, agentes, flows e estado de sessão. |
+| **Workspace** | Unidade organizacional de topo. Substitui o antigo "Project". Contém configuração, agentes, flows e estado de sessão. *(Proposto — código atual usa "Project")* |
 | **Engine** | Abstração unificada do provedor de inteligência (API, CLI agent, gateway). Substitui o antigo "EngineProfile". |
 | **Agent** | Entidade com identidade, engine, runtime local, policies e protocol adapters. A anatomia completa é descrita em [`07-agent-anatomy.md`](07-agent-anatomy.md). |
-| **Flow** | Sequência coordenada de interações entre agentes. Substitui o antigo "Pipeline" na terminologia do utilizador. |
+| **Flow** | Sequência coordenada de interações entre agentes. Substitui o antigo "Pipeline" na terminologia do utilizador. *(Proposto — código atual usa "Pipeline")* |
 
 A estratégia multi-provider é central ao design: **"O agente é commodity. O runtime é o produto."** O MiniAutoGen trata engines (Claude, GPT, Gemini, Codex CLI, etc.) como recursos intercambiáveis, focando o valor diferencial na camada de runtime -- coordenação, policies, observabilidade e interceptors. Para contexto competitivo, consulte [`../../competitive-landscape.md`](../../competitive-landscape.md).
 
@@ -64,7 +64,7 @@ flowchart TB
     Modes --> AL["AgenticLoopRuntime"]
     Modes --> CR["CompositeRuntime"]
     Kernel --> Policies["Policies"]
-    Kernel --> Events["Eventos (47+ tipos)"]
+    Kernel --> Events["Eventos (72+ tipos)"]
     Kernel --> Stores["Stores"]
     Kernel --> Adapters["Adapters"]
     Adapters --> LLM["Provedores LLM"]

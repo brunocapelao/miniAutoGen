@@ -1,5 +1,7 @@
 # Anatomia do Agente MiniAutoGen
 
+> **⚠️ Status de Implementação:** Este documento mistura componentes implementados e propostos. Camadas 1 (Identity) e 2 (Engine) estão implementadas. Camadas 3 (Agent Runtime), 4 (Policies per-agent) e 5 (CoordinatorAgent) estão **propostas mas não implementadas**. As seções propostas estão marcadas com `[PROPOSTO]`.
+
 **Versão:** 1.0.0
 **Data:** 2025-06-18
 **Tipo:** Analítico + Prescritivo
@@ -302,11 +304,12 @@ class AgentSpec(BaseModel):
     vendor_extensions: dict[str, Any] = {}
 ```
 
-### 4.3 Agent Runtime — O Diferencial
+### 4.3 [PROPOSTO] Agent Runtime — O Diferencial
 
 O Agent Runtime é a camada que separa MiniAutoGen de frameworks que apenas wrappam APIs. Ele adiciona **capacidades locais** ao agente que o Engine não fornece:
 
 ```python
+# PROPOSTO — não implementado no codebase atual
 class AgentRuntime:
     """Runtime local que enriquece o Engine com capacidades adicionais."""
 
@@ -519,9 +522,9 @@ engines:
 
 ---
 
-## 6. Runtime do Agente
+## 6. [PROPOSTO] Runtime do Agente
 
-### 6.1 AgentHook Protocol
+### 6.1 [PROPOSTO] AgentHook Protocol
 
 Inspirado nos patterns de middleware (Express, ASP.NET, Django) e hooks (Temporal, Pytest):
 
@@ -566,7 +569,7 @@ class AgentHook(Protocol):
 | `MemoryPersistenceHook` | after_event | Salva turn na memória |
 | `CostTrackerHook` | after_event | Contabiliza custo do turn |
 
-### 6.2 MemoryProvider
+### 6.2 [PROPOSTO] MemoryProvider
 
 ```python
 class MemoryProvider(Protocol):
@@ -599,7 +602,7 @@ class MemoryProvider(Protocol):
 
 Inspirado no pattern de **memory distillation** validado no caso OpenClaw 24/7 — daily logs → curated long-term memory.
 
-### 6.3 CoordinatorCapability
+### 6.3 [PROPOSTO] CoordinatorCapability
 
 Recupera o insight mais profundo do v0 (ChatAdmin extends Agent):
 

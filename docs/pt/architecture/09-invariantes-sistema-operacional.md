@@ -198,6 +198,8 @@ class CheckpointManager:
 - Test: kill -9 no meio de um step → resume carrega último checkpoint válido
 - Test: nenhum evento é observável por consumers antes do commit atômico
 
+> **Status de implementação (2026-03):** `CheckpointManager` está implementado em `core/runtime/checkpoint_manager.py` via composição (`atomic_transition()` coordena CheckpointStore + EventStore sequencialmente). A atomicidade é lógica, não ACID — um crash entre `save_checkpoint` e `append_events` pode resultar em estado inconsistente. Uma implementação com transação SQLAlchemy é trabalho futuro.
+
 ---
 
 ### Invariante 4: Efeitos Colaterais Controlados
@@ -276,6 +278,8 @@ class EventSourcedState:
 - Test: `fold(events_from_store) == current_state` para qualquer flow
 - Test: fork de checkpoint N + novos eventos produz estado diferente do original
 
+> **Status de implementação (2026-03):** O sistema emite 72+ event types canónicos via EventStore (InMemory + SQLAlchemy). Contudo, `EventSourcedState.fold()` e `fork()` **não estão implementados** como classes. O event sourcing é operacional (store + checkpoint cycle), mas replay determinístico e bifurcação de estado são trabalho futuro.
+
 ---
 
 ### Invariante 6: Rejeição do Texto Livre
@@ -342,6 +346,8 @@ Refatorar `RunContext` e todas as passagens de parâmetros entre Runtimes para e
 
 **Alinha com:** Roadmap Fase 2 — RunStateMachine (item #5)
 
+> **✅ CONCLUÍDA (PR #32, 2026-03).** `RunContext` e `ExecutionEvent` são frozen. `FrozenState` substitui `dict` mutável. Pattern `model_copy()` para atualizações.
+
 ### Ação 2: EffectPolicy e Effect Journal
 
 > Resolve: Invariante 4
@@ -350,6 +356,8 @@ Implementar interceptor que atua antes de qualquer tool call. Gera hashes determ
 
 **Alinha com:** Roadmap Fase 3 — EffectPolicy + idempotency_key + effect journal (item #11)
 
+> **✅ CONCLUÍDA (PRs #33-34, 2026-03).** `EffectRecord`, `EffectJournal` (InMemory + SQLAlchemy), `EffectInterceptor` com idempotency key (SHA-256 sem attempt). `EffectPolicy` como frozen model.
+
 ### Ação 3: Árvores de Supervisão (Supervisor Trees)
 
 > Resolve: Invariante 2
@@ -357,6 +365,8 @@ Implementar interceptor que atua antes de qualquer tool call. Gera hashes determ
 Substituir tratamento de erros linear no `PipelineRunner` por hierarquia de `Supervisor`. Classes encapsulam lógica de decisão per-step (restart, resume, stop, escalate) e políticas de circuit breaker.
 
 **Alinha com:** Roadmap Fase 2 — RunStateMachine (item #5) + Research W3 (Akka supervision patterns)
+
+> **✅ CONCLUÍDA (PRs #35-39, 2026-03).** `StepSupervisor` + `FlowSupervisor` com hierarquia OTP. Todos os 3 runtimes supervisionados. `RunStateMachine` com transições formais. `CircuitBreakerRegistry` e `HeartbeatToken` implementados.
 
 ---
 

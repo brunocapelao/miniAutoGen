@@ -68,7 +68,9 @@ Modelo: `miniautogen/core/contracts/conversation.py`
 - Todo checkpoint deve ser restaurável: os dados persistidos devem ser suficientes para retomar a execução.
 - A operação de restauração é registada via evento `CHECKPOINT_RESTORED`.
 
-### Agent Runtime
+### Agent Runtime [PROPOSTO]
+
+> **Status:** Proposto. O Agent Runtime (AgentHook, MemoryProvider) não está implementado. As invariantes abaixo aplicam-se à implementação futura.
 
 Invariantes aplicáveis ao Agent Runtime e aos seus componentes (ver [`07-agent-anatomy.md`](07-agent-anatomy.md)):
 
@@ -76,7 +78,9 @@ Invariantes aplicáveis ao Agent Runtime e aos seus componentes (ver [`07-agent-
 - **Engine isolation.** O Agent Runtime NUNCA vaza tipos específicos do Engine para o `core/`. Toda comunicação entre o runtime local e o engine ocorre via protocolos tipados (`LLMProviderProtocol`, `AgentDriver`). Tipos internos do provedor (OpenAI message formats, Gemini response objects, etc.) são transformados por adapters na fronteira.
 - **MemoryProvider é injetável e opcional.** O agente opera normalmente sem `MemoryProvider`. Quando presente, o provider injeta contexto antes de cada turno mas não altera o fluxo principal de execução.
 
-### RuntimeInterceptor
+### RuntimeInterceptor [PROPOSTO]
+
+> **Status:** Proposto. O protocolo RuntimeInterceptor não está implementado. As invariantes abaixo aplicam-se à implementação futura.
 
 Invariantes aplicáveis ao protocolo `RuntimeInterceptor`:
 

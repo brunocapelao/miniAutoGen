@@ -1,5 +1,7 @@
 # Especificação funcional E2E -- MiniAutoGen CLI-First
 
+> **⚠️ Nota sobre terminologia:** Este documento descreve a **visão alvo** do produto. A implementação atual (2026-03) usa terminologia diferente: "project" em vez de "workspace", "pipeline" em vez de "flow", `engine_profiles:` em vez de `engines:` no schema YAML. A migração de terminologia (DA-9) está pendente. Consulte [06-decisoes.md](architecture/06-decisoes.md#da-9) para o status.
+
 Documento de especificação funcional end-to-end do framework MiniAutoGen, descrevendo a jornada completa do utilizador num paradigma CLI-First de gestão de recursos. O terminal é o plano de controlo único: criar, modificar, listar e orquestrar qualquer recurso do sistema sem nunca abrir um editor de texto.
 
 **Versão:** 3.2.0

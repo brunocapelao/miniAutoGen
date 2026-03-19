@@ -191,7 +191,9 @@ init [--example] -> check -> run <flow> -> sessions list|clean
 
 ---
 
-## Fluxo 7: gestão de Workspace
+## Fluxo 7: gestão de Workspace [PROPOSTO]
+
+> **Status:** Proposto. A CLI atual usa o conceito de "Project" (`miniautogen init`), não "Workspace". A migração de terminologia (DA-9) está pendente.
 
 O Workspace é a unidade organizacional de topo que substitui o antigo conceito de "Project" (ver [DA-9](06-decisoes.md#da-9)).
 
@@ -207,7 +209,9 @@ O Workspace expõe opcionalmente capacidades de Server/Gateway, permitindo que a
 
 ---
 
-## Fluxo 8: registo de agente
+## Fluxo 8: registo de agente [PROPOSTO]
+
+> **Status:** Proposto. O registo de agentes é feito via YAML (`agents/*.yaml`) e CLI (`miniautogen agent create`), mas o fluxo atómico descrito (engine binding + runtime setup + hooks) não está implementado.
 
 O registo de um agente vincula identidade, engine e runtime num único processo atómico.
 
@@ -236,7 +240,9 @@ Para detalhes sobre a anatomia interna do agente, consulte [`07-agent-anatomy.md
 
 ---
 
-## Fluxo 9: flow com interceptors
+## Fluxo 9: flow com interceptors [PROPOSTO]
+
+> **Status:** Proposto. O protocolo `RuntimeInterceptor` não está implementado no codebase atual. Os 4 hooks (before_step, should_execute, after_step, on_error) e os 3 event types (INTERCEPTOR_BEFORE_STEP, INTERCEPTOR_AFTER_STEP, INTERCEPTOR_BAIL) existem apenas nesta especificação.
 
 Os `RuntimeInterceptor`s participam na execução de flows com semântica de hooks tipados. O protocolo define quatro pontos de intervenção.
 
