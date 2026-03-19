@@ -63,17 +63,15 @@ class SQLAlchemyRunStore(RunStore):
         limit: int = 100,
     ) -> list[dict[str, Any]]:
         async with self.async_session() as session:
-            stmt = select(DBRun)
+            stmt = select(DBRun).order_by(DBRun.updated_at.desc()).limit(limit)
             result = await session.execute(stmt)
             runs = [
                 cast(dict[str, Any], loads(r.payload_json))
                 for r in result.scalars().all()
             ]
             if status:
-                runs = [
-                    r for r in runs if r.get("status") == status
-                ]
-            return runs[:limit]
+                runs = [r for r in runs if r.get("status") == status]
+            return runs
 
     async def delete_run(self, run_id: str) -> bool:
         async with self.async_session() as session:
