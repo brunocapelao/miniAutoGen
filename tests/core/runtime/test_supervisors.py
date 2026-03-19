@@ -265,20 +265,26 @@ class TestStepSupervisorConfiguredStrategy:
         assert decision.action == SupervisionStrategy.ESCALATE
 
     @pytest.mark.asyncio
-    async def test_resume_raises_not_implemented(self) -> None:
-        """RESUME raises NotImplementedError -- requires Phase 4."""
+    async def test_resume_returns_decision(self) -> None:
+        """RESUME returns decision with action=RESUME, should_checkpoint=True."""
         sink = InMemoryEventSink()
         sv = StepSupervisor(event_sink=sink)
-        supervision = StepSupervision(strategy=SupervisionStrategy.RESUME)
+        supervision = StepSupervision(
+            strategy=SupervisionStrategy.RESUME,
+            max_restarts=5,
+            circuit_breaker_threshold=100,
+        )
 
-        with pytest.raises(NotImplementedError, match="Phase 4"):
-            await sv.handle_failure(
-                child_id="step-1",
-                error=ConnectionError("any"),
-                error_category=ErrorCategory.TRANSIENT,
-                supervision=supervision,
-                restart_count=0,
-            )
+        decision = await sv.handle_failure(
+            child_id="step-1",
+            error=ConnectionError("any"),
+            error_category=ErrorCategory.TRANSIENT,
+            supervision=supervision,
+            restart_count=0,
+        )
+
+        assert decision.action == SupervisionStrategy.RESUME
+        assert decision.should_checkpoint is True
 
 
 class TestStepSupervisorAuditTrail:

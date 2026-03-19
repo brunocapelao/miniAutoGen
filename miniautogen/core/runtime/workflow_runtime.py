@@ -24,6 +24,7 @@ from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.types import EventType
+from miniautogen.core.runtime.checkpoint_manager import CheckpointManager
 from miniautogen.core.runtime.classifier import classify_error
 from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
@@ -43,9 +44,11 @@ class WorkflowRuntime:
         self,
         runner: PipelineRunner,
         agent_registry: dict[str, Any] | None = None,
+        checkpoint_manager: CheckpointManager | None = None,
     ) -> None:
         self._runner = runner
         self._registry = agent_registry or {}
+        self._checkpoint_manager = checkpoint_manager
         self._logger = get_logger(__name__)
 
     async def run(
@@ -145,13 +148,42 @@ class WorkflowRuntime:
         fan-out behaviour).  When a step has supervision configured (or the
         plan has ``default_supervision``), failures are handled by the
         FlowSupervisor which may restart, stop, or escalate.
+
+        When a CheckpointManager is available:
+        - Before execution, loads existing checkpoint to skip completed steps.
+        - After each successful step, saves checkpoint with current step_index.
+        - On RESUME decision, saves checkpoint before retrying the failed step.
         """
         supervisor = FlowSupervisor(event_sink=self._runner.event_sink)
         current_input = context.input_payload
+        run_id = context.run_id
+        start_index = 0
 
-        for step in plan.steps:
+        # Load existing checkpoint to skip already-completed steps
+        if self._checkpoint_manager is not None:
+            checkpoint = await self._checkpoint_manager.get_last_checkpoint(
+                run_id,
+            )
+            if checkpoint is not None:
+                saved_state, saved_step_index = checkpoint
+                start_index = saved_step_index
+                current_input = saved_state
+
+        for step_idx, step in enumerate(plan.steps):
+            if step_idx < start_index:
+                # Skip already-completed steps (restored from checkpoint)
+                continue
+
             if step.agent_id is None:
                 # pass-through: current_input unchanged
+                # Still save checkpoint for pass-through steps
+                if self._checkpoint_manager is not None:
+                    await self._checkpoint_manager.atomic_transition(
+                        run_id,
+                        new_state=current_input,
+                        events=[],
+                        step_index=step_idx + 1,
+                    )
                 continue
 
             restart_count = 0
@@ -159,8 +191,18 @@ class WorkflowRuntime:
 
             while True:
                 try:
-                    current_input = await self._invoke_agent(step.agent_id, current_input)
-                    # Emit retry-succeeded event if we recovered from failures
+                    current_input = await self._invoke_agent(
+                        step.agent_id, current_input,
+                    )
+                    # Save checkpoint after successful step
+                    if self._checkpoint_manager is not None:
+                        await self._checkpoint_manager.atomic_transition(
+                            run_id,
+                            new_state=current_input,
+                            events=[],
+                            step_index=step_idx + 1,
+                        )
+                    # Emit retry-succeeded if we recovered from failures
                     if restart_count > 0:
                         await supervisor.emit_retry_succeeded(
                             step_id=step.component_name,
@@ -172,8 +214,10 @@ class WorkflowRuntime:
                     if not isinstance(exc, Exception):
                         raise
 
-                    supervision = step.supervision or plan.default_supervision
-                    # No supervision configured → fail-fast (preserve backward compat)
+                    supervision = (
+                        step.supervision or plan.default_supervision
+                    )
+                    # No supervision configured -> fail-fast
                     if supervision is None:
                         raise
 
@@ -187,11 +231,23 @@ class WorkflowRuntime:
                         restart_count=restart_count,
                     )
 
+                    if decision.action == SupervisionStrategy.RESUME:
+                        # Save checkpoint before retrying
+                        if self._checkpoint_manager is not None:
+                            await self._checkpoint_manager.atomic_transition(
+                                run_id,
+                                new_state=current_input,
+                                events=[],
+                                step_index=step_idx,
+                            )
+                        restart_count += 1
+                        continue
+
                     if decision.action == SupervisionStrategy.RESTART:
                         restart_count += 1
                         continue
 
-                    # STOP or ESCALATE → re-raise so run() handles it
+                    # STOP or ESCALATE -> re-raise so run() handles it
                     raise
 
         return current_input

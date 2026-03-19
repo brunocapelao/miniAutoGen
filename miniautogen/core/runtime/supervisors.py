@@ -7,7 +7,7 @@ RESTART, STOP, or ESCALATE. Decision algorithm (priority order):
    CONFIGURATION->ESCALATE, STATE_CONSISTENCY->ESCALATE)
 2. Circuit breaker: cumulative failures >= threshold -> STOP
 3. Restart budget: windowed restarts >= max_restarts -> ESCALATE
-4. Configured strategy (RESUME raises NotImplementedError)
+4. Configured strategy (RESUME returns decision with should_checkpoint=True)
 """
 
 from __future__ import annotations
@@ -162,20 +162,17 @@ class StepSupervisor:
         # 4. Configured strategy
         strategy = supervision.strategy
 
-        if strategy == SupervisionStrategy.RESUME:
-            raise NotImplementedError(
-                "RESUME requires Phase 4 CheckpointManager. "
-                "Use RESTART, STOP, or ESCALATE."
-            )
-
-        if strategy == SupervisionStrategy.RESTART:
+        if strategy in (SupervisionStrategy.RESUME, SupervisionStrategy.RESTART):
+            is_resume = strategy == SupervisionStrategy.RESUME
+            verb = "Resuming" if is_resume else "Restarting"
             reason = (
-                f"Restarting step '{child_id}': "
+                f"{verb} step '{child_id}': "
                 f"{error_category.value} error, attempt {restart_count + 1}"
             )
             decision = SupervisionDecision(
-                action=SupervisionStrategy.RESTART,
+                action=strategy,
                 reason=reason,
+                should_checkpoint=is_resume,
             )
             # Record the restart timestamp
             self._restart_timestamps[child_id].append(now)
