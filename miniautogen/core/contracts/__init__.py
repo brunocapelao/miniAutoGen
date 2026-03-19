@@ -15,6 +15,7 @@ from .coordination import (
     WorkflowPlan,
     WorkflowStep,
 )
+from .coordinator_capability import CoordinatorCapability
 from .deliberation import (
     Contribution,
     DeliberationState,
@@ -60,6 +61,7 @@ __all__ = [
     "Conversation",
     "Contribution",
     "CoordinationPlan",
+    "CoordinatorCapability",
     "DeliberationAgent",
     "DeliberationPlan",
     "DeliberationState",

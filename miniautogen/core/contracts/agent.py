@@ -33,3 +33,8 @@ class ConversationalAgent(Protocol):
 
     async def reply(self, message: str, context: dict[str, Any]) -> str: ...
     async def route(self, conversation_history: list[Any]) -> RouterDecision: ...
+
+
+# CoordinatorCapability is defined in coordinator_capability.py
+# to avoid circular imports with coordination.py.
+# Import path: miniautogen.core.contracts.coordinator_capability.CoordinatorCapability
