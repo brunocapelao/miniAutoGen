@@ -97,6 +97,7 @@ class DeliberationPlan(CoordinationPlan):
     max_rounds: int = Field(default=3, ge=1, le=50)
     leader_agent: str | None = None
     policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
+    default_supervision: StepSupervision | None = None
 
 
 # --- Agentic Loop contracts ---
@@ -110,6 +111,7 @@ class AgenticLoopPlan(CoordinationPlan):
     policy: ConversationPolicy = Field(default_factory=ConversationPolicy)
     goal: str = ""
     initial_message: str | None = None
+    default_supervision: StepSupervision | None = None
 
 
 # --- Subrun contracts ---

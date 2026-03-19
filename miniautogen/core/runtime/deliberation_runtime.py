@@ -18,22 +18,23 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     DeliberationPlan,
 )
-from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.deliberation import (
     DeliberationState,
-    FinalDocument,
     PeerReview,
     ResearchOutput,
 )
+from miniautogen.core.contracts.enums import RunStatus, SupervisionStrategy
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.types import EventType
+from miniautogen.core.runtime.classifier import classify_error
 from miniautogen.core.runtime.deliberation import (
     build_follow_up_tasks,
     summarize_peer_reviews,
 )
 from miniautogen.core.runtime.final_document import render_final_document_markdown
+from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 
@@ -127,6 +128,7 @@ class DeliberationRuntime:
         # --- resolve leader ---
         leader_agent = self._registry[leader_name]
 
+        supervisor = FlowSupervisor(event_sink=self._runner.event_sink)
         state = DeliberationState()
         contributions: list[ResearchOutput] = []
         follow_ups: dict[str, list[str]] = {}
@@ -138,60 +140,72 @@ class DeliberationRuntime:
             contributions = []
             for participant_name in plan.participants:
                 agent = self._registry[participant_name]
-                try:
-                    output = await agent.contribute(plan.topic)
-                    contributions.append(output)
-                    logger.info(
-                        "contribution_collected",
-                        participant=participant_name,
-                        round_num=round_num + 1,
-                    )
-                except Exception as exc:
-                    error_msg = f"Agent '{participant_name}' failed during contribution: {exc}"
-                    logger.error(
-                        "contribution_failed",
-                        participant=participant_name,
-                        error=str(exc),
-                    )
-                    await self._emit(
-                        event_type=_EVT_FAILED,
-                        run_id=context.run_id,
-                        correlation_id=correlation_id,
-                        payload={"error": error_msg},
-                    )
-                    return RunResult(
-                        run_id=context.run_id,
-                        status=RunStatus.FAILED,
-                        error=error_msg,
-                    )
+                step_id = f"contribute:{participant_name}"
+                restart_count = 0
+                error_categories: list[str] = []
 
-            # --- phase 2: peer review (3B) ---
-            reviews: list[PeerReview] = []
-            for participant_name in plan.participants:
-                agent = self._registry[participant_name]
-                for contribution in contributions:
-                    # Each agent reviews OTHER agents' outputs
-                    if contribution.role_name == participant_name:
-                        continue
+                while True:
                     try:
-                        review = await agent.review(
-                            contribution.role_name, contribution
-                        )
-                        reviews.append(review)
+                        output = await agent.contribute(plan.topic)
+                        contributions.append(output)
                         logger.info(
-                            "peer_review_collected",
-                            reviewer=participant_name,
-                            target=contribution.role_name,
+                            "contribution_collected",
+                            participant=participant_name,
+                            round_num=round_num + 1,
                         )
-                    except Exception as exc:
-                        error_msg = (
-                            f"Agent '{participant_name}' failed during "
-                            f"peer review of '{contribution.role_name}': {exc}"
+                        if restart_count > 0:
+                            await supervisor.emit_retry_succeeded(
+                                step_id=step_id,
+                                total_attempts=restart_count + 1,
+                                error_categories_encountered=error_categories,
+                            )
+                        break
+                    except BaseException as exc:
+                        if not isinstance(exc, Exception):
+                            raise
+
+                        supervision = plan.default_supervision
+                        if supervision is None:
+                            error_msg = (
+                                f"Agent '{participant_name}' failed "
+                                f"during contribution: {exc}"
+                            )
+                            logger.error(
+                                "contribution_failed",
+                                participant=participant_name,
+                                error=str(exc),
+                            )
+                            await self._emit(
+                                event_type=_EVT_FAILED,
+                                run_id=context.run_id,
+                                correlation_id=correlation_id,
+                                payload={"error": error_msg},
+                            )
+                            return RunResult(
+                                run_id=context.run_id,
+                                status=RunStatus.FAILED,
+                                error=error_msg,
+                            )
+
+                        category = classify_error(exc)
+                        error_categories.append(category.value)
+                        decision = await supervisor.handle_step_failure(
+                            step_id=step_id,
+                            error=exc,
+                            error_category=category,
+                            supervision=supervision,
+                            restart_count=restart_count,
                         )
+
+                        if decision.action == SupervisionStrategy.RESTART:
+                            restart_count += 1
+                            continue
+
+                        # STOP or ESCALATE → fail the deliberation
+                        error_msg = f"Agent '{participant_name}' failed during contribution: {exc}"
                         logger.error(
-                            "peer_review_failed",
-                            reviewer=participant_name,
-                            target=contribution.role_name,
+                            "contribution_failed",
+                            participant=participant_name,
                             error=str(exc),
                         )
                         await self._emit(
@@ -205,6 +219,102 @@ class DeliberationRuntime:
                             status=RunStatus.FAILED,
                             error=error_msg,
                         )
+
+            # --- phase 2: peer review (3B) ---
+            reviews: list[PeerReview] = []
+            for participant_name in plan.participants:
+                agent = self._registry[participant_name]
+                for contribution in contributions:
+                    # Each agent reviews OTHER agents' outputs
+                    if contribution.role_name == participant_name:
+                        continue
+
+                    step_id = f"review:{participant_name}:{contribution.role_name}"
+                    restart_count = 0
+                    error_categories = []
+
+                    while True:
+                        try:
+                            review = await agent.review(
+                                contribution.role_name, contribution
+                            )
+                            reviews.append(review)
+                            logger.info(
+                                "peer_review_collected",
+                                reviewer=participant_name,
+                                target=contribution.role_name,
+                            )
+                            if restart_count > 0:
+                                await supervisor.emit_retry_succeeded(
+                                    step_id=step_id,
+                                    total_attempts=restart_count + 1,
+                                    error_categories_encountered=error_categories,
+                                )
+                            break
+                        except BaseException as exc:
+                            if not isinstance(exc, Exception):
+                                raise
+
+                            supervision = plan.default_supervision
+                            if supervision is None:
+                                error_msg = (
+                                    f"Agent '{participant_name}' failed during "
+                                    f"peer review of '{contribution.role_name}': {exc}"
+                                )
+                                logger.error(
+                                    "peer_review_failed",
+                                    reviewer=participant_name,
+                                    target=contribution.role_name,
+                                    error=str(exc),
+                                )
+                                await self._emit(
+                                    event_type=_EVT_FAILED,
+                                    run_id=context.run_id,
+                                    correlation_id=correlation_id,
+                                    payload={"error": error_msg},
+                                )
+                                return RunResult(
+                                    run_id=context.run_id,
+                                    status=RunStatus.FAILED,
+                                    error=error_msg,
+                                )
+
+                            category = classify_error(exc)
+                            error_categories.append(category.value)
+                            decision = await supervisor.handle_step_failure(
+                                step_id=step_id,
+                                error=exc,
+                                error_category=category,
+                                supervision=supervision,
+                                restart_count=restart_count,
+                            )
+
+                            if decision.action == SupervisionStrategy.RESTART:
+                                restart_count += 1
+                                continue
+
+                            # STOP or ESCALATE → fail the deliberation
+                            error_msg = (
+                                f"Agent '{participant_name}' failed during "
+                                f"peer review of '{contribution.role_name}': {exc}"
+                            )
+                            logger.error(
+                                "peer_review_failed",
+                                reviewer=participant_name,
+                                target=contribution.role_name,
+                                error=str(exc),
+                            )
+                            await self._emit(
+                                event_type=_EVT_FAILED,
+                                run_id=context.run_id,
+                                correlation_id=correlation_id,
+                                payload={"error": error_msg},
+                            )
+                            return RunResult(
+                                run_id=context.run_id,
+                                status=RunStatus.FAILED,
+                                error=error_msg,
+                            )
 
             grouped_reviews = summarize_peer_reviews(reviews)
             follow_ups = build_follow_up_tasks(grouped_reviews)

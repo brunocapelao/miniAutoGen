@@ -6,26 +6,33 @@ which participant speaks next, until termination, stagnation, or max turns.
 
 from __future__ import annotations
 
-import anyio
 from datetime import datetime, timezone
 from typing import Any
 
-from miniautogen.core.contracts.conversation import Conversation
-from miniautogen.core.contracts.message import Message
+import anyio
+
 from miniautogen.core.contracts.agentic_loop import (
     AgenticLoopState,
     RouterDecision,
 )
+from miniautogen.core.contracts.conversation import Conversation
 from miniautogen.core.contracts.coordination import (
     AgenticLoopPlan,
     CoordinationKind,
 )
-from miniautogen.core.contracts.enums import LoopStopReason, RunStatus
+from miniautogen.core.contracts.enums import (
+    LoopStopReason,
+    RunStatus,
+    SupervisionStrategy,
+)
 from miniautogen.core.contracts.events import ExecutionEvent
+from miniautogen.core.contracts.message import Message
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.types import EventType
 from miniautogen.core.runtime.agentic_loop import detect_stagnation, should_stop_loop
+from miniautogen.core.runtime.classifier import classify_error
+from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 
@@ -97,6 +104,7 @@ class AgenticLoopRuntime:
                 Message(sender_id="system", content=plan.initial_message)
             )
 
+        supervisor = FlowSupervisor(event_sink=self._runner.event_sink)
         routing_history: list[RouterDecision] = []
         state = AgenticLoopState()
         stop_reason: str = LoopStopReason.MAX_TURNS
@@ -111,7 +119,7 @@ class AgenticLoopRuntime:
                         stop_reason = reason or LoopStopReason.MAX_TURNS
                         break
 
-                    # Call router — pass messages as list of dicts for router interface
+                    # Call router — NOT supervised (routing failures = PERMANENT)
                     history_for_router = [
                         {"sender": m.sender_id, "content": m.content}
                         for m in conversation.messages
@@ -161,8 +169,9 @@ class AgenticLoopRuntime:
                             run_id=run_id,
                             status=RunStatus.FAILED,
                             error=(
-                                f"Router selected agent '{agent_id}' which is not a declared "
-                                f"participant. Valid participants: {plan.participants}"
+                                f"Router selected agent '{agent_id}' "
+                                f"which is not a declared participant. "
+                                f"Valid participants: {plan.participants}"
                             ),
                         )
                     agent = self._registry[agent_id]
@@ -171,9 +180,49 @@ class AgenticLoopRuntime:
                         if conversation.messages
                         else ""
                     )
-                    reply = await agent.reply(
-                        last_message, {"run_id": run_id, "turn": state.turn_count}
-                    )
+
+                    # --- Supervised agent.reply() call ---
+                    step_id = f"reply:{agent_id}:turn-{state.turn_count}"
+                    restart_count = 0
+                    error_categories: list[str] = []
+
+                    while True:
+                        try:
+                            reply = await agent.reply(
+                                last_message,
+                                {"run_id": run_id, "turn": state.turn_count},
+                            )
+                            if restart_count > 0:
+                                await supervisor.emit_retry_succeeded(
+                                    step_id=step_id,
+                                    total_attempts=restart_count + 1,
+                                    error_categories_encountered=error_categories,
+                                )
+                            break
+                        except BaseException as exc:
+                            if not isinstance(exc, Exception):
+                                raise
+
+                            supervision = plan.default_supervision
+                            if supervision is None:
+                                raise
+
+                            category = classify_error(exc)
+                            error_categories.append(category.value)
+                            sv_decision = await supervisor.handle_step_failure(
+                                step_id=step_id,
+                                error=exc,
+                                error_category=category,
+                                supervision=supervision,
+                                restart_count=restart_count,
+                            )
+
+                            if sv_decision.action == SupervisionStrategy.RESTART:
+                                restart_count += 1
+                                continue
+
+                            # STOP or ESCALATE -> re-raise
+                            raise
 
                     # Append to conversation history
                     conversation = conversation.add_message(
@@ -196,20 +245,32 @@ class AgenticLoopRuntime:
                     )
 
         except TimeoutError:
-            logger.warning("agentic_loop_timed_out", timeout=plan.policy.timeout_seconds)
+            logger.warning(
+                "agentic_loop_timed_out",
+                timeout=plan.policy.timeout_seconds,
+            )
             stop_reason = LoopStopReason.TIMEOUT
             try:
                 await self._emit(
                     event_type=EventType.RUN_TIMED_OUT.value,
                     run_id=run_id,
                     correlation_id=correlation_id,
-                    payload={"timeout_seconds": plan.policy.timeout_seconds},
+                    payload={
+                        "timeout_seconds": plan.policy.timeout_seconds,
+                    },
                 )
             except Exception:
-                logger.warning("failed_to_emit_timeout_event", timeout=plan.policy.timeout_seconds)
+                logger.warning(
+                    "failed_to_emit_timeout_event",
+                    timeout=plan.policy.timeout_seconds,
+                )
         except Exception as exc:
             logger.error("agentic_loop_failed", error=str(exc))
-            return RunResult(run_id=run_id, status=RunStatus.FAILED, error=str(exc))
+            return RunResult(
+                run_id=run_id,
+                status=RunStatus.FAILED,
+                error=str(exc),
+            )
 
         # --- Emit AGENTIC_LOOP_STOPPED ---
         await self._emit(
