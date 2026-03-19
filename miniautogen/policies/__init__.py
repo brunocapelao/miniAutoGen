@@ -12,6 +12,7 @@ from miniautogen.policies.chain import (
     PolicyEvaluator,
     PolicyResult,
 )
+from miniautogen.policies.effect import EffectPolicy
 from miniautogen.policies.execution import ExecutionPolicy
 from miniautogen.policies.permission import (
     PermissionDeniedError,
@@ -36,6 +37,7 @@ __all__ = [
     "BudgetExceededError",
     "BudgetPolicy",
     "BudgetTracker",
+    "EffectPolicy",
     "ExecutionPolicy",
     "PermissionDeniedError",
     "PermissionPolicy",

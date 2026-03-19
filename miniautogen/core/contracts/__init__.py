@@ -24,9 +24,12 @@ from .deliberation import (
 )
 from .effect import (
     EffectDeniedError,
+    EffectDescriptor,
     EffectDuplicateError,
     EffectError,
     EffectJournalUnavailableError,
+    EffectRecord,
+    EffectStatus,
 )
 from .engine_profile import EngineProfile
 from .enums import ErrorCategory, LoopStopReason, RunStatus, SupervisionStrategy
@@ -57,9 +60,12 @@ __all__ = [
     "DeliberationPlan",
     "DeliberationState",
     "EffectDeniedError",
+    "EffectDescriptor",
     "EffectDuplicateError",
     "EffectError",
     "EffectJournalUnavailableError",
+    "EffectRecord",
+    "EffectStatus",
     "EngineProfile",
     "ErrorCategory",
     "ExecutionEvent",

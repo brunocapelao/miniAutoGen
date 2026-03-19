@@ -53,6 +53,15 @@ class EventType(str, Enum):
     APPROVAL_DENIED = "approval_denied"
     APPROVAL_TIMEOUT = "approval_timeout"
 
+    # Effect engine events (Phase 2)
+    EFFECT_REGISTERED = "effect_registered"
+    EFFECT_EXECUTED = "effect_executed"
+    EFFECT_SKIPPED = "effect_skipped"
+    EFFECT_FAILED = "effect_failed"
+    EFFECT_DENIED = "effect_denied"
+    EFFECT_STALE_RECLAIMED = "effect_stale_reclaimed"
+    EFFECT_UNPROTECTED = "effect_unprotected"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
@@ -61,12 +70,12 @@ APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_TIMEOUT,
 }
 
-AGENTIC_LOOP_EVENT_TYPES = {
-    EventType.AGENTIC_LOOP_STARTED.value,
-    EventType.ROUTER_DECISION.value,
-    EventType.AGENT_REPLIED.value,
-    EventType.AGENTIC_LOOP_STOPPED.value,
-    EventType.STAGNATION_DETECTED.value,
+AGENTIC_LOOP_EVENT_TYPES: set[EventType] = {
+    EventType.AGENTIC_LOOP_STARTED,
+    EventType.ROUTER_DECISION,
+    EventType.AGENT_REPLIED,
+    EventType.AGENTIC_LOOP_STOPPED,
+    EventType.STAGNATION_DETECTED,
 }
 
 DELIBERATION_EVENT_TYPES: set[EventType] = {
@@ -76,16 +85,26 @@ DELIBERATION_EVENT_TYPES: set[EventType] = {
     EventType.DELIBERATION_FAILED,
 }
 
-BACKEND_EVENT_TYPES = {
-    EventType.BACKEND_SESSION_STARTED.value,
-    EventType.BACKEND_TURN_STARTED.value,
-    EventType.BACKEND_MESSAGE_DELTA.value,
-    EventType.BACKEND_MESSAGE_COMPLETED.value,
-    EventType.BACKEND_TOOL_CALL_REQUESTED.value,
-    EventType.BACKEND_TOOL_CALL_EXECUTED.value,
-    EventType.BACKEND_ARTIFACT_EMITTED.value,
-    EventType.BACKEND_WARNING.value,
-    EventType.BACKEND_ERROR.value,
-    EventType.BACKEND_TURN_COMPLETED.value,
-    EventType.BACKEND_SESSION_CLOSED.value,
+BACKEND_EVENT_TYPES: set[EventType] = {
+    EventType.BACKEND_SESSION_STARTED,
+    EventType.BACKEND_TURN_STARTED,
+    EventType.BACKEND_MESSAGE_DELTA,
+    EventType.BACKEND_MESSAGE_COMPLETED,
+    EventType.BACKEND_TOOL_CALL_REQUESTED,
+    EventType.BACKEND_TOOL_CALL_EXECUTED,
+    EventType.BACKEND_ARTIFACT_EMITTED,
+    EventType.BACKEND_WARNING,
+    EventType.BACKEND_ERROR,
+    EventType.BACKEND_TURN_COMPLETED,
+    EventType.BACKEND_SESSION_CLOSED,
+}
+
+EFFECT_EVENT_TYPES: set[EventType] = {
+    EventType.EFFECT_REGISTERED,
+    EventType.EFFECT_EXECUTED,
+    EventType.EFFECT_SKIPPED,
+    EventType.EFFECT_FAILED,
+    EventType.EFFECT_DENIED,
+    EventType.EFFECT_STALE_RECLAIMED,
+    EventType.EFFECT_UNPROTECTED,
 }

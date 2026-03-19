@@ -1,6 +1,8 @@
 from miniautogen.stores.checkpoint_store import CheckpointStore
+from miniautogen.stores.effect_journal import EffectJournal
 from miniautogen.stores.in_memory import InMemoryMessageStore
 from miniautogen.stores.in_memory_checkpoint_store import InMemoryCheckpointStore
+from miniautogen.stores.in_memory_effect_journal import InMemoryEffectJournal
 from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 from miniautogen.stores.message_store import MessageStore
 from miniautogen.stores.run_store import RunStore
@@ -10,7 +12,9 @@ from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 
 __all__ = [
     "CheckpointStore",
+    "EffectJournal",
     "InMemoryCheckpointStore",
+    "InMemoryEffectJournal",
     "InMemoryMessageStore",
     "InMemoryRunStore",
     "MessageStore",
