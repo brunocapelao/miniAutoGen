@@ -1,16 +1,13 @@
-from miniautogen._json import dumps, loads
 from datetime import datetime, timezone
 from typing import Any, cast
 
 from sqlalchemy import DateTime, String, Text, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
+from miniautogen._json import dumps, loads
+from miniautogen.stores._base import Base
 from miniautogen.stores.checkpoint_store import CheckpointStore
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class DBCheckpoint(Base):

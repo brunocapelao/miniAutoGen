@@ -1,17 +1,13 @@
-from miniautogen._json import dumps, loads
 from datetime import datetime
 from typing import cast
 
 from sqlalchemy import Column, DateTime, Integer, String, Text, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import DeclarativeBase
 
+from miniautogen._json import dumps, loads
 from miniautogen.schemas import Message
+from miniautogen.stores._base import Base
 from miniautogen.stores.message_store import MessageStore
-
-
-class Base(DeclarativeBase):
-    pass
 
 
 class DBMessage(Base):

@@ -10,6 +10,7 @@ from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.events import EventSink, EventType, NullEventSink
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
+from miniautogen.policies.chain import PolicyChain, PolicyContext
 from miniautogen.policies.execution import ExecutionPolicy
 from miniautogen.policies.retry import RetryPolicy, build_retrying_call
 from miniautogen.stores.checkpoint_store import CheckpointStore
@@ -27,6 +28,7 @@ class PipelineRunner:
         execution_policy: ExecutionPolicy | None = None,
         approval_gate: ApprovalGate | None = None,
         retry_policy: RetryPolicy | None = None,
+        policy_chain: PolicyChain | None = None,
     ) -> None:
         self.event_sink = event_sink or NullEventSink()
         self.run_store = run_store
@@ -34,6 +36,7 @@ class PipelineRunner:
         self.execution_policy = execution_policy
         self._approval_gate = approval_gate
         self._retry_policy = retry_policy
+        self._policy_chain = policy_chain
         self.last_run_id: str | None = None
         self.logger = get_logger(__name__)
 
@@ -165,6 +168,26 @@ class PipelineRunner:
                     scope="pipeline_runner",
                 )
             )
+
+        if self._policy_chain is not None:
+            policy_ctx = PolicyContext(
+                action="run_pipeline",
+                run_id=current_run_id,
+                metadata={"correlation_id": correlation_id},
+            )
+            policy_result = await self._policy_chain.evaluate(policy_ctx)
+            if policy_result.decision == "deny":
+                reason = policy_result.reason or "denied by policy chain"
+                await self._persist_failed_run(
+                    current_run_id, correlation_id, "PolicyDenied",
+                )
+                msg = f"Pipeline run {current_run_id} denied by policy: {reason}"
+                raise RuntimeError(msg)
+            if policy_result.decision == "retry":
+                logger.warning(
+                    "policy_chain_retry_advisory",
+                    reason=policy_result.reason,
+                )
 
         try:
             if effective_timeout is None:
