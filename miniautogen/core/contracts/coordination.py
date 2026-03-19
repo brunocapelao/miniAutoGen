@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
+from miniautogen.core.contracts.supervision import StepSupervision
 
 # TODO(review): validate plan type matches mode before stabilization (biz-reviewer, 2026-03-16, Low)
 _EXPERIMENTAL_CONTRACTS = {"SubrunRequest"}
@@ -65,6 +66,7 @@ class WorkflowStep(BaseModel):
     component_name: str
     agent_id: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
+    supervision: StepSupervision | None = None
 
 
 class WorkflowPlan(CoordinationPlan):
@@ -77,6 +79,7 @@ class WorkflowPlan(CoordinationPlan):
     steps: list[WorkflowStep]
     fan_out: bool = False
     synthesis_agent: str | None = None
+    default_supervision: StepSupervision | None = None
 
 
 # --- Deliberation contracts ---

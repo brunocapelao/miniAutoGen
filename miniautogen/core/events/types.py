@@ -62,6 +62,14 @@ class EventType(str, Enum):
     EFFECT_STALE_RECLAIMED = "effect_stale_reclaimed"
     EFFECT_UNPROTECTED = "effect_unprotected"
 
+    # Supervision events (Phase 3)
+    SUPERVISION_FAILURE_RECEIVED = "supervision_failure_received"
+    SUPERVISION_DECISION_MADE = "supervision_decision_made"
+    SUPERVISION_RESTART_STARTED = "supervision_restart_started"
+    SUPERVISION_CIRCUIT_OPENED = "supervision_circuit_opened"
+    SUPERVISION_ESCALATED = "supervision_escalated"
+    SUPERVISION_RETRY_SUCCEEDED = "supervision_retry_succeeded"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
@@ -107,4 +115,13 @@ EFFECT_EVENT_TYPES: set[EventType] = {
     EventType.EFFECT_DENIED,
     EventType.EFFECT_STALE_RECLAIMED,
     EventType.EFFECT_UNPROTECTED,
+}
+
+SUPERVISION_EVENT_TYPES: set[EventType] = {
+    EventType.SUPERVISION_FAILURE_RECEIVED,
+    EventType.SUPERVISION_DECISION_MADE,
+    EventType.SUPERVISION_RESTART_STARTED,
+    EventType.SUPERVISION_CIRCUIT_OPENED,
+    EventType.SUPERVISION_ESCALATED,
+    EventType.SUPERVISION_RETRY_SUCCEEDED,
 }

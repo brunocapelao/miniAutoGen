@@ -19,11 +19,13 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     WorkflowPlan,
 )
-from miniautogen.core.contracts.enums import RunStatus
+from miniautogen.core.contracts.enums import RunStatus, SupervisionStrategy
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.types import EventType
+from miniautogen.core.runtime.classifier import classify_error
+from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 
@@ -140,13 +142,58 @@ class WorkflowRuntime:
         """Execute steps one-by-one, chaining outputs.
 
         Steps with ``agent_id=None`` act as pass-through (consistent with
-        fan-out behaviour).
+        fan-out behaviour).  When a step has supervision configured (or the
+        plan has ``default_supervision``), failures are handled by the
+        FlowSupervisor which may restart, stop, or escalate.
         """
+        supervisor = FlowSupervisor(event_sink=self._runner.event_sink)
         current_input = context.input_payload
+
         for step in plan.steps:
-            if step.agent_id is not None:
-                current_input = await self._invoke_agent(step.agent_id, current_input)
-            # agent_id is None → pass-through: current_input unchanged
+            if step.agent_id is None:
+                # pass-through: current_input unchanged
+                continue
+
+            restart_count = 0
+            error_categories: list[str] = []
+
+            while True:
+                try:
+                    current_input = await self._invoke_agent(step.agent_id, current_input)
+                    # Emit retry-succeeded event if we recovered from failures
+                    if restart_count > 0:
+                        await supervisor.emit_retry_succeeded(
+                            step_id=step.component_name,
+                            total_attempts=restart_count + 1,
+                            error_categories_encountered=error_categories,
+                        )
+                    break
+                except BaseException as exc:
+                    if not isinstance(exc, Exception):
+                        raise
+
+                    supervision = step.supervision or plan.default_supervision
+                    # No supervision configured → fail-fast (preserve backward compat)
+                    if supervision is None:
+                        raise
+
+                    category = classify_error(exc)
+                    error_categories.append(category.value)
+                    decision = await supervisor.handle_step_failure(
+                        step_id=step.component_name,
+                        error=exc,
+                        error_category=category,
+                        supervision=supervision,
+                        restart_count=restart_count,
+                    )
+
+                    if decision.action == SupervisionStrategy.RESTART:
+                        restart_count += 1
+                        continue
+
+                    # STOP or ESCALATE → re-raise so run() handles it
+                    raise
+
         return current_input
 
     async def _run_fan_out(
@@ -154,15 +201,62 @@ class WorkflowRuntime:
         context: RunContext,
         plan: WorkflowPlan,
     ) -> list[Any]:
-        """Execute all steps in parallel, returning a list of outputs."""
+        """Execute all steps in parallel, returning a list of outputs.
+
+        Each branch has independent supervision handling.  When supervision is
+        configured the branch retries according to the supervisor decision.
+        Branches that exhaust their retry budget raise so that ``anyio`` can
+        propagate the ``ExceptionGroup`` to the caller.
+        """
+        supervisor = FlowSupervisor(event_sink=self._runner.event_sink)
         initial_input = context.input_payload
         results: list[Any] = [None] * len(plan.steps)
 
         async def _run_branch(index: int, step: Any) -> None:
             if step.agent_id is None:
                 results[index] = initial_input
-            else:
+                return
+
+            supervision = step.supervision or plan.default_supervision
+
+            # No supervision → original fail-fast behaviour
+            if supervision is None:
                 results[index] = await self._invoke_agent(step.agent_id, initial_input)
+                return
+
+            restart_count = 0
+            error_categories: list[str] = []
+
+            while True:
+                try:
+                    results[index] = await self._invoke_agent(step.agent_id, initial_input)
+                    if restart_count > 0:
+                        await supervisor.emit_retry_succeeded(
+                            step_id=step.component_name,
+                            total_attempts=restart_count + 1,
+                            error_categories_encountered=error_categories,
+                        )
+                    return
+                except BaseException as exc:
+                    if not isinstance(exc, Exception):
+                        raise
+
+                    category = classify_error(exc)
+                    error_categories.append(category.value)
+                    decision = await supervisor.handle_step_failure(
+                        step_id=step.component_name,
+                        error=exc,
+                        error_category=category,
+                        supervision=supervision,
+                        restart_count=restart_count,
+                    )
+
+                    if decision.action == SupervisionStrategy.RESTART:
+                        restart_count += 1
+                        continue
+
+                    # STOP / ESCALATE → let the exception propagate
+                    raise
 
         async with anyio.create_task_group() as tg:
             for i, step in enumerate(plan.steps):
