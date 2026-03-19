@@ -36,6 +36,7 @@ from .enums import ErrorCategory, LoopStopReason, RunStatus, SupervisionStrategy
 from .events import ExecutionEvent
 from .mcp_binding import McpServerBinding
 from .memory_profile import MemoryProfile
+from .memory_provider import InMemoryMemoryProvider, MemoryProvider
 from .message import Message
 from .run_context import FrozenState, RunContext
 from .run_result import RunResult
@@ -71,9 +72,11 @@ __all__ = [
     "ExecutionEvent",
     "FinalDocument",
     "FrozenState",
+    "InMemoryMemoryProvider",
     "LoopStopReason",
     "McpServerBinding",
     "MemoryProfile",
+    "MemoryProvider",
     "Message",
     "PeerReview",
     "ResearchOutput",
