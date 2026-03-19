@@ -70,6 +70,9 @@ class EventType(str, Enum):
     SUPERVISION_ESCALATED = "supervision_escalated"
     SUPERVISION_RETRY_SUCCEEDED = "supervision_retry_succeeded"
 
+    # Run state machine events
+    RUN_STATE_CHANGED = "run_state_changed"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
