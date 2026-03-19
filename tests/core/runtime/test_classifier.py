@@ -123,3 +123,57 @@ class TestRegisterErrorMapping:
 
         register_error_mapping(AnotherCustomError, ErrorCategory.CONFIGURATION)
         assert classify_error(AnotherCustomError("config issue")) == ErrorCategory.CONFIGURATION
+
+
+import ast
+from pathlib import Path
+
+
+class TestClassifierImportBoundary:
+    """Architectural guard: classifier.py must not import from backends or policies."""
+
+    _CLASSIFIER_PATH = (
+        Path(__file__).parent.parent.parent.parent
+        / "miniautogen"
+        / "core"
+        / "runtime"
+        / "classifier.py"
+    )
+
+    _FORBIDDEN_PREFIXES = (
+        "miniautogen.backends",
+        "miniautogen.policies",
+        "miniautogen.adapters",
+        "miniautogen.stores",
+    )
+
+    def _collect_imports(self) -> list[str]:
+        source = self._CLASSIFIER_PATH.read_text()
+        tree = ast.parse(source, filename=str(self._CLASSIFIER_PATH))
+        imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    imports.append(alias.name)
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imports.append(node.module)
+        return imports
+
+    def test_no_backends_imports(self) -> None:
+        imports = self._collect_imports()
+        violations = [
+            imp for imp in imports
+            if any(imp.startswith(prefix) for prefix in self._FORBIDDEN_PREFIXES)
+        ]
+        assert not violations, (
+            "classifier.py imports from forbidden packages (adapter isolation violation):\n"
+            + "\n".join(f"  - {v}" for v in violations)
+        )
+
+    def test_no_asyncio_import(self) -> None:
+        imports = self._collect_imports()
+        assert "asyncio" not in imports, (
+            "classifier.py imports asyncio directly. "
+            "Register asyncio.CancelledError via register_error_mapping() instead."
+        )
