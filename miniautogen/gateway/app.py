@@ -47,6 +47,7 @@ def create_app(
     title: str = "MiniAutoGen API",
     version: str = "0.1.0",
     api_key: str | None = None,
+    env: str = "development",
 ) -> FastAPI:
     """Create FastAPI app with run management routes.
 
@@ -56,11 +57,20 @@ def create_app(
         title: API title shown in OpenAPI docs.
         version: API version string.
         api_key: If set, all non-health routes require this key via X-API-Key header.
+        env: Environment name. When "production", disables /docs, /redoc, /openapi.json.
 
     Returns:
         Configured FastAPI application.
     """
-    app = FastAPI(title=title, version=version)
+    is_production = env == "production"
+
+    app = FastAPI(
+        title=title,
+        version=version,
+        docs_url=None if is_production else "/docs",
+        redoc_url=None if is_production else "/redoc",
+        openapi_url=None if is_production else "/openapi.json",
+    )
 
     # Store dependencies in app.state for access by routes
     app.state.run_store = run_store
