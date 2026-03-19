@@ -239,6 +239,7 @@ def update_pipeline(
 
     result = {"before": before, "after": after}
     if not dry_run:
-        update_yaml_preserving(cfg_path, {name: after}, section=_detect_pipelines_key(read_yaml(cfg_path)))
+        section = _detect_pipelines_key(read_yaml(cfg_path))
+        update_yaml_preserving(cfg_path, {name: after}, section=section)
 
     return result
