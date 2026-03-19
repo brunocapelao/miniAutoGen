@@ -92,8 +92,7 @@ class TestRunContextImmutability:
             "run_id": "run-1",
             "started_at": datetime(2026, 1, 1, tzinfo=timezone.utc),
             "correlation_id": "corr-1",
-            "execution_state": {"step": 1, "data": [1, 2, 3]},
-            "metadata": {"source": "test"},
+            "metadata": (("source", "test"),),
         }
         defaults.update(overrides)
         return RunContext(**defaults)  # type: ignore[arg-type]
@@ -125,22 +124,25 @@ class TestRunContextImmutability:
         assert child.execution_state is not ctx.execution_state
 
     def test_metadata_isolated_on_copy(self) -> None:
-        """metadata in the child must be a distinct object (it uses spread)."""
+        """metadata in the child must be a distinct tuple from parent."""
         ctx = self._make_context()
         child = ctx.with_previous_result({"output": "data"})
 
-        # Identity check: must NOT be the same dict object
+        # Identity check: must NOT be the same tuple object
         assert child.metadata is not ctx.metadata
 
     def test_metadata_changes_do_not_leak_back(self) -> None:
-        """Mutating child metadata must not affect parent metadata."""
+        """Child metadata must be a distinct tuple from parent metadata."""
         ctx = self._make_context()
         child = ctx.with_previous_result({"output": "data"})
 
-        # Mutate the child's metadata
-        child.metadata["injected"] = "should_not_leak"
-
-        assert "injected" not in ctx.metadata
+        # With tuple metadata, identity check proves isolation
+        assert child.metadata is not ctx.metadata
+        # Child has extra entries from with_previous_result
+        child_keys = {k for k, _v in child.metadata}
+        parent_keys = {k for k, _v in ctx.metadata}
+        assert "previous_result" in child_keys
+        assert "previous_result" not in parent_keys
 
     @pytest.mark.xfail(
         reason="Pydantic model_copy performs shallow copy of execution_state. "

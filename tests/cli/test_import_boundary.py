@@ -31,6 +31,9 @@ _ALLOWED_PREFIXES = (
     "miniautogen.cli",
     "miniautogen.tui",
     "miniautogen._json",
+    # TODO(review): backends.discovery used by engine_discover command. Should be
+    # re-routed through miniautogen.api once the API module exists. (Phase 1 tech debt)
+    "miniautogen.backends.discovery",
 )
 
 

@@ -22,8 +22,14 @@ from .deliberation import (
     ResearchOutput,
     Review,
 )
+from .effect import (
+    EffectDeniedError,
+    EffectDuplicateError,
+    EffectError,
+    EffectJournalUnavailableError,
+)
 from .engine_profile import EngineProfile
-from .enums import LoopStopReason, RunStatus
+from .enums import ErrorCategory, LoopStopReason, RunStatus, SupervisionStrategy
 from .events import ExecutionEvent
 from .mcp_binding import McpServerBinding
 from .memory_profile import MemoryProfile
@@ -32,6 +38,7 @@ from .run_context import FrozenState, RunContext
 from .run_result import RunResult
 from .skill_spec import SkillSpec
 from .store import StoreProtocol
+from .supervision import StepSupervision, SupervisionDecision
 from .tool import ToolProtocol, ToolResult
 from .tool_spec import ToolSpec
 
@@ -49,7 +56,12 @@ __all__ = [
     "DeliberationAgent",
     "DeliberationPlan",
     "DeliberationState",
+    "EffectDeniedError",
+    "EffectDuplicateError",
+    "EffectError",
+    "EffectJournalUnavailableError",
     "EngineProfile",
+    "ErrorCategory",
     "ExecutionEvent",
     "FinalDocument",
     "FrozenState",
@@ -65,7 +77,10 @@ __all__ = [
     "RunResult",
     "RunStatus",
     "SkillSpec",
+    "StepSupervision",
     "StoreProtocol",
+    "SupervisionDecision",
+    "SupervisionStrategy",
     "SubrunRequest",
     "ToolProtocol",
     "ToolResult",
