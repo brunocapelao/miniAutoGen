@@ -7,7 +7,7 @@ import uuid
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import BaseModel, field_validator, Field
 
 router = APIRouter()
@@ -117,7 +117,7 @@ async def create_run(request: Request, body: RunCreateRequest) -> RunResponse:
 async def list_runs(
     request: Request,
     status: str | None = None,
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=1000)] = 50,
 ) -> list[RunResponse]:
     """List runs, optionally filtered by status."""
     run_store = request.app.state.run_store
@@ -172,7 +172,7 @@ async def cancel_run(request: Request, run_id: ValidRunId) -> RunResponse:
 async def get_run_events(
     request: Request,
     run_id: ValidRunId,
-    after_index: int = 0,
+    after_index: Annotated[int, Query(ge=0)] = 0,
 ) -> list[EventResponse]:
     """Get events for a run."""
     event_store = request.app.state.event_store
