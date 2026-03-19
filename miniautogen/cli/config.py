@@ -1,7 +1,14 @@
-"""Project resolution and configuration for the MiniAutoGen CLI.
+"""Workspace resolution and configuration for the MiniAutoGen CLI.
 
-Handles: locating project root, loading miniautogen.yaml,
+Handles: locating workspace root, loading miniautogen.yaml,
 validating schema, and resolving relative paths.
+
+DA-9 Terminology Migration:
+- ProjectConfig -> WorkspaceConfig (alias kept)
+- PipelineConfig -> FlowConfig (alias kept)
+- EngineProfileConfig -> EngineConfig (alias kept)
+- engine_profiles -> engines (old key accepted with deprecation)
+- pipelines -> flows (old key accepted with deprecation)
 """
 
 from __future__ import annotations
@@ -10,30 +17,51 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 CONFIG_FILENAME = "miniautogen.yaml"
 
 
 class ProjectMeta(BaseModel):
-    """Project metadata."""
+    """Project/workspace metadata."""
 
     name: str
     version: str = "0.1.0"
 
 
 class DefaultsConfig(BaseModel):
-    """Project-wide defaults."""
+    """Project-wide defaults.
 
-    engine_profile: str = "default_api"
+    DA-9: 'engine_profile' renamed to 'engine'. Old name accepted
+    with deprecation warning.
+    """
+
+    engine: str = "default_api"
     memory_profile: str = "default"
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_engine_profile(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "engine_profile" in data:
+            from miniautogen.cli.deprecation import emit_deprecation
 
-class EngineProfileConfig(BaseModel):
-    """Engine profile for inference binding.
+            emit_deprecation("engine_profile", "engine", since="0.5.0")
+            if "engine" not in data:
+                data["engine"] = data.pop("engine_profile")
+            else:
+                data.pop("engine_profile")
+        return data
 
-    v2.1: Added fallbacks, max_retries, retry_delay, max_tokens,
-    timeout_seconds, metadata. Changed default provider to openai-compat.
+    @property
+    def engine_profile(self) -> str:
+        """Backward compatibility alias for 'engine'."""
+        return self.engine
+
+
+class EngineConfig(BaseModel):
+    """Engine configuration for inference binding.
+
+    DA-9: Renamed from EngineProfileConfig.
     """
 
     kind: str = "api"
@@ -52,6 +80,10 @@ class EngineProfileConfig(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+# Backward compatibility alias
+EngineProfileConfig = EngineConfig
+
+
 class MemoryProfileConfig(BaseModel):
     """Memory profile configuration."""
 
@@ -62,10 +94,17 @@ class MemoryProfileConfig(BaseModel):
     retention: dict[str, Any] = Field(default_factory=dict)
 
 
-class PipelineConfig(BaseModel):
-    """Pipeline target configuration."""
+class FlowConfig(BaseModel):
+    """Flow (formerly Pipeline) target configuration.
+
+    DA-9: Renamed from PipelineConfig.
+    """
 
     target: str
+
+
+# Backward compatibility alias
+PipelineConfig = FlowConfig
 
 
 class DatabaseConfig(BaseModel):
@@ -74,35 +113,75 @@ class DatabaseConfig(BaseModel):
     url: str = "sqlite+aiosqlite:///miniautogen.db"
 
 
-class ProjectConfig(BaseModel):
-    """Root configuration for a MiniAutoGen project.
+class WorkspaceConfig(BaseModel):
+    """Root configuration for a MiniAutoGen workspace.
 
-    Loaded from miniautogen.yaml at the project root.
+    Loaded from miniautogen.yaml at the workspace root.
+
+    DA-9: Renamed from ProjectConfig. Accepts both old keys
+    (engine_profiles, pipelines) and new keys (engines, flows).
     """
 
     project: ProjectMeta
     defaults: DefaultsConfig = Field(
         default_factory=DefaultsConfig,
     )
-    engine_profiles: dict[str, EngineProfileConfig] = Field(
+    engines: dict[str, EngineConfig] = Field(
         default_factory=dict,
     )
     memory_profiles: dict[str, MemoryProfileConfig] = Field(
         default_factory=dict,
     )
-    pipelines: dict[str, PipelineConfig] = Field(
+    flows: dict[str, FlowConfig] = Field(
         default_factory=dict,
     )
     database: DatabaseConfig | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_old_keys(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if "engine_profiles" in data:
+            from miniautogen.cli.deprecation import emit_deprecation
+
+            emit_deprecation("engine_profiles", "engines", since="0.5.0")
+            if "engines" not in data:
+                data["engines"] = data.pop("engine_profiles")
+            else:
+                data.pop("engine_profiles")
+        if "pipelines" in data:
+            from miniautogen.cli.deprecation import emit_deprecation
+
+            emit_deprecation("pipelines", "flows", since="0.5.0")
+            if "flows" not in data:
+                data["flows"] = data.pop("pipelines")
+            else:
+                data.pop("pipelines")
+        return data
+
+    @property
+    def engine_profiles(self) -> dict[str, EngineConfig]:
+        """Backward compatibility alias for 'engines'."""
+        return self.engines
+
+    @property
+    def pipelines(self) -> dict[str, FlowConfig]:
+        """Backward compatibility alias for 'flows'."""
+        return self.flows
+
+
+# Backward compatibility alias
+ProjectConfig = WorkspaceConfig
+
 
 def require_project_config(
     start: Path | None = None,
-) -> tuple[Path, "ProjectConfig"]:
-    """Find project root and load config, or raise.
+) -> tuple[Path, "WorkspaceConfig"]:
+    """Find workspace root and load config, or raise.
 
     Returns:
-        Tuple of (project_root, config).
+        Tuple of (workspace_root, config).
 
     Raises:
         ProjectNotFoundError: If no miniautogen.yaml is found.
@@ -128,14 +207,14 @@ def find_project_root(start: Path | None = None) -> Path | None:
     return None
 
 
-def load_config(path: Path) -> ProjectConfig:
+def load_config(path: Path) -> WorkspaceConfig:
     """Load and validate a miniautogen.yaml file.
 
     Args:
         path: Path to the YAML file (not the directory).
 
     Returns:
-        Validated ProjectConfig.
+        Validated WorkspaceConfig.
 
     Raises:
         FileNotFoundError: If the file doesn't exist.
@@ -152,4 +231,4 @@ def load_config(path: Path) -> ProjectConfig:
         msg = f"Invalid config: expected mapping, got {type(raw).__name__}"
         raise ValueError(msg)
 
-    return ProjectConfig.model_validate(raw)
+    return WorkspaceConfig.model_validate(raw)

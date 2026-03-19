@@ -51,9 +51,13 @@ class ExecutionError(CLIError):
     exit_code = 3
 
 
-class PipelineNotFoundError(CLIError):
-    """Referenced pipeline does not exist."""
+class FlowNotFoundError(CLIError):
+    """Referenced flow does not exist."""
     exit_code = 3
+
+
+# Backward compatibility alias
+PipelineNotFoundError = FlowNotFoundError
 
 
 class CLIIOError(CLIError):
