@@ -320,7 +320,10 @@ class WorkflowRuntime:
                         restart_count=restart_count,
                     )
 
-                    if decision.action == SupervisionStrategy.RESTART:
+                    if decision.action in (
+                        SupervisionStrategy.RESTART,
+                        SupervisionStrategy.RESUME,
+                    ):
                         restart_count += 1
                         continue
 

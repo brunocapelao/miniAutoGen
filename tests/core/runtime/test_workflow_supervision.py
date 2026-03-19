@@ -277,6 +277,40 @@ class TestFanOutSupervision:
         assert "branch-b-recovered" in result.output
 
     @pytest.mark.asyncio
+    async def test_fan_out_branch_resumes_on_transient_error(self) -> None:
+        """A fan-out branch with RESUME strategy should retry on transient error."""
+        ok_agent = _OkAgent("branch-a-ok")
+        flaky_agent = _CountingAgent(
+            fail_times=1, exc=ConnectionError("flaky"), success_value="branch-b-resumed"
+        )
+        registry: dict[str, Any] = {"ok": ok_agent, "flaky": flaky_agent}
+        event_sink = InMemoryEventSink()
+        runner = PipelineRunner(event_sink=event_sink)
+        runtime = WorkflowRuntime(runner=runner, agent_registry=registry)
+
+        supervision = StepSupervision(
+            strategy=SupervisionStrategy.RESUME,
+            max_restarts=3,
+            restart_window_seconds=60.0,
+        )
+        plan = WorkflowPlan(
+            steps=[
+                WorkflowStep(component_name="s1", agent_id="ok"),
+                WorkflowStep(component_name="s2", agent_id="flaky", supervision=supervision),
+            ],
+            fan_out=True,
+        )
+
+        result = await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+        assert result.status == RunStatus.FINISHED
+        assert isinstance(result.output, list)
+        assert "branch-a-ok" in result.output
+        assert "branch-b-resumed" in result.output
+        # Flaky agent was called twice: once failed, once succeeded
+        assert flaky_agent.call_count == 2
+
+    @pytest.mark.asyncio
     async def test_fan_out_permanent_error_stops_branch(self) -> None:
         """A permanent error in a fan-out branch stops that branch immediately."""
         ok_agent = _OkAgent("ok")
