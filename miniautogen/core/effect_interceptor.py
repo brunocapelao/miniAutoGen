@@ -267,7 +267,7 @@ class EffectInterceptor:
             result = await tool_fn(**args)
         except Exception as exc:
             # 7. On failure: update FAILED, emit EFFECT_FAILED
-            error_info = f"{type(exc).__name__}: {exc}"
+            error_info = type(exc).__name__
             await self._journal.update_status(
                 idempotency_key,
                 EffectStatus.FAILED,
