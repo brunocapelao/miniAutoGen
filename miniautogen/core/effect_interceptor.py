@@ -198,7 +198,14 @@ class EffectInterceptor:
 
             if existing.status == EffectStatus.PENDING:
                 if self._is_stale(existing):
-                    # Stale PENDING -- executor likely crashed, reclaim
+                    # Stale PENDING -- executor likely crashed, reclaim.
+                    # Mark the stale record as FAILED before re-registering
+                    # to avoid UNIQUE constraint violations on durable journals.
+                    await self._journal.update_status(
+                        idempotency_key,
+                        EffectStatus.FAILED,
+                        error_info="stale PENDING reclaimed",
+                    )
                     await self._emit(
                         EventType.EFFECT_STALE_RECLAIMED,
                         run_id,
@@ -210,7 +217,7 @@ class EffectInterceptor:
                             ).total_seconds(),
                         },
                     )
-                    # Fall through to re-execute
+                    # Fall through to re-execute with fresh PENDING record
                 else:
                     # Fresh PENDING -- concurrent execution detected
                     raise EffectDuplicateError(

@@ -490,3 +490,95 @@ async def test_stale_pending_boundary_not_stale() -> None:
             args={"to": "user@example.com"},
             tool_fn=_dummy_tool,
         )
+
+
+@pytest.mark.asyncio
+async def test_stale_pending_reclamation_marks_failed_before_reregister() -> None:
+    """Stale PENDING reclamation must mark old record FAILED before re-registering.
+
+    This prevents UNIQUE constraint violations on durable journals that
+    reject register() calls when a record with the same key already exists.
+    """
+    from miniautogen.core.effect_interceptor import (
+        EffectInterceptor,
+        compute_args_hash,
+        compute_idempotency_key,
+    )
+
+    # Use a journal that tracks the order of operations
+    call_log: list[str] = []
+
+    class TrackingJournal(InMemoryEffectJournal):
+        """Journal that logs method calls to verify ordering."""
+
+        async def update_status(
+            self,
+            idempotency_key: str,
+            status: EffectStatus,
+            *,
+            completed_at: datetime | None = None,
+            result_hash: str | None = None,
+            error_info: str | None = None,
+        ) -> None:
+            call_log.append(f"update_status:{status.value}")
+            await super().update_status(
+                idempotency_key, status,
+                completed_at=completed_at,
+                result_hash=result_hash,
+                error_info=error_info,
+            )
+
+        async def register(self, record: EffectRecord) -> None:
+            call_log.append(f"register:{record.status.value}")
+            await super().register(record)
+
+    journal = TrackingJournal()
+    sink = InMemoryEventSink()
+    policy = EffectPolicy(stale_pending_timeout_seconds=60.0)
+    interceptor = EffectInterceptor(
+        journal=journal, policy=policy, event_sink=sink,
+    )
+
+    # Manually register a stale PENDING record (created 2 hours ago)
+    args_hash = compute_args_hash({"to": "user@example.com"})
+    key = compute_idempotency_key(
+        run_id="run-1", step_id="step-1",
+        tool_name="send_email", args_hash=args_hash,
+    )
+    stale_time = datetime.now(timezone.utc) - timedelta(hours=2)
+    record = EffectRecord(
+        idempotency_key=key,
+        descriptor=EffectDescriptor(
+            effect_type="tool_call",
+            tool_name="send_email",
+            args_hash=args_hash,
+            run_id="run-1",
+            step_id="step-1",
+        ),
+        status=EffectStatus.PENDING,
+        created_at=stale_time,
+    )
+    await journal.register(record)
+    call_log.clear()  # Reset log after setup
+
+    # Execute -- should reclaim the stale record
+    result = await interceptor.execute(
+        run_id="run-1",
+        step_id="step-1",
+        tool_name="send_email",
+        args={"to": "user@example.com"},
+        tool_fn=_dummy_tool,
+    )
+    assert result == {"status": "sent", "to": "user@example.com"}
+
+    # CRITICAL ASSERTION: update_status(FAILED) must happen BEFORE register(PENDING)
+    # This ensures durable journals with UNIQUE constraints don't fail
+    assert "update_status:failed" in call_log, (
+        f"Expected update_status:failed in call log, got: {call_log}"
+    )
+    failed_idx = call_log.index("update_status:failed")
+    register_idx = call_log.index("register:pending")
+    assert failed_idx < register_idx, (
+        f"update_status:failed (idx={failed_idx}) must come before "
+        f"register:pending (idx={register_idx}). Call log: {call_log}"
+    )
