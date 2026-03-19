@@ -14,7 +14,7 @@ Este documento consolida as decisões arquiteturais (DA) que governam o design d
 | DA-2 | Planos tipados sobre kwargs | Cada modo de coordenação declara o seu tipo de plano (`WorkflowPlan`, `DeliberationPlan`, `AgenticLoopPlan`). Elimina escape hatches via `**kwargs` e habilita análise estática. |
 | DA-3 | Modelos Pydantic com imutabilidade lógica | Todos os contratos são instâncias de `BaseModel`. `Conversation.add_message()` retorna um novo objeto em vez de alterar o existente. `RunContext.with_previous_result()` segue o mesmo padrão. |
 | DA-4 | Composição sobre herança para runtimes | `CompositeRuntime` encadeia modos em sequência em vez de exigir um runtime monolítico. Cada modo é independente e testável isoladamente. |
-| DA-5 | Superfície de API pública única | `miniautogen/api.py` é o único ponto de importação sancionado (54 tipos exportados). Módulos internos podem ser reestruturados sem quebrar consumidores. |
+| DA-5 | Superfície de API pública única | `miniautogen/api.py` é o único ponto de importação sancionado (56 tipos exportados). Módulos internos podem ser reestruturados sem quebrar consumidores. |
 | DA-6 | Contratos gerais com extensões especializadas | `Contribution` e `Review` são propósito geral. `ResearchOutput` e `PeerReview` estendem-nos para casos de uso de pesquisa. Novos domínios estendem a base, não a bifurcam. |
 | DA-7 | Enforcement de políticas como camada separada | Budget, validation, permission, retry e demais políticas residem em `miniautogen/policies/`, desacopladas da lógica de coordenação. Políticas observam e reagem a eventos -- não participam no fluxo de execução. |
 | DA-8 | Observabilidade orientada a eventos | Todos os runtimes emitem `ExecutionEvent` com correlation IDs. Observabilidade não depende apenas de logging -- eventos são dados estruturados consumíveis por sinks. |
@@ -37,15 +37,7 @@ Este documento consolida as decisões arquiteturais (DA) que governam o design d
 
 **Consequências:** Requer migração de configuração (`miniautogen.yml`) e atualização da API pública. Aliases de compatibilidade serão mantidos durante uma versão de transição.
 
-**Status (2026-03):** Pendente. A renomeação não foi aplicada no código. A CLI, config schema e código interno continuam a usar a terminologia original:
-
-| Decisão | Alvo | Estado Atual no Código |
-|---------|------|----------------------|
-| Project → Workspace | `workspace create` | `miniautogen init` (cria "project") |
-| Pipeline → Flow | `flow create/run` | `pipeline create/run` |
-| EngineProfile → Engine | `engines:` no YAML | `engine_profiles:` no YAML |
-
-A migração requer: renomeação de comandos CLI, atualização do schema `miniautogen.yaml`, aliases de compatibilidade e atualização de testes. Sem timeline definida.
+**Status (2026-03):** **Concluída**. Renomeação aplicada com backward compatibility (aliases e deprecation warnings).
 
 ---
 

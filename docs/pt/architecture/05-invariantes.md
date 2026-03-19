@@ -44,7 +44,7 @@ Modelo: `miniautogen/core/contracts/run_result.py`
 
 Modelo: `miniautogen/core/contracts/events.py`
 
-- `type` é obrigatório. Deve corresponder a um dos 47+ valores do enum `EventType`.
+- `type` é obrigatório. Deve corresponder a um dos 63 valores do enum `EventType`.
 - `timestamp` possui valor padrão em UTC. Todos os eventos possuem marca temporal.
 - `run_id` pode ser inferido do `payload` via `model_validator`. Se o payload contém `run_id`, este é promovido para o campo de topo.
 - `correlation_id` permite agrupar eventos de uma mesma execução ou sub-execução.
@@ -68,9 +68,9 @@ Modelo: `miniautogen/core/contracts/conversation.py`
 - Todo checkpoint deve ser restaurável: os dados persistidos devem ser suficientes para retomar a execução.
 - A operação de restauração é registada via evento `CHECKPOINT_RESTORED`.
 
-### Agent Runtime [PROPOSTO]
+### Agent Runtime [IMPLEMENTADO]
 
-> **Status:** Proposto. O Agent Runtime (AgentHook, MemoryProvider) não está implementado. As invariantes abaixo aplicam-se à implementação futura.
+> **Status:** Implementado. O Agent Runtime (AgentHook, MemoryProvider) está implementado. As invariantes abaixo aplicam-se à implementação atual.
 
 Invariantes aplicáveis ao Agent Runtime e aos seus componentes (ver [`07-agent-anatomy.md`](07-agent-anatomy.md)):
 
@@ -78,9 +78,9 @@ Invariantes aplicáveis ao Agent Runtime e aos seus componentes (ver [`07-agent-
 - **Engine isolation.** O Agent Runtime NUNCA vaza tipos específicos do Engine para o `core/`. Toda comunicação entre o runtime local e o engine ocorre via protocolos tipados (`LLMProviderProtocol`, `AgentDriver`). Tipos internos do provedor (OpenAI message formats, Gemini response objects, etc.) são transformados por adapters na fronteira.
 - **MemoryProvider é injetável e opcional.** O agente opera normalmente sem `MemoryProvider`. Quando presente, o provider injeta contexto antes de cada turno mas não altera o fluxo principal de execução.
 
-### RuntimeInterceptor [PROPOSTO]
+### RuntimeInterceptor [IMPLEMENTADO]
 
-> **Status:** Proposto. O protocolo RuntimeInterceptor não está implementado. As invariantes abaixo aplicam-se à implementação futura.
+> **Status:** Implementado. O protocolo RuntimeInterceptor está implementado via `InterceptorPipeline`. As invariantes abaixo aplicam-se à implementação atual.
 
 Invariantes aplicáveis ao protocolo `RuntimeInterceptor`:
 
@@ -116,7 +116,7 @@ Notas:
 
 ## Taxonomia canônica de eventos
 
-O enum `EventType` em `core/events/types.py` define 47+ tipos de evento organizados em 12 categorias.
+O enum `EventType` em `core/events/types.py` define 63 tipos de evento organizados em 13 categorias.
 
 ### Ciclo de vida do run (5)
 
@@ -210,7 +210,7 @@ O enum `EventType` em `core/events/types.py` define 47+ tipos de evento organiza
 | `APPROVAL_DENIED` | `approval_denied` | Aprovação negada |
 | `APPROVAL_TIMEOUT` | `approval_timeout` | Aprovação expirou por timeout |
 
-### Agent Runtime (4) -- propostos
+### Agent Runtime (4)
 
 Eventos do ciclo de vida do Agent Runtime, associados à anatomia do agente (ver [`07-agent-anatomy.md`](07-agent-anatomy.md)):
 
@@ -221,7 +221,7 @@ Eventos do ciclo de vida do Agent Runtime, associados à anatomia do agente (ver
 | `AGENT_HOOK_EXECUTED` | `agent_hook_executed` | Hook do AgentHook protocol executado (before_turn, after_turn) |
 | `AGENT_TOOL_INVOKED` | `agent_tool_invoked` | Ferramenta invocada pelo agente via tool registry local |
 
-### Interceptors (3) -- propostos
+### Interceptors (3)
 
 Eventos emitidos durante a execução de `RuntimeInterceptor`s:
 

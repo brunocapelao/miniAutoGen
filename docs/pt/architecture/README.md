@@ -2,7 +2,7 @@
 
 ## Posicionamento
 
-MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (72+ tipos em 15+ categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
+MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (63 tipos em 13 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
 
 ---
 
@@ -10,7 +10,7 @@ MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece
 
 | Camada | Nome | Descrição |
 |--------|------|-----------|
-| 4 | API Pública | `miniautogen/api.py` -- ponto de entrada único, exporta 54 tipos |
+| 4 | API Pública | `miniautogen/api.py` -- ponto de entrada único, exporta 56 tipos |
 | 3 | Padrões Canônicos | Reservada para padrões de composição reutilizáveis (não implementada) |
 | 2 | Modos de Coordenação | WorkflowRuntime, DeliberationRuntime, AgenticLoopRuntime, CompositeRuntime -- implementam o protocolo CoordinationMode |
 | 1 | Kernel | PipelineRunner, RunContext, RunResult, stores, eventos, políticas, adapters |
@@ -42,7 +42,7 @@ A estratégia multi-provider é central ao design: **"O agente é commodity. O r
 | `core/runtime/` | Implementações dos 4 modos de coordenação e PipelineRunner |
 | `core/events/` | Constantes de tipos de evento e infraestrutura de event sinks |
 | `pipeline/` | Abstrações Pipeline e PipelineComponent |
-| `policies/` | 8 políticas transversais: budget, approval, retry, timeout, validation, permission, execution, chain |
+| `policies/` | 10 políticas transversais: budget, approval, retry, timeout, validation, permission, execution, chain, effect, reactive |
 | `adapters/` | Integração com provedores LLM (OpenAICompatibleProvider, LiteLLMProvider, OpenAIProvider) e templates Jinja2 |
 | `stores/` | Camada de persistência: MessageStore, RunStore, CheckpointStore com backends InMemory e SQLAlchemy |
 | `backends/` | Abstração unificada de drivers para agentes externos (AgentDriver ABC, AgentAPIDriver) |
@@ -64,7 +64,7 @@ flowchart TB
     Modes --> AL["AgenticLoopRuntime"]
     Modes --> CR["CompositeRuntime"]
     Kernel --> Policies["Policies"]
-    Kernel --> Events["Eventos (72+ tipos)"]
+    Kernel --> Events["Eventos (63 tipos)"]
     Kernel --> Stores["Stores"]
     Kernel --> Adapters["Adapters"]
     Adapters --> LLM["Provedores LLM"]

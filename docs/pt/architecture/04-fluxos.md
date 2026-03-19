@@ -240,9 +240,9 @@ Para detalhes sobre a anatomia interna do agente, consulte [`07-agent-anatomy.md
 
 ---
 
-## Fluxo 9: flow com interceptors [PROPOSTO]
+## Fluxo 9: flow com interceptors [IMPLEMENTADO]
 
-> **Status:** Proposto. O protocolo `RuntimeInterceptor` não está implementado no codebase atual. Os 4 hooks (before_step, should_execute, after_step, on_error) e os 3 event types (INTERCEPTOR_BEFORE_STEP, INTERCEPTOR_AFTER_STEP, INTERCEPTOR_BAIL) existem apenas nesta especificação.
+> **Status:** Implementado. O protocolo `RuntimeInterceptor` e `InterceptorPipeline` estão implementados no codebase. Os 4 hooks (before_step, should_execute, after_step, on_error) e os 3 event types (INTERCEPTOR_BEFORE_STEP, INTERCEPTOR_AFTER_STEP, INTERCEPTOR_BAIL) estão operacionais.
 
 Os `RuntimeInterceptor`s participam na execução de flows com semântica de hooks tipados. O protocolo define quatro pontos de intervenção.
 
