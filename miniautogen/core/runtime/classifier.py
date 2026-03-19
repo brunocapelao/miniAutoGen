@@ -8,41 +8,27 @@ without importing those libraries in core.
 
 from __future__ import annotations
 
-import asyncio
-
-from miniautogen.backends.errors import AgentDriverError, BackendUnavailableError
 from miniautogen.core.contracts.effect import EffectError
 from miniautogen.core.contracts.enums import ErrorCategory
-from miniautogen.policies.budget import BudgetExceededError
-from miniautogen.policies.permission import PermissionDeniedError
 
 # ── Default mappings (ORDER MATTERS: subclasses BEFORE superclasses) ──────
+# Only stdlib/builtin exception types belong here.
+# Backend, policy, and library-specific mappings are registered via
+# register_error_mapping() in their respective packages.
 
 _DEFAULT_MAPPINGS: list[tuple[type, ErrorCategory]] = [
     # Priority 1: Self-classifying effect errors (handled specially in classify_error)
     # Priority 2: Timeout
     (TimeoutError, ErrorCategory.TIMEOUT),
-    # Priority 3: Cancellation — use asyncio.CancelledError directly to avoid
-    # anyio.get_cancelled_exc_class() which requires a running event loop at import time.
-    # On the asyncio backend anyio returns this same class; trio users can
-    # register trio.Cancelled via register_error_mapping().
-    (asyncio.CancelledError, ErrorCategory.CANCELLATION),
-    # Priority 4: PermissionError BEFORE OSError (PermissionError is subclass of OSError)
+    # Priority 3: PermissionError BEFORE OSError (PermissionError is subclass of OSError)
     (PermissionError, ErrorCategory.PERMANENT),
-    # Priority 5: Validation errors
+    # Priority 4: Validation errors
     (ValueError, ErrorCategory.VALIDATION),
     (TypeError, ErrorCategory.VALIDATION),
-    (PermissionDeniedError, ErrorCategory.VALIDATION),
-    # Priority 6: Budget
-    (BudgetExceededError, ErrorCategory.VALIDATION),
-    # Priority 7: Backend unavailable
-    (BackendUnavailableError, ErrorCategory.ADAPTER),
-    # Priority 8: Agent driver errors (base class catches all subclasses)
-    (AgentDriverError, ErrorCategory.ADAPTER),
-    # Priority 9: Network/IO errors (ConnectionError is subclass of OSError)
+    # Priority 5: Network/IO errors (ConnectionError is subclass of OSError)
     (ConnectionError, ErrorCategory.TRANSIENT),
     (OSError, ErrorCategory.TRANSIENT),
-    # Priority 10: Programming errors
+    # Priority 6: Programming errors
     (KeyError, ErrorCategory.PERMANENT),
     (AttributeError, ErrorCategory.PERMANENT),
     (NotImplementedError, ErrorCategory.PERMANENT),
