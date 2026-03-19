@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import asyncio
 
+# Import backends and policies packages to trigger their register_error_mapping() calls.
+# In production, these are loaded when the application starts.
+import miniautogen.backends  # noqa: F401 -- triggers backend error registrations
+import miniautogen.policies  # noqa: F401 -- triggers policy error registrations
 from miniautogen.backends.errors import (
     AgentDriverError,
     BackendUnavailableError,
