@@ -2,12 +2,46 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 
-from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from pydantic import BaseModel, field_validator, Field
 
 router = APIRouter()
+
+# Pattern: alphanumeric, hyphens, underscores only
+_RUN_ID_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
+_RUN_ID_MAX_LENGTH = 128
+
+
+def _validate_run_id_format(value: str) -> str:
+    """Validate run_id format: 1-128 chars, alphanumeric + hyphens/underscores."""
+    if len(value) > _RUN_ID_MAX_LENGTH:
+        raise ValueError(f"run_id must be at most {_RUN_ID_MAX_LENGTH} characters")
+    if not _RUN_ID_PATTERN.match(value):
+        raise ValueError(
+            "run_id must contain only alphanumeric characters, hyphens, and underscores, "
+            "and must start with an alphanumeric character"
+        )
+    return value
+
+
+async def validate_path_run_id(
+    run_id: Annotated[str, Path(min_length=1, max_length=128)],
+) -> str:
+    """Dependency to validate run_id path parameters."""
+    if not _RUN_ID_PATTERN.match(run_id):
+        raise HTTPException(
+            status_code=422,
+            detail="run_id must contain only alphanumeric characters, hyphens, and underscores",
+        )
+    return run_id
+
+
+ValidRunId = Annotated[str, Depends(validate_path_run_id)]
 
 
 class RunCreateRequest(BaseModel):
@@ -17,6 +51,15 @@ class RunCreateRequest(BaseModel):
     input_payload: dict = {}
     timeout_seconds: float | None = None
     namespace: str = "default"
+
+    @field_validator("run_id")
+    @classmethod
+    def validate_run_id(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if v == "":
+            raise ValueError("run_id must not be empty")
+        return _validate_run_id_format(v)
 
 
 class RunResponse(BaseModel):
@@ -94,14 +137,14 @@ async def list_runs(
 
 
 @router.get("/api/v1/runs/{run_id}")
-async def get_run(request: Request, run_id: str) -> RunResponse:
+async def get_run(request: Request, run_id: ValidRunId) -> RunResponse:
     """Get run status and result."""
     run_store = request.app.state.run_store
     if not run_store:
         raise HTTPException(status_code=404, detail="No run store configured")
     run = await run_store.get_run(run_id)
     if not run:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        raise HTTPException(status_code=404, detail="Run not found")
     return RunResponse(
         run_id=run_id,
         status=run.get("status", "unknown"),
@@ -112,14 +155,14 @@ async def get_run(request: Request, run_id: str) -> RunResponse:
 
 
 @router.post("/api/v1/runs/{run_id}/cancel")
-async def cancel_run(request: Request, run_id: str) -> RunResponse:
+async def cancel_run(request: Request, run_id: ValidRunId) -> RunResponse:
     """Cancel a running pipeline."""
     run_store = request.app.state.run_store
     if not run_store:
         raise HTTPException(status_code=404, detail="No run store configured")
     run = await run_store.get_run(run_id)
     if not run:
-        raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        raise HTTPException(status_code=404, detail="Run not found")
     run["status"] = "cancelled"
     await run_store.save_run(run_id, run)
     return RunResponse(run_id=run_id, status="cancelled")
@@ -128,7 +171,7 @@ async def cancel_run(request: Request, run_id: str) -> RunResponse:
 @router.get("/api/v1/runs/{run_id}/events")
 async def get_run_events(
     request: Request,
-    run_id: str,
+    run_id: ValidRunId,
     after_index: int = 0,
 ) -> list[EventResponse]:
     """Get events for a run."""
