@@ -382,3 +382,62 @@ class TestStepSupervisorAuditTrail:
         assert len(decision_events) == 1
         payload = decision_events[0].payload_dict()
         assert payload["was_forced_override"] is False
+
+
+class TestPhantomRestartTimestamps:
+    """Document that restart timestamps are recorded optimistically.
+
+    The supervisor records the restart timestamp BEFORE the caller confirms
+    the restart succeeded. This is fail-safe: over-counting exhausts the
+    budget sooner (safe), under-counting would allow extra retries (unsafe).
+    """
+
+    @pytest.mark.asyncio
+    async def test_restart_timestamp_recorded_on_decision(self) -> None:
+        """Timestamp is recorded when the RESTART decision is made, not after."""
+        sink = InMemoryEventSink()
+        sv = StepSupervisor(event_sink=sink)
+        supervision = StepSupervision(
+            strategy=SupervisionStrategy.RESTART,
+            max_restarts=5,
+            restart_window_seconds=60.0,
+            circuit_breaker_threshold=100,
+        )
+
+        # First failure -> RESTART decision
+        decision = await sv.handle_failure(
+            child_id="step-1",
+            error=ConnectionError("transient"),
+            error_category=ErrorCategory.TRANSIENT,
+            supervision=supervision,
+            restart_count=0,
+        )
+        assert decision.action == SupervisionStrategy.RESTART
+
+        # Verify that the timestamp was recorded (accessible via internal state)
+        assert len(sv._restart_timestamps.get("step-1", [])) == 1
+
+    @pytest.mark.asyncio
+    async def test_resume_timestamp_also_recorded_optimistically(self) -> None:
+        """RESUME decisions also record timestamps optimistically."""
+        sink = InMemoryEventSink()
+        sv = StepSupervisor(event_sink=sink)
+        supervision = StepSupervision(
+            strategy=SupervisionStrategy.RESUME,
+            max_restarts=5,
+            restart_window_seconds=60.0,
+            circuit_breaker_threshold=100,
+        )
+
+        decision = await sv.handle_failure(
+            child_id="step-1",
+            error=ConnectionError("transient"),
+            error_category=ErrorCategory.TRANSIENT,
+            supervision=supervision,
+            restart_count=0,
+        )
+        assert decision.action == SupervisionStrategy.RESUME
+        assert decision.should_checkpoint is True
+
+        # Timestamp recorded even though caller hasn't confirmed restart
+        assert len(sv._restart_timestamps.get("step-1", [])) == 1
