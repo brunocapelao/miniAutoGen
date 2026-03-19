@@ -35,6 +35,7 @@ from miniautogen.core.runtime.classifier import classify_error
 from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
+from miniautogen.policies.effect import EffectPolicy
 
 _SCOPE = "agentic_loop_runtime"
 
@@ -53,10 +54,22 @@ class AgenticLoopRuntime:
         self,
         runner: PipelineRunner,
         agent_registry: dict[str, Any] | None = None,
+        effect_policy: EffectPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._registry = agent_registry or {}
         self._logger = get_logger(__name__)
+
+        self._effect_interceptor: Any = None
+        if effect_policy is not None:
+            from miniautogen.core.effect_interceptor import EffectInterceptor
+            from miniautogen.stores.in_memory_effect_journal import InMemoryEffectJournal
+
+            self._effect_interceptor = EffectInterceptor(
+                journal=InMemoryEffectJournal(),
+                policy=effect_policy,
+                event_sink=runner.event_sink,
+            )
 
     async def run(
         self,

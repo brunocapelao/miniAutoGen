@@ -37,6 +37,7 @@ from miniautogen.core.runtime.final_document import render_final_document_markdo
 from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
+from miniautogen.policies.effect import EffectPolicy
 
 _SCOPE = "deliberation_runtime"
 
@@ -54,10 +55,22 @@ class DeliberationRuntime:
         self,
         runner: PipelineRunner,
         agent_registry: dict[str, Any] | None = None,
+        effect_policy: EffectPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._registry: dict[str, Any] = agent_registry or {}
         self._logger = get_logger(__name__)
+
+        self._effect_interceptor: Any = None
+        if effect_policy is not None:
+            from miniautogen.core.effect_interceptor import EffectInterceptor
+            from miniautogen.stores.in_memory_effect_journal import InMemoryEffectJournal
+
+            self._effect_interceptor = EffectInterceptor(
+                journal=InMemoryEffectJournal(),
+                policy=effect_policy,
+                event_sink=runner.event_sink,
+            )
 
     # ------------------------------------------------------------------
     # CoordinationMode.run
