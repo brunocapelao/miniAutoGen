@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Static
 
+from miniautogen.tui.messages import SidebarRefresh
 from miniautogen.tui.views.base import SecondaryView
 
 
@@ -91,6 +92,7 @@ class AgentsView(SecondaryView):
             self.provider.delete_agent(name)
             self.notify(f"Agent '{name}' deleted")
             self._refresh_table()
+            self.app.post_message(SidebarRefresh())
         except (ValueError, KeyError) as exc:
             self.notify(str(exc), severity="error")
 
@@ -103,3 +105,4 @@ class AgentsView(SecondaryView):
         """Callback from form screen."""
         if result:
             self._refresh_table()
+            self.app.post_message(SidebarRefresh())

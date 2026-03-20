@@ -20,7 +20,7 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header
 
 from miniautogen.tui.data_provider import DashDataProvider
-from miniautogen.tui.messages import TuiEvent
+from miniautogen.tui.messages import SidebarRefresh, TuiEvent
 from miniautogen.tui.views.agents import AgentsView
 from miniautogen.tui.views.events import EventsView
 from miniautogen.tui.views.pipelines import PipelinesView
@@ -164,6 +164,10 @@ class MiniAutoGenDash(App):
             work_panel.interaction_log.handle_event(event)
         except Exception:
             pass
+
+    def on_sidebar_refresh(self, message: SidebarRefresh) -> None:
+        """Handle sidebar refresh request (agent created/deleted)."""
+        self._populate_sidebar()
 
     def action_help(self) -> None:
         """Show help overlay."""

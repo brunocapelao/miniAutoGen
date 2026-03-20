@@ -11,6 +11,11 @@ from textual.message import Message
 from miniautogen.core.contracts.events import ExecutionEvent
 
 
+class SidebarRefresh(Message):
+    """Posted when the agent roster changes (create/delete) to trigger sidebar refresh."""
+    pass
+
+
 class TuiEvent(Message):
     """Wraps a core ExecutionEvent as a Textual Message.
 

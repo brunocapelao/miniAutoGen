@@ -18,6 +18,15 @@ def test_tui_event_wraps_execution_event() -> None:
     assert msg.event.type == EventType.RUN_STARTED.value
 
 
+def test_sidebar_refresh_message_exists() -> None:
+    """SidebarRefresh message must be importable."""
+    from textual.message import Message
+
+    from miniautogen.tui.messages import SidebarRefresh
+    msg = SidebarRefresh()
+    assert isinstance(msg, Message)
+
+
 def test_tui_event_is_textual_message() -> None:
     """TuiEvent must be a Textual Message."""
     from textual.message import Message
