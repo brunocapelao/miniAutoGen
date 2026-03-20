@@ -77,7 +77,7 @@ O Flow define **como** múltiplos Agents colaboram. Quatro modos de coordenaçã
 | Coordenação | Grafo livre (boilerplate pesado) | 2 processos (não-determinístico) | 1 modo (GroupChat, overhead O(n×m)) | **4 modos + composição** |
 | Type safety | TypedDict | Nenhum | Parcial | **Protocols + Pydantic** |
 | Middleware | Callbacks (observacionais) | Nenhum | Nenhum | **Interceptors (transformativos)** |
-| Observabilidade | Via estado | Básico | Básico | **63+ eventos tipados** |
+| Observabilidade | Via estado | Básico | Básico | **69+ eventos tipados** |
 | Tolerância a falhas | Checkpoint recovery | Nenhum | Nenhum | **Supervision trees + circuit breakers** |
 | Idempotência | Nenhum | Nenhum | Nenhum | **EffectJournal** |
 | Durable execution | Best-in-class | Nenhum | Efémero | Roadmap |
@@ -161,7 +161,7 @@ AutoGen tem 1 modo. CrewAI tem 2 (não-determinísticos). DeerFlow tem 1. Open S
 | 2 | [Containers lógicos](architecture/02-containers.md) | Workspace, Core, CLI, TUI, Adapters |
 | 3 | [Componentes internos](architecture/03-componentes.md) | Módulos, contratos, protocols |
 | 4 | [Fluxos de execução](architecture/04-fluxos.md) | Coordenação, workspace, interceptors |
-| 5 | [Invariantes e taxonomias](architecture/05-invariantes.md) | Regras invioláveis, 63+ event types |
+| 5 | [Invariantes e taxonomias](architecture/05-invariantes.md) | Regras invioláveis, 69+ event types |
 | 6 | [Decisões arquiteturais](architecture/06-decisoes.md) | 12 ADRs (DA-1 a DA-12) |
 | 7 | [Anatomia do agente](architecture/07-agent-anatomy.md) | 5 layers, comparação com 10+ protocols |
 | 8 | [Stack tecnológica](architecture/08-tech-stack.md) | Dependências e justificativas |

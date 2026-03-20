@@ -343,8 +343,8 @@ Uma nova categoria emergiu: **agent harnesses** — sistemas especializados que 
 | **OpenHands** | Não documentado | Não | Não |
 | **LangGraph** | Callbacks (observacionais) | Não | Não |
 | **CrewAI** | Não | Não | Não |
-| **MiniAutoGen** | EventSink (63+ tipos) | Não (ainda) | Não (ainda) |
-| **MiniAutoGen (proposta)** | EventSink (63+ tipos) | **Sim (interceptors transformam fluxo)** | **Sim (before/after/on_routing)** |
+| **MiniAutoGen** | EventSink (69+ tipos) | Não (ainda) | Não (ainda) |
+| **MiniAutoGen (proposta)** | EventSink (69+ tipos) | **Sim (interceptors transformam fluxo)** | **Sim (before/after/on_routing)** |
 
 ### 3.4 Human-in-the-Loop
 

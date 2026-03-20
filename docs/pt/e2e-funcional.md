@@ -544,7 +544,7 @@ Cada step pode ter uma estratégia de supervisão que define o que acontece em c
 
 #### Monitoramento e Previsibilidade
 
-O sistema de Flows emite **63+ EventTypes** estruturados ao longo do ciclo de vida, garantindo observabilidade total:
+O sistema de Flows emite **69+ EventTypes** estruturados ao longo do ciclo de vida, garantindo observabilidade total:
 
 - Eventos de coordenação: `FLOW_STARTED`, `STEP_STARTED`, `STEP_FINISHED`, `FLOW_FINISHED`
 - Eventos de routing: `ROUTER_DECISION`, `FAN_OUT_STARTED`, `FAN_OUT_COMPLETED`
@@ -1957,9 +1957,9 @@ PipelineRunner (executor único do microkernel)
 | 1 | **Workspace** | Container raiz + Server/Gateway. Contém Engines, Agents, Flows, Defaults. Gere conectividade externa (host, port, daemon, PID, health check) | `miniautogen.yml` | init |
 | 2 | **Engine** | Conexão a monólitos de agentes. 3 categorias: API Provider (stateless), CLI Agent (stateful subprocess), Gateway/Hub (stateful WebSocket). EngineResolver: openai, anthropic, google, litellm, claude-code, gemini-cli, codex-cli | `engines:` no YAML | create/list/show/update/delete |
 | 3 | **Agent** | Abstracção sobre Engine com runtime local: 5 camadas (Identity → Engine Binding → Runtime → Policies → Protocol Adapters). 4 capabilities: workflow, deliberation, conversational, coordinator | `agents:` no YAML + `AgentSpec` | create/list/show/update/delete |
-| 4 | **Flow** | Orquestração (mode + participants + policies + RuntimeInterceptors + fan-out + ResultAggregator + supervisão per-step). O DIFERENCIADOR competitivo. 63+ EventTypes | `flows:` no YAML | create/list/show/update/delete |
+| 4 | **Flow** | Orquestração (mode + participants + policies + RuntimeInterceptors + fan-out + ResultAggregator + supervisão per-step). O DIFERENCIADOR competitivo. 69+ EventTypes | `flows:` no YAML | create/list/show/update/delete |
 | 5 | **Run** | Execução concreta de um flow | `RunStore` + `RunContext` | list/show/clean |
-| 6 | **Event** | Facto atómico do que aconteceu | `EventSink` (63+ tipos, 13 categorias) | list/filter |
+| 6 | **Event** | Facto atómico do que aconteceu | `EventSink` (69+ tipos, 13 categorias) | list/filter |
 | 7 | **Checkpoint** | Snapshot para resume de execução durável | `CheckpointStore` | list/restore |
 
 ## Grafo de Dependências entre Recursos
@@ -1987,7 +1987,7 @@ Workspace (container + gateway) ←── obrigatório para tudo
   │
   ├── Run ──→ produzido por Flow + PipelineRunner
   │     │
-  │     ├──→ Events (63+ tipos em 13 categorias)
+  │     ├──→ Events (69+ tipos em 13 categorias)
   │     └──→ Checkpoints (salvos para resume)
 ```
 

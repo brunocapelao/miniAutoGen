@@ -163,7 +163,7 @@ O domínio comunica exclusivamente com protocolos de store. Os detalhes de infra
 
 **Diretórios:** `observability/`, `core/events/`
 
-O sistema emite 63+ tipos de evento distribuídos em 13 categorias:
+O sistema emite 69+ tipos de evento distribuídos em 13 categorias:
 
 | Categoria | Quantidade | Exemplos |
 | --- | --- | --- |
