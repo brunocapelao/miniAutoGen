@@ -80,6 +80,16 @@ async def test_app_populates_sidebar_on_mount(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_app_has_event_sink_after_mount() -> None:
+    """App should create a TuiEventSink on mount."""
+    app = MiniAutoGenDash()
+    async with app.run_test(size=(120, 40)) as pilot:
+        assert hasattr(app, "_event_sink")
+        assert app._event_sink is not None
+        await pilot.press("q")
+
+
+@pytest.mark.asyncio
 async def test_app_mounts_without_error() -> None:
     """Smoke test: the app mounts and can be started in headless mode."""
     app = MiniAutoGenDash()

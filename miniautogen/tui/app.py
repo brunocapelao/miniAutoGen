@@ -20,7 +20,9 @@ from textual.binding import Binding
 from textual.widgets import Footer, Header
 
 from miniautogen.tui.data_provider import DashDataProvider
+from miniautogen.tui.event_sink import TuiEventSink
 from miniautogen.tui.messages import SidebarRefresh, TuiEvent
+from miniautogen.tui.workers import EventBridgeWorker
 from miniautogen.tui.views.agents import AgentsView
 from miniautogen.tui.views.events import EventsView
 from miniautogen.tui.views.pipelines import PipelinesView
@@ -67,6 +69,8 @@ class MiniAutoGenDash(App):
         super().__init__()
         self._provider: DashDataProvider | None = None
         self._project_root = project_root
+        self._event_sink: TuiEventSink | None = None
+        self._bridge: EventBridgeWorker | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -80,6 +84,13 @@ class MiniAutoGenDash(App):
         self._init_provider()
         self._update_server_status()
         self._populate_sidebar()
+        self._start_event_bridge()
+
+    def _start_event_bridge(self) -> None:
+        """Create TuiEventSink and start the EventBridgeWorker."""
+        self._event_sink = TuiEventSink()
+        self._bridge = EventBridgeWorker(self._event_sink)
+        self.run_worker(self._bridge.run(self), exclusive=True)
 
     def _init_provider(self) -> None:
         """Initialize the data provider."""
