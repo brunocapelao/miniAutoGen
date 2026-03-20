@@ -59,6 +59,7 @@ class DashDataProvider:
     def __init__(self, project_root: Path) -> None:
         self._root = project_root.resolve()
         self._config_path = self._root / CONFIG_FILENAME
+        self._run_history: list[dict[str, Any]] = []
 
     @classmethod
     def from_cwd(cls) -> DashDataProvider | None:
@@ -155,10 +156,10 @@ class DashDataProvider:
     def get_runs(self) -> list[dict[str, Any]]:
         """List recent runs.
 
-        Currently returns an empty list since runs are in-memory only.
-        Future: wire to persistent run store.
+        Returns runs recorded during this session. Pipeline executions
+        via run_pipeline() automatically append results here.
         """
-        return []
+        return list(self._run_history)
 
     def get_events(self) -> list[dict[str, Any]]:
         """Get recent events.
@@ -313,7 +314,7 @@ class DashDataProvider:
             return {"status": "failed", "error": "No project config found"}
         try:
             config = load_config(self._config_path)
-            return await _execute_pipeline(
+            result = await _execute_pipeline(
                 config,
                 pipeline_name,
                 self._root,
@@ -321,6 +322,19 @@ class DashDataProvider:
                 pipeline_input=pipeline_input,
                 event_sink=event_sink,
             )
+            # Record run in session history
+            from datetime import datetime, timezone
+            from uuid import uuid4
+
+            run_record: dict[str, Any] = {
+                "run_id": str(uuid4()),
+                "pipeline": pipeline_name,
+                "status": result.get("status", "unknown"),
+                "started": datetime.now(timezone.utc).isoformat(),
+                "events": result.get("events", 0),
+            }
+            self._run_history.append(run_record)
+            return result
         except Exception as exc:
             return {
                 "status": "failed",

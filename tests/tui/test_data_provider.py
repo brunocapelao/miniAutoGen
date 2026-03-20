@@ -263,6 +263,16 @@ def test_get_config_no_project(tmp_path: Path) -> None:
     assert config == {}
 
 
+def test_get_runs_returns_list(project_dir: Path) -> None:
+    """get_runs should return a list (empty initially, populated after runs)."""
+    from miniautogen.tui.data_provider import DashDataProvider
+
+    provider = DashDataProvider(project_dir)
+    runs = provider.get_runs()
+    assert isinstance(runs, list)
+    assert runs == []
+
+
 def test_provider_has_run_pipeline_method(project_dir: Path) -> None:
     from miniautogen.tui.data_provider import DashDataProvider
 
