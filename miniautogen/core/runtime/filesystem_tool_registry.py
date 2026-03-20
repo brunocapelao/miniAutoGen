@@ -44,6 +44,8 @@ class FileSystemToolRegistry:
                 name = tool_cfg.get("name", "")
                 if not name:
                     continue
+                if tool_cfg.get("builtin"):
+                    continue  # Handled by BuiltinToolRegistry
                 # Validate script paths — reject traversal attempts
                 if "script" in tool_cfg:
                     script = tool_cfg["script"]
@@ -84,12 +86,6 @@ class FileSystemToolRegistry:
                 )
 
         cfg = self._tool_configs[call.tool_name]
-
-        if cfg.get("builtin"):
-            return ToolResult(
-                success=False,
-                error=f"Builtin tool '{call.tool_name}' not yet implemented",
-            )
 
         if "script" in cfg:
             return await self._execute_script(cfg["script"], call.params)

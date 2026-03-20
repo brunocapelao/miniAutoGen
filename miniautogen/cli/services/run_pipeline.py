@@ -135,7 +135,7 @@ async def execute_pipeline(
         msg = f"Timeout must be positive, got {timeout}"
         raise ValueError(msg)
 
-    target = config.pipelines[pipeline_name].target
+    flow = config.pipelines[pipeline_name]
 
     # Resolve engine configuration from project defaults
     engine_config = _resolve_engine_config(config)
@@ -148,19 +148,6 @@ async def execute_pipeline(
         added_to_path = True
 
     try:
-        factory = resolve_pipeline_target(target, project_root)
-
-        # Pass engine config to factory if it accepts keyword arguments.
-        # Factories may use this to configure LLM-backed pipeline components.
-        if engine_config is not None:
-            try:
-                pipeline = factory(engine_config=engine_config)
-            except TypeError:
-                # Factory does not accept engine_config -- call without it
-                pipeline = factory()
-        else:
-            pipeline = factory()
-
         internal_sink = InMemoryEventSink()
         sinks: list[Any] = [internal_sink]
         if verbose:
@@ -178,6 +165,32 @@ async def execute_pipeline(
             event_sink=effective_sink,
             execution_policy=execution_policy,
         )
+
+        # Config-driven path — flow has mode + participants, no target callable
+        if not flow.target and flow.mode:
+            from miniautogen.cli.services.agent_ops import load_agent_specs
+            agent_specs = load_agent_specs(root=project_root)
+            result = await runner.run_from_config(
+                flow_config=flow,
+                agent_specs=agent_specs,
+                workspace=project_root,
+                config=config,
+                input_text=pipeline_input,
+            )
+            return {"run_id": runner.last_run_id, "status": "completed", "result": result}
+
+        factory = resolve_pipeline_target(flow.target, project_root)
+
+        # Pass engine config to factory if it accepts keyword arguments.
+        # Factories may use this to configure LLM-backed pipeline components.
+        if engine_config is not None:
+            try:
+                pipeline = factory(engine_config=engine_config)
+            except TypeError:
+                # Factory does not accept engine_config -- call without it
+                pipeline = factory()
+        else:
+            pipeline = factory()
 
         # Build context with input
         context: dict[str, Any] = {}

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 import yaml
 from pydantic import ValidationError
+
+logger = logging.getLogger(__name__)
 
 from miniautogen.api import AgentSpec
 from miniautogen.cli.services.yaml_ops import (
@@ -220,3 +223,26 @@ def delete_agent(
     data = read_yaml(agent_path)
     agent_path.unlink()
     return {"deleted": name, "config": data}
+
+
+def load_agent_specs(project_root: Path) -> "dict[str, Any]":
+    """Discover and parse agent definitions from workspace.
+
+    Loads agent specs from ``agents/*.yaml`` in the project root.
+    Each YAML file's stem becomes the agent name/id.
+    """
+    specs: dict[str, AgentSpec] = {}  # AgentSpec imported at top of module
+    agents_dir = project_root / "agents"
+    if not agents_dir.is_dir():
+        return specs
+
+    for yaml_file in sorted(agents_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(yaml_file.read_text()) or {}
+            name = yaml_file.stem
+            data.setdefault("id", name)
+            specs[name] = AgentSpec(**data)
+        except Exception:
+            logger.exception("Failed to load agent spec from %s", yaml_file)
+
+    return specs

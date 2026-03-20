@@ -78,6 +78,8 @@ from miniautogen.core.contracts.delegation import (
 from miniautogen.core.contracts.turn_result import TurnResult
 from miniautogen.core.effect_interceptor import EffectInterceptor
 from miniautogen.core.runtime.agent_runtime import AgentRuntime
+from miniautogen.core.runtime.builtin_tools import BuiltinToolRegistry
+from miniautogen.core.runtime.composite_tool_registry import CompositeToolRegistry
 from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
 from miniautogen.core.runtime.delegation_router import ConfigDelegationRouter
 from miniautogen.core.runtime.persistent_memory import PersistentMemoryProvider
@@ -181,6 +183,8 @@ __all__ = [
     "WorkflowRuntime",
     # Agent runtime and tools
     "AgentRuntime",
+    "BuiltinToolRegistry",
+    "CompositeToolRegistry",
     "InMemoryToolRegistry",
     "FileSystemToolRegistry",
     "ConfigDelegationRouter",

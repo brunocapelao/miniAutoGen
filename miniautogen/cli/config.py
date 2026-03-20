@@ -95,12 +95,39 @@ class MemoryProfileConfig(BaseModel):
 
 
 class FlowConfig(BaseModel):
-    """Flow (formerly Pipeline) target configuration.
+    """Flow configuration — supports both callable and config-driven modes.
 
     DA-9: Renamed from PipelineConfig.
+    Two execution paths:
+    - Callable: set ``target`` to a Python module:callable reference
+    - Config-driven: set ``mode`` + ``participants`` for YAML-only flows
     """
 
-    target: str
+    target: str | None = None
+    mode: str | None = None  # workflow | deliberation | loop | composite
+    participants: list[str] = Field(default_factory=list)
+    input_text: str | None = None
+    # Mode-specific options
+    leader: str | None = None  # deliberation
+    max_rounds: int = 3  # deliberation
+    max_turns: int = 20  # agentic loop
+    router: str | None = None  # agentic loop
+    chain_flows: list[str] = Field(default_factory=list)  # composite
+
+    @model_validator(mode="after")
+    def validate_flow_config(self) -> "FlowConfig":
+        if not self.target and not self.mode:
+            raise ValueError("Flow must have either 'target' or 'mode'")
+        # participants only required for pure config-driven flows (mode set, no target)
+        if self.mode and not self.target and not self.participants:
+            raise ValueError("Config-driven flow requires 'participants'")
+        # mode-specific validations only apply to pure config-driven flows
+        if self.mode and not self.target:
+            if self.mode == "deliberation" and not self.leader:
+                raise ValueError("Deliberation mode requires 'leader'")
+            if self.mode == "loop" and not self.router:
+                raise ValueError("Loop mode requires 'router'")
+        return self
 
 
 # Backward compatibility alias

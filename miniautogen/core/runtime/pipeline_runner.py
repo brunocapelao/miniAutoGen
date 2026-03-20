@@ -19,8 +19,9 @@ from miniautogen.stores.run_store import RunStore
 
 if TYPE_CHECKING:
     from miniautogen.backends.engine_resolver import EngineResolver
-    from miniautogen.cli.config import WorkspaceConfig
+    from miniautogen.cli.config import FlowConfig, WorkspaceConfig
     from miniautogen.core.contracts.agent_spec import AgentSpec
+    from miniautogen.core.contracts.run_result import RunResult
     from miniautogen.core.runtime.agent_runtime import AgentRuntime
 
 
@@ -53,38 +54,50 @@ class PipelineRunner:
     # Agent runtime factory
     # ------------------------------------------------------------------
 
-    def _build_agent_runtimes(
+    async def _build_agent_runtimes(
         self,
         *,
         agent_specs: dict[str, AgentSpec],
         workspace: Path,
         config: WorkspaceConfig,
+        run_id: str,
     ) -> dict[str, AgentRuntime]:
         """Build AgentRuntime instances from YAML config.
 
         This is the SOLE point where AgentRuntime instances are created.
-        Each agent gets its own fresh driver, InMemory tool registry,
-        InMemory memory provider, and a ConfigDelegationRouter derived
-        from the agent specs' delegation configs.
+        Each agent gets its own fresh driver, CompositeToolRegistry
+        (FileSystem + Builtin), PersistentMemoryProvider, filesystem
+        sandbox, and a ConfigDelegationRouter derived from the agent
+        specs' delegation configs.
 
         Args:
             agent_specs: Mapping of agent_name -> AgentSpec.
             workspace: Project workspace root path.
             config: The full workspace/project configuration.
+            run_id: The run identifier for the RunContext.
 
         Returns:
             Mapping of agent_name -> AgentRuntime.
         """
         from miniautogen.backends.engine_resolver import EngineResolver
-        from miniautogen.core.contracts.memory_provider import (
-            InMemoryMemoryProvider,
-        )
         from miniautogen.core.contracts.run_context import RunContext
         from miniautogen.core.runtime.agent_runtime import AgentRuntime
+        from miniautogen.core.runtime.agent_sandbox import (
+            AgentFilesystemSandbox,
+        )
+        from miniautogen.core.runtime.builtin_tools import BuiltinToolRegistry
+        from miniautogen.core.runtime.composite_tool_registry import (
+            CompositeToolRegistry,
+        )
         from miniautogen.core.runtime.delegation_router import (
             ConfigDelegationRouter,
         )
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
+        from miniautogen.core.runtime.filesystem_tool_registry import (
+            FileSystemToolRegistry,
+        )
+        from miniautogen.core.runtime.persistent_memory import (
+            PersistentMemoryProvider,
+        )
 
         resolver = self._engine_resolver or EngineResolver()
 
@@ -98,11 +111,11 @@ class PipelineRunner:
             }
         delegation_router = ConfigDelegationRouter(delegation_configs)
 
-        # Build a placeholder RunContext (will be replaced at run time)
+        # Build a real RunContext
         run_context = RunContext(
-            run_id="pending",
+            run_id=run_id,
             started_at=datetime.now(timezone.utc),
-            correlation_id="pending",
+            correlation_id=run_id,
         )
 
         runtimes: dict[str, AgentRuntime] = {}
@@ -115,21 +128,36 @@ class PipelineRunner:
             # 2. Per-agent config dir
             config_dir = workspace / ".miniautogen" / "agents" / agent_name
 
-            # 3-4. InMemory implementations (FileSystem impls in Tasks 8-9)
-            tool_registry = InMemoryToolRegistry()
-            memory = InMemoryMemoryProvider()
+            # 3. Per-agent filesystem sandbox
+            sandbox = AgentFilesystemSandbox(
+                agent_name=agent_name,
+                workspace=workspace,
+            )
 
-            # 5. Build system prompt from spec fields
-            system_prompt_parts: list[str] = []
-            if spec.role:
-                system_prompt_parts.append(f"Role: {spec.role}")
-            if spec.goal:
-                system_prompt_parts.append(f"Goal: {spec.goal}")
-            if spec.backstory:
-                system_prompt_parts.append(f"Backstory: {spec.backstory}")
-            system_prompt = "\n".join(system_prompt_parts) or None
+            # 4. CompositeToolRegistry: FileSystem tools first, then builtins
+            tools_path = config_dir / "tools.yml"
+            fs_registry = FileSystemToolRegistry(
+                tools_path=tools_path,
+                workspace_root=workspace,
+                sandbox=sandbox,
+            )
+            builtin_registry = BuiltinToolRegistry(
+                workspace_root=workspace,
+                sandbox=sandbox,
+            )
+            tool_registry = CompositeToolRegistry(
+                [fs_registry, builtin_registry],
+            )
 
-            # 6. Compose AgentRuntime
+            # 5. PersistentMemoryProvider
+            memory = PersistentMemoryProvider(config_dir / "memory")
+
+            # 6. Build system prompt from spec + optional prompt.md
+            system_prompt = await _build_prompt_from_spec(
+                spec, config_dir,
+            )
+
+            # 7. Compose AgentRuntime
             rt = AgentRuntime(
                 agent_id=agent_name,
                 driver=driver,
@@ -141,7 +169,7 @@ class PipelineRunner:
                 tool_registry=tool_registry,
                 delegation=delegation_router,
             )
-            # Store config_dir for later use by filesystem-backed providers
+            # Store config_dir for later use
             rt._config_dir = config_dir  # noqa: SLF001
 
             runtimes[agent_name] = rt
@@ -358,3 +386,286 @@ class PipelineRunner:
         logger.info("run_finished")
         self.last_run_id = current_run_id
         return result
+
+    # ------------------------------------------------------------------
+    # Config-driven flow execution
+    # ------------------------------------------------------------------
+
+    async def run_from_config(
+        self,
+        *,
+        flow_config: FlowConfig,
+        agent_specs: dict[str, AgentSpec],
+        workspace: Path,
+        config: WorkspaceConfig,
+        input_text: str | None = None,
+    ) -> RunResult:
+        """Execute a config-driven flow (no Python callable needed).
+
+        Orchestrates the full lifecycle:
+        1. Validate participants exist in agent_specs
+        2. Build agent runtimes (async)
+        3. Initialize all runtimes
+        4. Build coordination plan + runtime from FlowConfig
+        5. Emit RUN_STARTED, run coordination, emit RUN_COMPLETED
+        6. Clean up runtimes in finally block
+
+        Args:
+            flow_config: The FlowConfig describing the flow mode/participants.
+            agent_specs: All available agent specs.
+            workspace: Project workspace root.
+            config: Full workspace configuration.
+            input_text: Optional input text for the flow.
+
+        Returns:
+            RunResult from the coordination runtime.
+
+        Raises:
+            ValueError: If participants reference unknown agents or mode is
+                        unknown.
+        """
+        from miniautogen.core.contracts.run_context import RunContext
+        from miniautogen.core.contracts.run_result import RunResult
+
+        run_id = str(uuid4())
+        correlation_id = run_id
+        self.last_run_id = run_id
+
+        logger = self.logger.bind(
+            run_id=run_id,
+            correlation_id=correlation_id,
+            scope="pipeline_runner.run_from_config",
+        )
+
+        # 1. Validate participants exist
+        missing = [
+            p for p in flow_config.participants if p not in agent_specs
+        ]
+        if missing:
+            msg = (
+                f"Flow references unknown agents: {', '.join(missing)}. "
+                f"Available: {', '.join(agent_specs.keys())}"
+            )
+            raise ValueError(msg)
+
+        # 2. Build agent runtimes
+        runtimes = await self._build_agent_runtimes(
+            agent_specs=agent_specs,
+            workspace=workspace,
+            config=config,
+            run_id=run_id,
+        )
+
+        # 3. Initialize all runtimes
+        try:
+            for rt in runtimes.values():
+                await rt.initialize()
+
+            # 4. Build coordination plan + runtime
+            plan, coordination_runtime = _build_coordination_from_config(
+                flow_config=flow_config,
+                runner=self,
+                agent_registry=runtimes,
+                input_text=input_text,
+            )
+
+            # 5. Build RunContext for the coordination run
+            run_context = RunContext(
+                run_id=run_id,
+                started_at=datetime.now(timezone.utc),
+                correlation_id=correlation_id,
+                input_payload=input_text,
+            )
+
+            # Emit RUN_STARTED
+            await self.event_sink.publish(
+                ExecutionEvent(
+                    type=EventType.RUN_STARTED.value,
+                    timestamp=datetime.now(timezone.utc),
+                    run_id=run_id,
+                    correlation_id=correlation_id,
+                    scope="pipeline_runner.run_from_config",
+                )
+            )
+            logger.info("run_from_config_started", mode=flow_config.mode)
+
+            # 6. Execute coordination
+            agents_list = [
+                runtimes[name] for name in flow_config.participants
+            ]
+            result = await coordination_runtime.run(
+                agents_list, run_context, plan,
+            )
+
+            # Emit RUN_FINISHED
+            await self.event_sink.publish(
+                ExecutionEvent(
+                    type=EventType.RUN_FINISHED.value,
+                    timestamp=datetime.now(timezone.utc),
+                    run_id=run_id,
+                    correlation_id=correlation_id,
+                    scope="pipeline_runner.run_from_config",
+                )
+            )
+            logger.info("run_from_config_finished", mode=flow_config.mode)
+
+            return result
+
+        except Exception as exc:
+            # Emit RUN_FAILED on error
+            try:
+                await self.event_sink.publish(
+                    ExecutionEvent(
+                        type=EventType.RUN_FAILED.value,
+                        timestamp=datetime.now(timezone.utc),
+                        run_id=run_id,
+                        correlation_id=correlation_id,
+                        scope="pipeline_runner.run_from_config",
+                        payload={"error": str(exc)},
+                    )
+                )
+            except Exception:
+                logger.warning(
+                    "failed_to_emit_run_failed_event",
+                    original_error=str(exc),
+                )
+            logger.error(
+                "run_from_config_failed",
+                error_type=type(exc).__name__,
+            )
+            raise
+
+        finally:
+            # 7. Close all runtimes
+            for rt in runtimes.values():
+                try:
+                    await rt.close()
+                except Exception:
+                    logger.warning(
+                        "runtime_close_failed",
+                        agent_id=rt.agent_id,
+                    )
+
+
+# ------------------------------------------------------------------
+# Module-level helpers
+# ------------------------------------------------------------------
+
+
+async def _build_prompt_from_spec(
+    spec: AgentSpec,
+    config_dir: Path,
+) -> str | None:
+    """Build a system prompt from an AgentSpec, optionally loading prompt.md.
+
+    If ``config_dir/prompt.md`` exists, its content is prepended to the
+    spec-derived prompt parts. Returns None only if all sources are empty.
+    """
+    parts: list[str] = []
+
+    # Try loading prompt.md from disk
+    prompt_path = anyio.Path(config_dir / "prompt.md")
+    if await prompt_path.is_file():
+        content = await prompt_path.read_text()
+        stripped = content.strip()
+        if stripped:
+            parts.append(stripped)
+
+    # Append spec-derived fields
+    if spec.role:
+        parts.append(f"Role: {spec.role}")
+    if spec.goal:
+        parts.append(f"Goal: {spec.goal}")
+    if spec.backstory:
+        parts.append(f"Backstory: {spec.backstory}")
+
+    return "\n".join(parts) if parts else None
+
+
+def _build_coordination_from_config(
+    *,
+    flow_config: FlowConfig,
+    runner: PipelineRunner,
+    agent_registry: dict[str, Any],
+    input_text: str | None = None,
+) -> tuple[Any, Any]:
+    """Map a FlowConfig to a (plan, coordination_runtime) tuple.
+
+    Supports three coordination modes:
+    - ``workflow``: Sequential/parallel step execution via WorkflowRuntime
+    - ``deliberation``: Multi-round deliberation via DeliberationRuntime
+    - ``loop``: Router-driven agentic loop via AgenticLoopRuntime
+
+    Args:
+        flow_config: The FlowConfig describing mode and participants.
+        runner: The PipelineRunner instance for coordination runtimes.
+        agent_registry: Mapping of agent_name -> AgentRuntime.
+        input_text: Optional input text (used as initial message / topic).
+
+    Returns:
+        Tuple of (plan, coordination_runtime).
+
+    Raises:
+        ValueError: If the flow mode is unknown.
+    """
+    from miniautogen.core.contracts.coordination import (
+        AgenticLoopPlan,
+        DeliberationPlan,
+        WorkflowPlan,
+        WorkflowStep,
+    )
+    from miniautogen.core.runtime.agentic_loop_runtime import (
+        AgenticLoopRuntime,
+    )
+    from miniautogen.core.runtime.deliberation_runtime import (
+        DeliberationRuntime,
+    )
+    from miniautogen.core.runtime.workflow_runtime import WorkflowRuntime
+
+    mode = flow_config.mode
+
+    if mode == "workflow":
+        steps = [
+            WorkflowStep(
+                component_name=name,
+                agent_id=name,
+            )
+            for name in flow_config.participants
+        ]
+        plan = WorkflowPlan(steps=steps)
+        coordination_runtime = WorkflowRuntime(
+            runner=runner,
+            agent_registry=agent_registry,
+        )
+        return plan, coordination_runtime
+
+    if mode == "deliberation":
+        plan = DeliberationPlan(
+            topic=input_text or "",
+            participants=list(flow_config.participants),
+            max_rounds=flow_config.max_rounds,
+            leader_agent=flow_config.leader,
+        )
+        coordination_runtime = DeliberationRuntime(
+            runner=runner,
+            agent_registry=agent_registry,
+        )
+        return plan, coordination_runtime
+
+    if mode == "loop":
+        plan = AgenticLoopPlan(
+            router_agent=flow_config.router or flow_config.participants[0],
+            participants=list(flow_config.participants),
+            initial_message=input_text,
+        )
+        coordination_runtime = AgenticLoopRuntime(
+            runner=runner,
+            agent_registry=agent_registry,
+        )
+        return plan, coordination_runtime
+
+    msg = (
+        f"Unknown flow mode: {mode!r}. "
+        f"Supported modes: workflow, deliberation, loop"
+    )
+    raise ValueError(msg)

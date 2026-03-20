@@ -5,7 +5,7 @@ Validates that the factory:
 - Creates separate AgentRuntime instances per agent
 - Gives each agent its own driver (not shared)
 - Sets per-agent config_dir correctly
-- Falls back to InMemory implementations when config_dir doesn't exist
+- Uses real implementations (CompositeToolRegistry, PersistentMemoryProvider)
 """
 
 from __future__ import annotations
@@ -89,32 +89,36 @@ class TestBuildAgentRuntimesCreation:
             "writer": "smart-engine",
         })
 
-    def test_creates_two_runtimes(
+    @pytest.mark.anyio()
+    async def test_creates_two_runtimes(
         self, config, agent_specs, tmp_path,
     ) -> None:
         resolver, _ = _make_mock_resolver()
         runner = PipelineRunner(engine_resolver=resolver)
 
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=agent_specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-1",
         )
 
         assert len(runtimes) == 2
         assert "researcher" in runtimes
         assert "writer" in runtimes
 
-    def test_each_runtime_is_agent_runtime(
+    @pytest.mark.anyio()
+    async def test_each_runtime_is_agent_runtime(
         self, config, agent_specs, tmp_path,
     ) -> None:
         resolver, _ = _make_mock_resolver()
         runner = PipelineRunner(engine_resolver=resolver)
 
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=agent_specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-2",
         )
 
         for name, rt in runtimes.items():
@@ -122,16 +126,18 @@ class TestBuildAgentRuntimesCreation:
                 f"Expected AgentRuntime for '{name}', got {type(rt)}"
             )
 
-    def test_each_agent_has_own_driver(
+    @pytest.mark.anyio()
+    async def test_each_agent_has_own_driver(
         self, config, agent_specs, tmp_path,
     ) -> None:
         resolver, drivers_created = _make_mock_resolver()
         runner = PipelineRunner(engine_resolver=resolver)
 
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=agent_specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-3",
         )
 
         # create_fresh_driver called once per agent
@@ -141,16 +147,18 @@ class TestBuildAgentRuntimesCreation:
         driver_ids = {d.driver_id for d in drivers_created}
         assert len(driver_ids) == 2, "Each agent must get its own driver"
 
-    def test_correct_engine_profiles_resolved(
+    @pytest.mark.anyio()
+    async def test_correct_engine_profiles_resolved(
         self, config, agent_specs, tmp_path,
     ) -> None:
         resolver, _ = _make_mock_resolver()
         runner = PipelineRunner(engine_resolver=resolver)
 
-        runner._build_agent_runtimes(
+        await runner._build_agent_runtimes(
             agent_specs=agent_specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-4",
         )
 
         call_profiles = {
@@ -163,7 +171,8 @@ class TestBuildAgentRuntimesCreation:
 class TestBuildAgentRuntimesConfigDir:
     """Per-agent config_dir is set correctly."""
 
-    def test_config_dir_follows_convention(self, tmp_path) -> None:
+    @pytest.mark.anyio()
+    async def test_config_dir_follows_convention(self, tmp_path) -> None:
         resolver, _ = _make_mock_resolver()
         config = _make_config({
             "default": {"provider": "openai-compat"},
@@ -171,10 +180,11 @@ class TestBuildAgentRuntimesConfigDir:
         specs = _make_agent_specs({"planner": "default"})
 
         runner = PipelineRunner(engine_resolver=resolver)
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-5",
         )
 
         rt = runtimes["planner"]
@@ -182,14 +192,14 @@ class TestBuildAgentRuntimesConfigDir:
         assert rt._config_dir == expected_dir
 
 
-class TestBuildAgentRuntimesInMemoryFallback:
-    """Falls back to InMemory implementations when config_dir doesn't exist."""
+class TestBuildAgentRuntimesRealImplementations:
+    """Uses real implementations: CompositeToolRegistry, PersistentMemoryProvider."""
 
-    def test_uses_inmemory_when_no_config_dir(self, tmp_path) -> None:
-        from miniautogen.core.contracts.memory_provider import (
-            InMemoryMemoryProvider,
+    @pytest.mark.anyio()
+    async def test_uses_composite_tool_registry(self, tmp_path) -> None:
+        from miniautogen.core.runtime.composite_tool_registry import (
+            CompositeToolRegistry,
         )
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
 
         resolver, _ = _make_mock_resolver()
         config = _make_config({
@@ -198,22 +208,21 @@ class TestBuildAgentRuntimesInMemoryFallback:
         specs = _make_agent_specs({"agent-a": "default"})
 
         runner = PipelineRunner(engine_resolver=resolver)
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-6",
         )
 
         rt = runtimes["agent-a"]
-        assert isinstance(rt._memory, InMemoryMemoryProvider)
-        assert isinstance(rt._tool_registry, InMemoryToolRegistry)
+        assert isinstance(rt._tool_registry, CompositeToolRegistry)
 
-    def test_uses_inmemory_even_when_config_dir_exists(self, tmp_path) -> None:
-        """For now, always uses InMemory (FileSystem impls come in Tasks 8-9)."""
-        from miniautogen.core.contracts.memory_provider import (
-            InMemoryMemoryProvider,
+    @pytest.mark.anyio()
+    async def test_uses_persistent_memory_provider(self, tmp_path) -> None:
+        from miniautogen.core.runtime.persistent_memory import (
+            PersistentMemoryProvider,
         )
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
 
         resolver, _ = _make_mock_resolver()
         config = _make_config({
@@ -221,18 +230,45 @@ class TestBuildAgentRuntimesInMemoryFallback:
         })
         specs = _make_agent_specs({"agent-b": "default"})
 
-        # Create the config dir
-        config_dir = tmp_path / ".miniautogen" / "agents" / "agent-b"
-        config_dir.mkdir(parents=True)
-
         runner = PipelineRunner(engine_resolver=resolver)
-        runtimes = runner._build_agent_runtimes(
+        runtimes = await runner._build_agent_runtimes(
             agent_specs=specs,
             workspace=tmp_path,
             config=config,
+            run_id="test-run-7",
         )
 
         rt = runtimes["agent-b"]
-        # Currently InMemory; FileSystem impls will replace in Tasks 8-9
-        assert isinstance(rt._memory, InMemoryMemoryProvider)
-        assert isinstance(rt._tool_registry, InMemoryToolRegistry)
+        assert isinstance(rt._memory, PersistentMemoryProvider)
+
+    @pytest.mark.anyio()
+    async def test_loads_prompt_md_when_present(self, tmp_path) -> None:
+        resolver, _ = _make_mock_resolver()
+        config = _make_config({
+            "default": {"provider": "openai-compat"},
+        })
+        specs = _make_agent_specs({"agent-c": "default"})
+        specs["agent-c"] = AgentSpec(
+            id="agent-c",
+            name="agent-c",
+            engine_profile="default",
+            role="tester",
+        )
+
+        # Create prompt.md
+        config_dir = tmp_path / ".miniautogen" / "agents" / "agent-c"
+        config_dir.mkdir(parents=True)
+        (config_dir / "prompt.md").write_text("You are a testing expert.")
+
+        runner = PipelineRunner(engine_resolver=resolver)
+        runtimes = await runner._build_agent_runtimes(
+            agent_specs=specs,
+            workspace=tmp_path,
+            config=config,
+            run_id="test-run-8",
+        )
+
+        rt = runtimes["agent-c"]
+        assert rt._system_prompt is not None
+        assert "You are a testing expert." in rt._system_prompt
+        assert "Role: tester" in rt._system_prompt
