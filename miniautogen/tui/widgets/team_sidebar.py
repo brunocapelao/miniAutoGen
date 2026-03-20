@@ -74,6 +74,15 @@ class TeamSidebar(Widget):
         except Exception:
             pass  # Widget not yet mounted
 
+    def clear_agents(self) -> None:
+        """Remove all agents from the sidebar."""
+        for card in self._agents.values():
+            try:
+                card.remove()
+            except Exception:
+                pass  # Widget not yet mounted
+        self._agents.clear()
+
     def update_agent_status(
         self,
         agent_id: str,

@@ -57,6 +57,15 @@ def test_team_sidebar_update_nonexistent_agent_no_error() -> None:
     sidebar.update_agent_status("nonexistent", AgentStatus.FAILED)
 
 
+def test_team_sidebar_clear_agents() -> None:
+    sidebar = TeamSidebar()
+    sidebar.add_agent(agent_id="writer", name="Writer", role="Developer")
+    sidebar.add_agent(agent_id="reviewer", name="Reviewer", role="QA")
+    assert sidebar.agent_count == 2
+    sidebar.clear_agents()
+    assert sidebar.agent_count == 0
+
+
 def test_team_sidebar_default_status_is_pending() -> None:
     sidebar = TeamSidebar()
     sidebar.add_agent(agent_id="writer", name="Writer", role="Developer")
