@@ -117,6 +117,12 @@ async def test_events_flow_to_interaction_log() -> None:
         await pilot.press("q")
 
 
+def test_app_has_run_completed_handler() -> None:
+    """App must have an on_run_completed handler method."""
+    assert hasattr(MiniAutoGenDash, "on_run_completed")
+    assert callable(MiniAutoGenDash.on_run_completed)
+
+
 @pytest.mark.asyncio
 async def test_app_mounts_without_error() -> None:
     """Smoke test: the app mounts and can be started in headless mode."""

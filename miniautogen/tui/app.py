@@ -21,7 +21,7 @@ from textual.widgets import Footer, Header
 
 from miniautogen.tui.data_provider import DashDataProvider
 from miniautogen.tui.event_sink import TuiEventSink
-from miniautogen.tui.messages import SidebarRefresh, TuiEvent
+from miniautogen.tui.messages import RunCompleted, SidebarRefresh, TuiEvent
 from miniautogen.tui.workers import EventBridgeWorker
 from miniautogen.tui.views.agents import AgentsView
 from miniautogen.tui.views.events import EventsView
@@ -179,6 +179,23 @@ class MiniAutoGenDash(App):
     def on_sidebar_refresh(self, message: SidebarRefresh) -> None:
         """Handle sidebar refresh request (agent created/deleted)."""
         self._populate_sidebar()
+
+    def on_run_completed(self, message: RunCompleted) -> None:
+        """Handle pipeline run completion -- log result to interaction log."""
+        try:
+            work_panel = self.query_one(WorkPanel)
+            if message.status == "completed":
+                work_panel.interaction_log.add_step_header(
+                    step_number=0,
+                    step_label=f"Pipeline '{message.pipeline_name}' completed",
+                )
+            else:
+                work_panel.interaction_log.add_step_header(
+                    step_number=0,
+                    step_label=f"Pipeline '{message.pipeline_name}' {message.status}",
+                )
+        except Exception:
+            pass
 
     def action_help(self) -> None:
         """Show help overlay."""
