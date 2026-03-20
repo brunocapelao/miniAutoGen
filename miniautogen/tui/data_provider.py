@@ -43,6 +43,9 @@ from miniautogen.cli.services.server_ops import (
     start_server as _start_server,
     stop_server as _stop_server,
 )
+from miniautogen.cli.services.run_pipeline import (
+    execute_pipeline as _execute_pipeline,
+)
 from miniautogen.cli.services.yaml_ops import read_yaml
 
 
@@ -284,6 +287,46 @@ class DashDataProvider:
 
         result = pipeline_data if isinstance(pipeline_data, dict) else {"target": str(pipeline_data)}
         return {"deleted": name, "config": result}
+
+    # ── Pipeline Execution ────────────────────────────────────
+
+    async def run_pipeline(
+        self,
+        pipeline_name: str,
+        *,
+        event_sink: Any | None = None,
+        timeout: float | None = None,
+        pipeline_input: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a named pipeline, optionally streaming events to a sink.
+
+        Args:
+            pipeline_name: Key in project config pipelines section.
+            event_sink: Optional event sink (e.g., TuiEventSink) for live events.
+            timeout: Optional timeout in seconds.
+            pipeline_input: Optional input text for the pipeline.
+
+        Returns:
+            Result dict with status, output, events count.
+        """
+        if not self._config_path.is_file():
+            return {"status": "failed", "error": "No project config found"}
+        try:
+            config = load_config(self._config_path)
+            return await _execute_pipeline(
+                config,
+                pipeline_name,
+                self._root,
+                timeout=timeout,
+                pipeline_input=pipeline_input,
+                event_sink=event_sink,
+            )
+        except Exception as exc:
+            return {
+                "status": "failed",
+                "error": str(exc),
+                "error_type": type(exc).__name__,
+            }
 
     # ── Server ───────────────────────────────────────────────
 
