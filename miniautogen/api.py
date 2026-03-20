@@ -1,4 +1,4 @@
-"""Public API — MiniAutoGen Side C.
+"""Public API -- MiniAutoGen Side C.
 
 Usage::
 
@@ -14,17 +14,30 @@ from miniautogen.backends import (
     BackendResolver,
 )
 from miniautogen.core.contracts import (
+    AgentHook,
     AgentSpec,
+    CoordinationMode,
+    CoordinatorCapability,
+    EffectDescriptor,
+    EffectRecord,
+    EffectStatus,
     EngineProfile,
+    ErrorCategory,
     ExecutionEvent,
+    InMemoryMemoryProvider,
     LoopStopReason,
     McpServerBinding,
     MemoryProfile,
+    MemoryProvider,
     Message,
     RunContext,
     RunResult,
     RunStatus,
+    RuntimeInterceptor,
     SkillSpec,
+    StepSupervision,
+    SupervisionDecision,
+    SupervisionStrategy,
     ToolSpec,
 )
 from miniautogen.core.contracts.agent import (
@@ -53,10 +66,13 @@ from miniautogen.core.contracts.deliberation import (
 )
 from miniautogen.core.contracts.store import StoreProtocol
 from miniautogen.core.contracts.tool import ToolProtocol, ToolResult
+from miniautogen.core.effect_interceptor import EffectInterceptor
 from miniautogen.core.events.event_sink import (
     CompositeEventSink,
+    EventSink,
     FilteredEventSink,
     InMemoryEventSink,
+    NullEventSink,
 )
 from miniautogen.core.events.filters import (
     CompositeFilter,
@@ -64,6 +80,7 @@ from miniautogen.core.events.filters import (
     RunFilter,
     TypeFilter,
 )
+from miniautogen.core.events.types import EventType
 from miniautogen.core.runtime import (
     AgenticLoopRuntime,
     CompositeRuntime,
@@ -76,8 +93,16 @@ from miniautogen.core.runtime.recovery import SessionRecovery
 from miniautogen.observability.event_logging import LoggingEventSink
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
-from miniautogen.policies.budget import BudgetExceededError, BudgetTracker
+from miniautogen.policies.approval import ApprovalGate, AutoApproveGate
+from miniautogen.policies.budget import BudgetExceededError, BudgetPolicy, BudgetTracker
+from miniautogen.policies.chain import PolicyChain, PolicyContext, PolicyEvaluator, PolicyResult
+from miniautogen.policies.effect import EffectPolicy
 from miniautogen.policies.execution import ExecutionPolicy
+from miniautogen.policies.retry import RetryPolicy
+from miniautogen.stores.checkpoint_store import CheckpointStore
+from miniautogen.stores.effect_journal import EffectJournal
+from miniautogen.stores.in_memory_checkpoint_store import InMemoryCheckpointStore
+from miniautogen.stores.in_memory_effect_journal import InMemoryEffectJournal
 from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 from miniautogen.stores.run_store import RunStore
 
@@ -103,6 +128,10 @@ __all__ = [
     "WorkflowAgent",
     "DeliberationAgent",
     "ConversationalAgent",
+    # Agent hooks and memory
+    "AgentHook",
+    "MemoryProvider",
+    "InMemoryMemoryProvider",
     # Agentic loop
     "RouterDecision",
     "ConversationPolicy",
@@ -113,25 +142,54 @@ __all__ = [
     "Review",
     # Coordination
     "CoordinationKind",
+    "CoordinationMode",
     "CoordinationPlan",
     "DeliberationPlan",
     "WorkflowPlan",
     "WorkflowStep",
     "CompositionStep",
     "SubrunRequest",
+    "CoordinatorCapability",
     # Runtimes (Coordination Modes)
     "AgenticLoopRuntime",
     "CompositeRuntime",
     "DeliberationRuntime",
     "PipelineRunner",
     "WorkflowRuntime",
+    # Runtime interceptor
+    "RuntimeInterceptor",
     # Pipeline
     "Pipeline",
     "PipelineComponent",
     # Policy enforcement
+    "PolicyChain",
+    "PolicyContext",
+    "PolicyResult",
+    "PolicyEvaluator",
+    "RetryPolicy",
+    "BudgetPolicy",
     "BudgetTracker",
     "BudgetExceededError",
+    "ExecutionPolicy",
+    # Approval
+    "ApprovalGate",
+    "AutoApproveGate",
+    # Effect engine
+    "EffectInterceptor",
+    "EffectPolicy",
+    "EffectDescriptor",
+    "EffectRecord",
+    "EffectStatus",
+    # Supervision
+    "StepSupervision",
+    "SupervisionDecision",
+    "SupervisionStrategy",
+    # Error taxonomy
+    "ErrorCategory",
     # Events and observability
+    "EventType",
+    "EventSink",
+    "NullEventSink",
     "CompositeEventSink",
     "CompositeFilter",
     "EventFilter",
@@ -146,9 +204,11 @@ __all__ = [
     "AgentDriver",
     "BackendCapabilities",
     "BackendResolver",
-    # Policies
-    "ExecutionPolicy",
     # Stores
+    "CheckpointStore",
+    "InMemoryCheckpointStore",
+    "EffectJournal",
+    "InMemoryEffectJournal",
     "InMemoryRunStore",
     "RunStore",
 ]
