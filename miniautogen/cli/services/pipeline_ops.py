@@ -56,7 +56,7 @@ def create_pipeline(
     pipelines = _get_pipelines_section(data)
 
     if name in pipelines:
-        msg = f"Pipeline '{name}' already exists. Use 'miniautogen pipeline update {name}' to modify it."
+        msg = f"Flow '{name}' already exists. Use 'miniautogen flow update {name}' to modify it."
         raise ValueError(msg)
 
     # Validate that referenced agents exist

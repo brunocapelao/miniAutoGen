@@ -122,6 +122,16 @@ class TestCreatePipeline:
         with pytest.raises(ValueError, match="already exists"):
             create_pipeline(root, "main", mode="workflow")
 
+    def test_create_duplicate_uses_flow_terminology(self, tmp_path: Path) -> None:
+        """Error message for duplicate pipeline should use 'miniautogen flow update', not 'pipeline update'."""
+        root = _make_project(tmp_path, pipelines={
+            "main": {"mode": "workflow", "target": "pipelines.main:build_pipeline"},
+        })
+        with pytest.raises(ValueError, match="miniautogen flow update") as exc_info:
+            create_pipeline(root, "main", mode="workflow")
+        # Must NOT contain stale 'pipeline update' terminology
+        assert "pipeline update" not in str(exc_info.value)
+
     def test_create_invalid_name_raises(self, tmp_path: Path) -> None:
         root = _make_project(tmp_path)
         with pytest.raises(ValueError, match="Invalid pipeline name"):
