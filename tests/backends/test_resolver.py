@@ -81,3 +81,47 @@ class TestBackendResolver:
         resolver.add_backend(cfg)
         with pytest.raises(ValueError, match="already configured"):
             resolver.add_backend(cfg)
+
+    def test_create_driver_returns_fresh_instance(self) -> None:
+        """create_driver should return a new driver, not the cached one."""
+        resolver = BackendResolver()
+        call_count = 0
+
+        def factory(cfg: BackendConfig) -> FakeDriver:
+            nonlocal call_count
+            call_count += 1
+            return FakeDriver()
+
+        resolver.register_factory(DriverType.ACP, factory)
+        config = BackendConfig(backend_id="fresh", driver=DriverType.ACP, command=["acpx"])
+
+        d1 = resolver.create_driver(config)
+        d2 = resolver.create_driver(config)
+
+        assert isinstance(d1, AgentDriver)
+        assert isinstance(d2, AgentDriver)
+        # Each call creates a brand-new instance
+        assert d1 is not d2
+        assert call_count == 2
+
+    def test_create_driver_unregistered_type_raises(self) -> None:
+        """create_driver raises BackendUnavailableError when factory is missing."""
+        resolver = BackendResolver()
+        config = BackendConfig(backend_id="x", driver=DriverType.PTY, command=["legacy"])
+        with pytest.raises(BackendUnavailableError, match="No factory for driver type"):
+            resolver.create_driver(config)
+
+    def test_create_driver_does_not_pollute_cache(self) -> None:
+        """create_driver must not store the driver in the internal cache."""
+        resolver = BackendResolver()
+        resolver.register_factory(DriverType.ACP, lambda cfg: FakeDriver())
+        config = BackendConfig(backend_id="nc", driver=DriverType.ACP, command=["acpx"])
+        resolver.add_backend(config)
+
+        # Warm the cache via get_driver
+        cached = resolver.get_driver("nc")
+        # create_driver should return a different object
+        fresh = resolver.create_driver(config)
+        assert fresh is not cached
+        # Cache must still hold the original instance
+        assert resolver.get_driver("nc") is cached

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 import anyio
@@ -16,6 +17,12 @@ from miniautogen.policies.retry import RetryPolicy, build_retrying_call
 from miniautogen.stores.checkpoint_store import CheckpointStore
 from miniautogen.stores.run_store import RunStore
 
+if TYPE_CHECKING:
+    from miniautogen.backends.engine_resolver import EngineResolver
+    from miniautogen.cli.config import WorkspaceConfig
+    from miniautogen.core.contracts.agent_spec import AgentSpec
+    from miniautogen.core.runtime.agent_runtime import AgentRuntime
+
 
 class PipelineRunner:
     """Runs an existing pipeline while keeping runtime mechanics centralized."""
@@ -29,6 +36,7 @@ class PipelineRunner:
         approval_gate: ApprovalGate | None = None,
         retry_policy: RetryPolicy | None = None,
         policy_chain: PolicyChain | None = None,
+        engine_resolver: EngineResolver | None = None,
     ) -> None:
         self.event_sink = event_sink or NullEventSink()
         self.run_store = run_store
@@ -37,8 +45,112 @@ class PipelineRunner:
         self._approval_gate = approval_gate
         self._retry_policy = retry_policy
         self._policy_chain = policy_chain
+        self._engine_resolver = engine_resolver
         self.last_run_id: str | None = None
         self.logger = get_logger(__name__)
+
+    # ------------------------------------------------------------------
+    # Agent runtime factory
+    # ------------------------------------------------------------------
+
+    def _build_agent_runtimes(
+        self,
+        *,
+        agent_specs: dict[str, AgentSpec],
+        workspace: Path,
+        config: WorkspaceConfig,
+    ) -> dict[str, AgentRuntime]:
+        """Build AgentRuntime instances from YAML config.
+
+        This is the SOLE point where AgentRuntime instances are created.
+        Each agent gets its own fresh driver, InMemory tool registry,
+        InMemory memory provider, and a ConfigDelegationRouter derived
+        from the agent specs' delegation configs.
+
+        Args:
+            agent_specs: Mapping of agent_name -> AgentSpec.
+            workspace: Project workspace root path.
+            config: The full workspace/project configuration.
+
+        Returns:
+            Mapping of agent_name -> AgentRuntime.
+        """
+        from miniautogen.backends.engine_resolver import EngineResolver
+        from miniautogen.core.contracts.memory_provider import (
+            InMemoryMemoryProvider,
+        )
+        from miniautogen.core.contracts.run_context import RunContext
+        from miniautogen.core.runtime.agent_runtime import AgentRuntime
+        from miniautogen.core.runtime.delegation_router import (
+            ConfigDelegationRouter,
+        )
+        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
+
+        resolver = self._engine_resolver or EngineResolver()
+
+        # Build delegation configs for the router
+        delegation_configs: dict[str, dict[str, Any]] = {}
+        for agent_name, spec in agent_specs.items():
+            delegation_configs[agent_name] = {
+                "allow_delegation": spec.delegation.allow_delegation,
+                "can_delegate_to": list(spec.delegation.can_delegate_to),
+                "context_isolation": spec.delegation.context_isolation,
+            }
+        delegation_router = ConfigDelegationRouter(delegation_configs)
+
+        # Build a placeholder RunContext (will be replaced at run time)
+        run_context = RunContext(
+            run_id="pending",
+            started_at=datetime.now(timezone.utc),
+            correlation_id="pending",
+        )
+
+        runtimes: dict[str, AgentRuntime] = {}
+
+        for agent_name, spec in agent_specs.items():
+            # 1. Fresh driver per agent
+            engine_profile = spec.engine_profile or "default"
+            driver = resolver.create_fresh_driver(engine_profile, config)
+
+            # 2. Per-agent config dir
+            config_dir = workspace / ".miniautogen" / "agents" / agent_name
+
+            # 3-4. InMemory implementations (FileSystem impls in Tasks 8-9)
+            tool_registry = InMemoryToolRegistry()
+            memory = InMemoryMemoryProvider()
+
+            # 5. Build system prompt from spec fields
+            system_prompt_parts: list[str] = []
+            if spec.role:
+                system_prompt_parts.append(f"Role: {spec.role}")
+            if spec.goal:
+                system_prompt_parts.append(f"Goal: {spec.goal}")
+            if spec.backstory:
+                system_prompt_parts.append(f"Backstory: {spec.backstory}")
+            system_prompt = "\n".join(system_prompt_parts) or None
+
+            # 6. Compose AgentRuntime
+            rt = AgentRuntime(
+                agent_id=agent_name,
+                driver=driver,
+                run_context=run_context,
+                event_sink=self.event_sink,
+                system_prompt=system_prompt,
+                hooks=[],
+                memory=memory,
+                tool_registry=tool_registry,
+                delegation=delegation_router,
+            )
+            # Store config_dir for later use by filesystem-backed providers
+            rt._config_dir = config_dir  # noqa: SLF001
+
+            runtimes[agent_name] = rt
+
+        # Register agents in delegation router for cross-agent delegation
+        for agent_name, rt in runtimes.items():
+            delegation_router.register_agent(agent_name, rt)
+
+        return runtimes
 
     async def _execute_pipeline(
         self,

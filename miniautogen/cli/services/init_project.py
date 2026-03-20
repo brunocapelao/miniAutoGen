@@ -28,6 +28,12 @@ _TEMPLATE_MAP: dict[str, str] = {
 # Directories to create even if no template fills them
 _EXTRA_DIRS: list[str] = ["mcp"]
 
+# Nested directories to create (as subdirs within project)
+_NESTED_DIRS: dict[str, list[str]] = {
+    ".miniautogen/agents": [],
+    ".miniautogen/shared": ["memory", "workspace"],
+}
+
 
 def scaffold_project(
     name: str,
@@ -114,6 +120,13 @@ def scaffold_project(
         # Create extra directories
         for d in _EXTRA_DIRS:
             (project_dir / d).mkdir(parents=True, exist_ok=True)
+
+        # Create nested directory structures
+        for base_dir, subdirs in _NESTED_DIRS.items():
+            base_path = project_dir / base_dir
+            base_path.mkdir(parents=True, exist_ok=True)
+            for subdir in subdirs:
+                (base_path / subdir).mkdir(parents=True, exist_ok=True)
     except Exception:
         if created_new:
             shutil.rmtree(project_dir, ignore_errors=True)

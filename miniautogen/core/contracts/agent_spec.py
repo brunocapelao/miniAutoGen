@@ -7,9 +7,10 @@ an AgentSpec into a ResolvedAgentProfile before execution.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class SkillRef(BaseModel):
@@ -50,6 +51,7 @@ class DelegationConfig(BaseModel):
     allow_delegation: bool = False
     can_delegate_to: list[str] = Field(default_factory=list)
     context_isolation: bool = True
+    max_depth: int = 3
 
 
 class RuntimeConfig(BaseModel):
@@ -83,6 +85,16 @@ class AgentSpec(BaseModel):
     id: str
     version: str = "1.0.0"
     name: str
+
+    @field_validator("id")
+    @classmethod
+    def validate_id(cls, v: str) -> str:
+        if not re.match(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$", v):
+            raise ValueError(
+                f"Agent ID must start with alphanumeric, contain only alphanumeric/._-, "
+                f"max 64 chars: {v!r}"
+            )
+        return v
     description: str = ""
     role: str = ""
     goal: str = ""

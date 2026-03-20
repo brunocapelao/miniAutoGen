@@ -151,6 +151,39 @@ class EngineResolver:
 
         return self._resolver.get_driver(profile_name)
 
+    def create_fresh_driver(
+        self, profile_name: str, config: ProjectConfig,
+    ) -> AgentDriver:
+        """Create a NEW driver instance (not cached). For per-agent sessions.
+
+        Each call creates a distinct driver with a unique backend_id so it
+        is never shared with (or stored in) the resolver cache.  This is
+        required when multiple agents need independent sessions against the
+        same engine profile.
+
+        Args:
+            profile_name: Name of the engine profile (e.g., "fast-cheap").
+            config: The full project configuration containing engine_profiles.
+
+        Returns:
+            A freshly instantiated AgentDriver, not shared with any cache.
+
+        Raises:
+            BackendUnavailableError: If profile not found or driver can't be
+                created.
+        """
+        from uuid import uuid4
+
+        engine = config.engine_profiles.get(profile_name)
+        if engine is None:
+            msg = f"Engine profile '{profile_name}' not found"
+            raise BackendUnavailableError(msg)
+
+        backend_config = self._engine_to_backend(
+            f"{profile_name}_{uuid4().hex[:8]}", engine,
+        )
+        return self._resolver.create_driver(backend_config)
+
     def resolve_with_fallbacks(
         self, profile_name: str, config: ProjectConfig,
     ) -> AgentDriver:

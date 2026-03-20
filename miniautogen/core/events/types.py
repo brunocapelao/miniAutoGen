@@ -75,6 +75,12 @@ class EventType(str, Enum):
     AGENT_TURN_COMPLETED = "agent_turn_completed"
     AGENT_HOOK_EXECUTED = "agent_hook_executed"
     AGENT_TOOL_INVOKED = "agent_tool_invoked"
+    AGENT_INITIALIZED = "agent_initialized"
+    AGENT_CLOSED = "agent_closed"
+    AGENT_MEMORY_LOADED = "agent_memory_loaded"
+    AGENT_MEMORY_SAVED = "agent_memory_saved"
+    AGENT_DELEGATED = "agent_delegated"
+    AGENT_DELEGATION_DEPTH_EXCEEDED = "agent_delegation_depth_exceeded"
 
     # RuntimeInterceptor events (Phase B)
     INTERCEPTOR_BEFORE_STEP = "interceptor_before_step"
@@ -145,6 +151,12 @@ AGENT_RUNTIME_EVENT_TYPES: set[EventType] = {
     EventType.AGENT_TURN_COMPLETED,
     EventType.AGENT_HOOK_EXECUTED,
     EventType.AGENT_TOOL_INVOKED,
+    EventType.AGENT_INITIALIZED,
+    EventType.AGENT_CLOSED,
+    EventType.AGENT_MEMORY_LOADED,
+    EventType.AGENT_MEMORY_SAVED,
+    EventType.AGENT_DELEGATED,
+    EventType.AGENT_DELEGATION_DEPTH_EXCEEDED,
 }
 
 INTERCEPTOR_EVENT_TYPES: set[EventType] = {

@@ -220,6 +220,66 @@ class TestEngineResolverWithAgentAPI:
         assert driver._model == "gemini-2.5-pro"
 
 
+class TestEngineResolverCreateFreshDriver:
+    def test_returns_fresh_driver_instance(self) -> None:
+        """create_fresh_driver returns a new driver on every call."""
+        resolver = EngineResolver()
+        call_count = 0
+
+        def counting_factory(cfg: BackendConfig) -> FakeDriver:
+            nonlocal call_count
+            call_count += 1
+            return FakeDriver()
+
+        resolver._resolver.register_factory(DriverType.AGENT_API, counting_factory)
+        config = _make_project_config(
+            profiles={
+                "local": EngineProfileConfig(
+                    provider="openai-compat",
+                    endpoint="http://localhost:11434/v1",
+                    model="llama3.2",
+                ),
+            },
+        )
+
+        d1 = resolver.create_fresh_driver("local", config)
+        d2 = resolver.create_fresh_driver("local", config)
+
+        assert isinstance(d1, AgentDriver)
+        assert isinstance(d2, AgentDriver)
+        assert d1 is not d2
+        assert call_count == 2
+
+    def test_fresh_driver_is_not_cached(self) -> None:
+        """Drivers returned by create_fresh_driver are independent of the cache."""
+        resolver = EngineResolver()
+        resolver._resolver.register_factory(
+            DriverType.AGENT_API, lambda cfg: FakeDriver(),
+        )
+        config = _make_project_config(
+            profiles={
+                "local": EngineProfileConfig(
+                    provider="openai-compat",
+                    endpoint="http://localhost:11434/v1",
+                ),
+            },
+        )
+
+        cached = resolver.resolve("local", config)
+        fresh = resolver.create_fresh_driver("local", config)
+
+        assert fresh is not cached
+        # Repeated resolve still returns the same cached instance
+        assert resolver.resolve("local", config) is cached
+
+    def test_unknown_profile_raises(self) -> None:
+        """create_fresh_driver raises BackendUnavailableError for missing profiles."""
+        resolver = EngineResolver()
+        config = _make_project_config()
+        with pytest.raises(BackendUnavailableError, match="not found"):
+            resolver.create_fresh_driver("nonexistent", config)
+
+
 class TestEngineResolverFactoryRegistration:
     def test_all_driver_types_have_factories(self) -> None:
         resolver = EngineResolver()

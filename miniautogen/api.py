@@ -66,7 +66,22 @@ from miniautogen.core.contracts.deliberation import (
 )
 from miniautogen.core.contracts.store import StoreProtocol
 from miniautogen.core.contracts.tool import ToolProtocol, ToolResult
+from miniautogen.core.contracts.tool_registry import (
+    ToolRegistryProtocol,
+    ToolDefinition,
+    ToolCall,
+)
+from miniautogen.core.contracts.delegation import (
+    DelegationRouterProtocol,
+    PersistableMemory,
+)
+from miniautogen.core.contracts.turn_result import TurnResult
 from miniautogen.core.effect_interceptor import EffectInterceptor
+from miniautogen.core.runtime.agent_runtime import AgentRuntime
+from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
+from miniautogen.core.runtime.delegation_router import ConfigDelegationRouter
+from miniautogen.core.runtime.persistent_memory import PersistentMemoryProvider
+from miniautogen.core.runtime.filesystem_tool_registry import FileSystemToolRegistry
 from miniautogen.core.events.event_sink import (
     CompositeEventSink,
     EventSink,
@@ -125,6 +140,12 @@ __all__ = [
     "ToolProtocol",
     "ToolResult",
     "ToolSpec",
+    "ToolRegistryProtocol",
+    "ToolDefinition",
+    "ToolCall",
+    "DelegationRouterProtocol",
+    "PersistableMemory",
+    "TurnResult",
     "Conversation",
     # Agent protocols
     "WorkflowAgent",
@@ -158,6 +179,12 @@ __all__ = [
     "DeliberationRuntime",
     "PipelineRunner",
     "WorkflowRuntime",
+    # Agent runtime and tools
+    "AgentRuntime",
+    "InMemoryToolRegistry",
+    "FileSystemToolRegistry",
+    "ConfigDelegationRouter",
+    "PersistentMemoryProvider",
     # Runtime interceptor
     "RuntimeInterceptor",
     # Pipeline

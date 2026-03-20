@@ -62,6 +62,22 @@ class BackendResolver:
         self._cache[backend_id] = driver
         return driver
 
+    def create_driver(self, config: BackendConfig) -> AgentDriver:
+        """Create a NEW driver instance (not cached). Public factory method.
+
+        Unlike get_driver(), this always creates a fresh instance and does
+        not store it in the cache. Useful for per-agent sessions where each
+        agent needs its own driver.
+
+        Raises BackendUnavailableError if no factory is registered for the
+        driver type in config.
+        """
+        factory = self._factories.get(config.driver)
+        if factory is None:
+            msg = f"No factory for driver type '{config.driver.value}'"
+            raise BackendUnavailableError(msg)
+        return factory(config)
+
     def get_config(self, backend_id: str) -> BackendConfig | None:
         """Get the config for a backend, or None if not found."""
         return self._configs.get(backend_id)
