@@ -40,6 +40,46 @@ def test_app_has_css() -> None:
 
 
 @pytest.mark.asyncio
+async def test_app_populates_sidebar_on_mount(tmp_path) -> None:
+    """TeamSidebar should be populated with agents from data provider on mount."""
+    import yaml
+
+    # Create a minimal project with one agent
+    config = {
+        "project": {"name": "test", "version": "0.1.0"},
+        "defaults": {"engine_profile": "default_api", "memory_profile": "default"},
+        "engine_profiles": {
+            "default_api": {
+                "kind": "api",
+                "provider": "litellm",
+                "model": "gpt-4o-mini",
+                "temperature": 0.2,
+            },
+        },
+        "pipelines": {},
+    }
+    (tmp_path / "miniautogen.yaml").write_text(yaml.dump(config))
+    agents_dir = tmp_path / "agents"
+    agents_dir.mkdir()
+    agent_data = {
+        "id": "researcher",
+        "version": "1.0.0",
+        "name": "researcher",
+        "role": "researcher",
+        "goal": "Research topics",
+        "engine_profile": "default_api",
+    }
+    (agents_dir / "researcher.yaml").write_text(yaml.dump(agent_data))
+
+    app = MiniAutoGenDash(project_root=str(tmp_path))
+    async with app.run_test(size=(120, 40)) as pilot:
+        from miniautogen.tui.widgets.team_sidebar import TeamSidebar
+        sidebar = app.query_one(TeamSidebar)
+        assert sidebar.agent_count >= 1
+        await pilot.press("q")
+
+
+@pytest.mark.asyncio
 async def test_app_mounts_without_error() -> None:
     """Smoke test: the app mounts and can be started in headless mode."""
     app = MiniAutoGenDash()

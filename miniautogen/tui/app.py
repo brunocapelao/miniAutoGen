@@ -79,6 +79,7 @@ class MiniAutoGenDash(App):
         self._apply_responsive()
         self._init_provider()
         self._update_server_status()
+        self._populate_sidebar()
 
     def _init_provider(self) -> None:
         """Initialize the data provider."""
@@ -100,6 +101,22 @@ class MiniAutoGenDash(App):
             self.notify("Project initialized!")
         else:
             self.notify("No project -- some features unavailable", severity="warning")
+
+    def _populate_sidebar(self) -> None:
+        """Populate the TeamSidebar with agents from the data provider."""
+        if self._provider is None:
+            return
+        try:
+            sidebar = self.query_one(TeamSidebar)
+            sidebar.clear_agents()
+            for agent in self._provider.get_agents():
+                sidebar.add_agent(
+                    agent_id=agent.get("name", "unknown"),
+                    name=agent.get("name", "Unknown"),
+                    role=agent.get("role", "agent"),
+                )
+        except Exception:
+            pass  # Provider or sidebar not ready
 
     def _update_server_status(self) -> None:
         """Update subtitle with server status."""
