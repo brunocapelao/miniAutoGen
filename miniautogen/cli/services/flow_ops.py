@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from miniautogen.cli.services.pipeline_ops import (
     create_pipeline,
+    delete_pipeline,
     list_pipelines,
     show_pipeline,
     update_pipeline,
@@ -15,12 +16,14 @@ from miniautogen.cli.services.pipeline_ops import (
 
 # New-name aliases
 create_flow = create_pipeline
+delete_flow = delete_pipeline
 list_flows = list_pipelines
 show_flow = show_pipeline
 update_flow = update_pipeline
 
 __all__ = [
     "create_flow",
+    "delete_flow",
     "list_flows",
     "show_flow",
     "update_flow",
