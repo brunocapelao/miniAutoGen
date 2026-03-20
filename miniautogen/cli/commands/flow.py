@@ -302,3 +302,25 @@ def flow_update(
             click.echo(f"  {key}: {before_val} -> {after_val}")
     else:
         echo_success(f"Flow '{name}' updated.")
+
+
+@flow_group.command("delete")
+@click.argument("name")
+@click.option("--yes", "skip_confirm", is_flag=True, default=False, help="Skip confirmation.")
+def flow_delete(name: str, skip_confirm: bool) -> None:
+    """Delete a flow configuration."""
+    from miniautogen.cli.services.pipeline_ops import delete_pipeline
+
+    root, _config = require_project_config()
+
+    if not skip_confirm:
+        if not click.confirm(f"Delete flow '{name}'?"):
+            echo_warning("Cancelled.")
+            return
+
+    try:
+        result = delete_pipeline(root, name)
+        echo_success(f"Flow '{result['deleted']}' deleted.")
+    except (KeyError, ValueError) as exc:
+        echo_error(str(exc))
+        raise SystemExit(1)
