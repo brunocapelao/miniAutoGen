@@ -65,6 +65,30 @@ def resolve_pipeline_target(
     return getattr(module, callable_name)
 
 
+def _resolve_engine_config(config: ProjectConfig) -> dict[str, Any] | None:
+    """Resolve the default engine profile from project config.
+
+    Returns a dict with engine configuration details that can be
+    passed to pipeline factories, or None if no engine is configured.
+    """
+    default_engine_name = config.defaults.engine
+    engine_profiles = config.engines
+
+    if not engine_profiles or default_engine_name not in engine_profiles:
+        return None
+
+    engine = engine_profiles[default_engine_name]
+    return {
+        "engine_name": default_engine_name,
+        "provider": engine.provider,
+        "model": engine.model,
+        "kind": engine.kind,
+        "temperature": engine.temperature,
+        "endpoint": engine.endpoint,
+        "timeout_seconds": engine.timeout_seconds,
+    }
+
+
 async def execute_pipeline(
     config: ProjectConfig,
     pipeline_name: str,
@@ -99,6 +123,9 @@ async def execute_pipeline(
 
     target = config.pipelines[pipeline_name].target
 
+    # Resolve engine configuration from project defaults
+    engine_config = _resolve_engine_config(config)
+
     # Temporarily add project root to sys.path for imports
     project_str = str(project_root)
     added_to_path = False
@@ -108,7 +135,17 @@ async def execute_pipeline(
 
     try:
         factory = resolve_pipeline_target(target, project_root)
-        pipeline = factory()
+
+        # Pass engine config to factory if it accepts keyword arguments.
+        # Factories may use this to configure LLM-backed pipeline components.
+        if engine_config is not None:
+            try:
+                pipeline = factory(engine_config=engine_config)
+            except TypeError:
+                # Factory does not accept engine_config -- call without it
+                pipeline = factory()
+        else:
+            pipeline = factory()
 
         event_sink = InMemoryEventSink()
         execution_policy = None
@@ -126,6 +163,8 @@ async def execute_pipeline(
         context: dict[str, Any] = {}
         if pipeline_input is not None:
             context["input"] = pipeline_input
+        if engine_config is not None:
+            context["engine_config"] = engine_config
 
         # Handle resume from checkpoint
         if resume_run_id is not None:
@@ -145,6 +184,7 @@ async def execute_pipeline(
             "events": len(event_sink.events),
             "input_provided": pipeline_input is not None,
             "resumed": resume_run_id is not None,
+            "engine": engine_config["engine_name"] if engine_config else None,
         }
     except (KeyError, ValueError, ImportError) as exc:
         return {
