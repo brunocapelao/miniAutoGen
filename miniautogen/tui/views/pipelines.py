@@ -97,15 +97,35 @@ class PipelinesView(SecondaryView):
             self.notify(str(exc), severity="error")
 
     def action_run_pipeline(self) -> None:
-        """Run the selected pipeline."""
+        """Run the selected pipeline in the background via a Textual Worker."""
         name = self._get_selected_name()
         if not name:
             self.notify("No pipeline selected", severity="warning")
             return
-        self.notify(f"Launching pipeline '{name}'...")
-        # Switch to workspace and trigger execution
-        self.app.pop_screen()
-        self.app.post_message_from_child = name  # type: ignore[attr-defined]
+        if self.provider is None:
+            self.notify("No project loaded", severity="error")
+            return
+
+        self.notify(f"Starting pipeline '{name}'...")
+
+        async def _run() -> None:
+            """Background worker coroutine for pipeline execution."""
+            event_sink = getattr(self.app, "_event_sink", None)
+            result = await self.provider.run_pipeline(
+                name,
+                event_sink=event_sink,
+            )
+            status = result.get("status", "unknown")
+            if status == "completed":
+                self.app.notify(f"Pipeline '{name}' completed")
+            else:
+                error = result.get("error", "unknown error")
+                self.app.notify(
+                    f"Pipeline '{name}' failed: {error}",
+                    severity="error",
+                )
+
+        self.app.run_worker(_run(), exclusive=False)
 
     def action_refresh_pipelines(self) -> None:
         """Refresh the pipelines table."""

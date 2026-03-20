@@ -11,6 +11,16 @@ from miniautogen.tui.views.engines import EnginesView
 from miniautogen.tui.views.config import ConfigView
 
 
+def test_pipelines_view_run_action_exists() -> None:
+    """PipelinesView must have an action_run_pipeline that doesn't use post_message_from_child."""
+    import inspect
+    from miniautogen.tui.views.pipelines import PipelinesView
+    source = inspect.getsource(PipelinesView.action_run_pipeline)
+    assert "post_message_from_child" not in source, (
+        "action_run_pipeline should not use the broken post_message_from_child pattern"
+    )
+
+
 @pytest.mark.parametrize(
     "view_cls,expected_title",
     [
