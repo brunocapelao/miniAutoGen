@@ -153,3 +153,23 @@ def test_create_store_warns_on_db_config() -> None:
         assert isinstance(store, InMemoryRunStore)
         assert len(w) == 1
         assert "not yet supported" in str(w[0].message).lower()
+
+
+def test_create_store_returns_sqlalchemy_when_url_set() -> None:
+    """When database_config has a URL, create_store_from_config returns SQLAlchemyRunStore."""
+    from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
+
+    store = create_store_from_config({"url": "sqlite+aiosqlite:///test.db"})
+    assert isinstance(store, SQLAlchemyRunStore)
+
+
+def test_create_store_returns_in_memory_when_no_url() -> None:
+    """When database_config has no URL, returns InMemoryRunStore."""
+    store = create_store_from_config({})
+    assert isinstance(store, InMemoryRunStore)
+
+
+def test_create_store_returns_in_memory_when_none() -> None:
+    """When database_config is None, returns InMemoryRunStore."""
+    store = create_store_from_config(None)
+    assert isinstance(store, InMemoryRunStore)
