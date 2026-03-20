@@ -19,6 +19,18 @@ from miniautogen.api import (
     PipelineRunner,
 )
 from miniautogen.cli.config import ProjectConfig
+from miniautogen.core.contracts.events import ExecutionEvent
+from miniautogen.core.events.event_sink import CompositeEventSink, EventSink
+
+
+class _VerboseEventSink:
+    """Event sink that echoes events to stderr for --verbose mode."""
+
+    async def publish(self, event: ExecutionEvent) -> None:
+        click.echo(
+            f"[{event.type}] run_id={event.run_id} scope={event.scope}",
+            err=True,
+        )
 
 
 def resolve_pipeline_target(
@@ -147,7 +159,12 @@ async def execute_pipeline(
         else:
             pipeline = factory()
 
-        event_sink = InMemoryEventSink()
+        memory_sink = InMemoryEventSink()
+        if verbose:
+            verbose_sink = _VerboseEventSink()
+            event_sink: EventSink = CompositeEventSink(sinks=[memory_sink, verbose_sink])
+        else:
+            event_sink = memory_sink
         execution_policy = None
         if timeout is not None:
             execution_policy = ExecutionPolicy(
@@ -181,7 +198,7 @@ async def execute_pipeline(
         return {
             "status": "completed",
             "output": result,
-            "events": len(event_sink.events),
+            "events": len(memory_sink.events),
             "input_provided": pipeline_input is not None,
             "resumed": resume_run_id is not None,
             "engine": engine_config["engine_name"] if engine_config else None,

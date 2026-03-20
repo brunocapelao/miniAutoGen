@@ -100,3 +100,15 @@ async def test_execute_pipeline_not_found(tmp_path: Path) -> None:
     config = load_config(project / CONFIG_FILENAME)
     with pytest.raises(KeyError, match="nonexistent"):
         await execute_pipeline(config, "nonexistent", project)
+
+
+@pytest.mark.anyio
+async def test_execute_pipeline_verbose_emits_to_stderr(tmp_path: Path, capsys) -> None:
+    """When verbose=True, execution events should be echoed to stderr."""
+    project = _make_runnable_project(tmp_path)
+    config = load_config(project / CONFIG_FILENAME)
+    result = await execute_pipeline(config, "main", project, verbose=True)
+    assert result["status"] == "completed"
+    captured = capsys.readouterr()
+    # Verbose mode should produce event output on stderr
+    assert "run_started" in captured.err or "RUN_STARTED" in captured.err
