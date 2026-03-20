@@ -80,14 +80,14 @@ def create_store_from_config(
 ) -> RunStore:
     """Create a RunStore from project database config.
 
-    Uses InMemoryRunStore if no database URL configured.
+    When database_config contains a 'url' key, returns a SQLAlchemyRunStore
+    backed by that database. Otherwise returns InMemoryRunStore.
+
+    Note: The caller is responsible for calling store.init_db() on the
+    SQLAlchemyRunStore before first use to create tables.
     """
     if database_config and database_config.get("url"):
-        import warnings
+        from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 
-        warnings.warn(
-            "Database-backed sessions not yet supported; "
-            "using in-memory store. Data will not persist.",
-            stacklevel=2,
-        )
+        return SQLAlchemyRunStore(db_url=database_config["url"])
     return InMemoryRunStore()

@@ -141,18 +141,14 @@ async def test_list_sessions_with_limit() -> None:
     assert len(runs) == 3
 
 
-def test_create_store_warns_on_db_config() -> None:
-    """Warns when database config provided but ignored."""
-    import warnings
+def test_create_store_with_db_config_returns_sqlalchemy() -> None:
+    """When database config with URL is provided, returns SQLAlchemyRunStore."""
+    from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        store = create_store_from_config(
-            {"url": "sqlite+aiosqlite:///test.db"},
-        )
-        assert isinstance(store, InMemoryRunStore)
-        assert len(w) == 1
-        assert "not yet supported" in str(w[0].message).lower()
+    store = create_store_from_config(
+        {"url": "sqlite+aiosqlite:///test.db"},
+    )
+    assert isinstance(store, SQLAlchemyRunStore)
 
 
 def test_create_store_returns_sqlalchemy_when_url_set() -> None:
