@@ -104,22 +104,32 @@ class CLIAgentDriver(AgentDriver):
         )
 
         try:
-            # Prepare input as JSON
-            input_data = dumps({
-                "session_id": request.session_id,
-                "messages": request.messages,
-                "metadata": request.metadata,
-            }) + "\n"
+            # Extract the last user message as the prompt text
+            prompt_text = self._extract_prompt(request.messages)
+
+            # Build command with prompt flag for CLI tools that support it
+            cmd = list(self._command)
+            if prompt_text and self._supports_prompt_flag():
+                cmd.extend(["-p", prompt_text])
+                stdin_data = None
+            else:
+                # Fallback: send JSON on stdin for tools that expect it
+                stdin_data = (dumps({
+                    "session_id": request.session_id,
+                    "messages": request.messages,
+                    "metadata": request.metadata,
+                }) + "\n").encode()
 
             async with await anyio.open_process(
-                self._command,
+                cmd,
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             ) as proc:
-                # Send input
+                # Send input if needed
                 if proc.stdin:
-                    await proc.stdin.send(input_data.encode())
+                    if stdin_data:
+                        await proc.stdin.send(stdin_data)
                     await proc.stdin.aclose()
 
                 # Read output
@@ -180,3 +190,33 @@ class CLIAgentDriver(AgentDriver):
 
     async def capabilities(self) -> BackendCapabilities:
         return self._caps
+
+    def _supports_prompt_flag(self) -> bool:
+        """Check if the CLI tool supports -p/--prompt flag for headless mode."""
+        # Known CLI tools that accept -p for non-interactive prompts
+        base_cmd = self._command[0] if self._command else ""
+        return base_cmd in ("gemini", "claude", "codex")
+
+    @staticmethod
+    def _extract_prompt(messages: list[dict[str, Any]]) -> str | None:
+        """Extract the text content from the last user message.
+
+        For CLI tools that accept a prompt string rather than a full
+        chat history, we extract just the last user message content.
+        """
+        if not messages:
+            return None
+        # Find the last user message
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                content = msg.get("content", "")
+                if isinstance(content, str):
+                    return content
+                # Handle structured content (list of parts)
+                if isinstance(content, list):
+                    texts = [
+                        p.get("text", "") for p in content
+                        if isinstance(p, dict) and p.get("type") == "text"
+                    ]
+                    return "\n".join(texts) if texts else None
+        return None

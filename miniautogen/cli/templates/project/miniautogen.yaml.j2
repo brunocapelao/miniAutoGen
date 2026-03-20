@@ -8,7 +8,7 @@ defaults:
 
 engines:
   default_api:
-    kind: api
+    kind: {{ "cli" if provider in ("gemini-cli", "claude-code", "codex-cli") else "api" }}
     provider: "{{ provider }}"
     model: "{{ model }}"
     temperature: 0.2
