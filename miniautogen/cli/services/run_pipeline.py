@@ -111,6 +111,7 @@ async def execute_pipeline(
     verbose: bool = False,
     pipeline_input: str | None = None,
     resume_run_id: str | None = None,
+    event_sink: Any = None,
 ) -> dict[str, Any]:
     """Execute a named pipeline from the project config.
 
@@ -160,12 +161,13 @@ async def execute_pipeline(
         else:
             pipeline = factory()
 
-        memory_sink = InMemoryEventSink()
+        internal_sink = InMemoryEventSink()
+        sinks: list[Any] = [internal_sink]
         if verbose:
-            verbose_sink = _VerboseEventSink()
-            event_sink: EventSink = CompositeEventSink(sinks=[memory_sink, verbose_sink])
-        else:
-            event_sink = memory_sink
+            sinks.append(_VerboseEventSink())
+        if event_sink is not None:
+            sinks.append(event_sink)
+        effective_sink: EventSink = CompositeEventSink(sinks=sinks) if len(sinks) > 1 else internal_sink
         execution_policy = None
         if timeout is not None:
             execution_policy = ExecutionPolicy(
@@ -173,7 +175,7 @@ async def execute_pipeline(
             )
 
         runner = PipelineRunner(
-            event_sink=event_sink,
+            event_sink=effective_sink,
             execution_policy=execution_policy,
         )
 
@@ -218,7 +220,7 @@ async def execute_pipeline(
         return {
             "status": "completed",
             "output": result,
-            "events": len(memory_sink.events),
+            "events": len(internal_sink.events),
             "input_provided": pipeline_input is not None,
             "resumed": resume_run_id is not None,
             "engine": engine_config["engine_name"] if engine_config else None,
