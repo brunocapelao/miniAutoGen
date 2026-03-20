@@ -18,6 +18,17 @@ def test_tui_event_wraps_execution_event() -> None:
     assert msg.event.type == EventType.RUN_STARTED.value
 
 
+def test_run_completed_message_exists() -> None:
+    """RunCompleted message must be importable and carry pipeline name."""
+    from textual.message import Message
+
+    from miniautogen.tui.messages import RunCompleted
+    msg = RunCompleted(pipeline_name="main", status="completed")
+    assert isinstance(msg, Message)
+    assert msg.pipeline_name == "main"
+    assert msg.status == "completed"
+
+
 def test_sidebar_refresh_message_exists() -> None:
     """SidebarRefresh message must be importable."""
     from textual.message import Message

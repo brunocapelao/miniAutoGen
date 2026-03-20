@@ -16,6 +16,15 @@ class SidebarRefresh(Message):
     pass
 
 
+class RunCompleted(Message):
+    """Posted when a pipeline run completes (success or failure)."""
+
+    def __init__(self, pipeline_name: str, status: str) -> None:
+        super().__init__()
+        self.pipeline_name = pipeline_name
+        self.status = status
+
+
 class TuiEvent(Message):
     """Wraps a core ExecutionEvent as a Textual Message.
 

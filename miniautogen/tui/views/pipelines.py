@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Static
 
+from miniautogen.tui.messages import RunCompleted
 from miniautogen.tui.views.base import SecondaryView
 
 
@@ -124,6 +125,7 @@ class PipelinesView(SecondaryView):
                     f"Pipeline '{name}' failed: {error}",
                     severity="error",
                 )
+            self.app.post_message(RunCompleted(pipeline_name=name, status=status))
 
         self.app.run_worker(_run(), exclusive=False)
 
