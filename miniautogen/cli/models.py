@@ -18,3 +18,4 @@ class CheckResult:
     passed: bool
     message: str
     category: Literal["static", "environment"]
+    warning: bool = False

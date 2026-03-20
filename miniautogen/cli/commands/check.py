@@ -27,6 +27,7 @@ def check_command(output_format: str) -> None:
             {
                 "name": r.name,
                 "passed": r.passed,
+                "warning": r.warning,
                 "message": r.message,
                 "category": r.category,
             }
@@ -35,7 +36,7 @@ def check_command(output_format: str) -> None:
     else:
         rows = [
             [
-                "PASS" if r.passed else "FAIL",
+                "WARN" if r.warning else ("PASS" if r.passed else "FAIL"),
                 r.name,
                 r.message,
             ]

@@ -156,7 +156,7 @@ class TestGatewayAccessibility:
         assert len(passed) == 1
 
     def test_gateway_not_running(self, tmp_path: Path) -> None:
-        """Gateway health check fails."""
+        """Gateway health check returns warning (not failure) when offline."""
         import urllib.error
 
         cfg = _base_config()
@@ -171,9 +171,10 @@ class TestGatewayAccessibility:
             side_effect=urllib.error.URLError("refused"),
         ):
             results = _check_gateway_accessibility(config)
-        failed = [r for r in results if not r.passed]
-        assert len(failed) == 1
-        assert "not accessible" in failed[0].message
+        warnings = [r for r in results if r.warning]
+        assert len(warnings) == 1
+        assert warnings[0].passed is True
+        assert "not accessible" in warnings[0].message
 
 
 # ── Agent YAML non-dict content ─────────────────────────────────────────

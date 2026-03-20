@@ -472,12 +472,13 @@ def _check_gateway_accessibility(
         except (urllib.error.URLError, OSError):
             results.append(CheckResult(
                 name=f"gateway:{endpoint}",
-                passed=False,
+                passed=True,
                 message=(
-                    f"Gateway at {endpoint} is not accessible. "
+                    f"WARN: Gateway at {endpoint} is not accessible. "
                     f"Run 'miniautogen server start' to start it."
                 ),
                 category="environment",
+                warning=True,
             ))
 
     return results
