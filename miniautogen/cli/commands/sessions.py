@@ -53,6 +53,10 @@ def sessions_list(
     )
     store = create_store_from_config(db_config)
 
+    # Ensure tables exist for SQLAlchemy-backed stores
+    if hasattr(store, "init_db"):
+        run_async(store.init_db)
+
     runs = run_async(list_sessions, store, status, limit)
 
     if output_format == "json":
@@ -92,6 +96,10 @@ def sessions_show(run_id: str, output_format: str) -> None:
         else None
     )
     store = create_store_from_config(db_config)
+
+    # Ensure tables exist for SQLAlchemy-backed stores
+    if hasattr(store, "init_db"):
+        run_async(store.init_db)
 
     run = run_async(show_session, store, run_id)
 
@@ -143,6 +151,10 @@ def sessions_clean(
         else None
     )
     store = create_store_from_config(db_config)
+
+    # Ensure tables exist for SQLAlchemy-backed stores
+    if hasattr(store, "init_db"):
+        run_async(store.init_db)
 
     if not skip_confirm:
         if not click.confirm("Delete matching runs?"):

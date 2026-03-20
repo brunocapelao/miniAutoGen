@@ -87,7 +87,7 @@ def create_store_from_config(
     SQLAlchemyRunStore before first use to create tables.
     """
     if database_config and database_config.get("url"):
-        from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
+        from miniautogen.api import SQLAlchemyRunStore
 
         return SQLAlchemyRunStore(db_url=database_config["url"])
     return InMemoryRunStore()
