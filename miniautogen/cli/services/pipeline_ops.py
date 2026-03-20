@@ -243,3 +243,72 @@ def update_pipeline(
         update_yaml_preserving(cfg_path, {name: after}, section=section)
 
     return result
+
+
+def delete_pipeline(
+    project_root: Path,
+    name: str,
+) -> dict[str, Any]:
+    """Delete a pipeline/flow configuration, checking for references first.
+
+    Checks:
+    1. Agent configs that reference this flow (flow field).
+    2. Composite pipelines that chain this flow.
+
+    Returns info about the deletion. Raises KeyError if not found,
+    ValueError if referenced by agents or other flows.
+    """
+    import yaml as _yaml
+
+    validate_resource_name(name, "pipeline")
+    cfg_path = _config_path(project_root)
+    data = read_yaml(cfg_path)
+    pipelines = _get_pipelines_section(data)
+
+    if name not in pipelines:
+        available = ", ".join(pipelines) or "(none)"
+        msg = f"Flow '{name}' not found. Available: {available}"
+        raise KeyError(msg)
+
+    # Check for agent references
+    agents_dir = project_root / "agents"
+    referencing_agents: list[str] = []
+    if agents_dir.is_dir():
+        for yaml_file in agents_dir.glob("*.yaml"):
+            try:
+                agent_data = _yaml.safe_load(yaml_file.read_text())
+                if isinstance(agent_data, dict) and agent_data.get("flow") == name:
+                    referencing_agents.append(yaml_file.stem)
+            except _yaml.YAMLError:
+                pass
+
+    if referencing_agents:
+        msg = (
+            f"Cannot delete flow '{name}': referenced by agent(s): "
+            f"{', '.join(referencing_agents)}. "
+            f"Update these agents first."
+        )
+        raise ValueError(msg)
+
+    # Check for composite pipeline references
+    referencing_flows: list[str] = []
+    for pname, pcfg in pipelines.items():
+        if pname == name:
+            continue
+        if isinstance(pcfg, dict):
+            chain = pcfg.get("chain", [])
+            if name in chain:
+                referencing_flows.append(pname)
+
+    if referencing_flows:
+        msg = (
+            f"Cannot delete flow '{name}': referenced by composite flow(s): "
+            f"{', '.join(referencing_flows)}. "
+            f"Update these flows first."
+        )
+        raise ValueError(msg)
+
+    pipeline_data = dict(pipelines[name]) if isinstance(pipelines[name], dict) else {"target": str(pipelines[name])}
+    del pipelines[name]
+    write_yaml(cfg_path, data)
+    return {"deleted": name, "config": pipeline_data}
