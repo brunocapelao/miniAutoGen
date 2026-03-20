@@ -90,6 +90,34 @@ async def test_app_has_event_sink_after_mount() -> None:
 
 
 @pytest.mark.asyncio
+async def test_events_flow_to_interaction_log() -> None:
+    """Events published to TuiEventSink should reach InteractionLog via EventBridge."""
+    from miniautogen.core.contracts.events import ExecutionEvent
+    from miniautogen.core.events.types import EventType
+    from miniautogen.tui.widgets.work_panel import WorkPanel
+
+    app = MiniAutoGenDash()
+    async with app.run_test(size=(120, 40)) as pilot:
+        # Publish an event to the sink
+        assert app._event_sink is not None
+        event = ExecutionEvent(
+            type=EventType.COMPONENT_STARTED.value,
+            run_id="test-run",
+            payload={"component_name": "Planning", "step_number": 1},
+        )
+        await app._event_sink.publish(event)
+
+        # Give the bridge worker time to process (batch interval is 100ms)
+        import asyncio
+        await asyncio.sleep(0.3)
+
+        # Verify the interaction log received the event
+        work_panel = app.query_one(WorkPanel)
+        assert work_panel.interaction_log.entry_count >= 1
+        await pilot.press("q")
+
+
+@pytest.mark.asyncio
 async def test_app_mounts_without_error() -> None:
     """Smoke test: the app mounts and can be started in headless mode."""
     app = MiniAutoGenDash()
