@@ -1,5 +1,7 @@
 Perfeito. Abaixo está um **sumário executivo + spec de implementação** orientado a fazer o **miniAutoGen** evoluir de “boa arquitetura-base” para um **runtime agentic mais maduro que o LangGraph**.
 
+> **Nota de terminologia:** Este documento foi escrito antes da migração terminológica DA-9. Onde se lê “pipeline”, entenda-se “flow”; onde se lê “backend”, entenda-se “engine”; onde se lê “project”, entenda-se “workspace”. Para a terminologia canónica, consultar o [README estratégico](../pt/README.md).
+
 A base pública atual do miniAutoGen já é boa para isso: ele se apresenta como uma biblioteca leve para orquestração de conversas, pipelines e execução multiagente, com `PipelineRunner` como runtime oficial, contratos tipados, stores separados para mensagens/runs/checkpoints, adapters de LLM desacoplados e uma camada unificada de drivers externos (`AgentDriver`, `AgentAPIDriver`, `BackendResolver`). ([GitHub][1])
 
 O ponto central é este: o LangGraph hoje é forte porque trata **durable execution, human-in-the-loop, persistence por step, time travel/fork e composição por subgraphs** como capacidades nativas do runtime, não como lógica espalhada em aplicações. A documentação oficial enfatiza exatamente isso. ([Documentação LangChain][2])

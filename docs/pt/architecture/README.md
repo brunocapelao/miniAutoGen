@@ -25,10 +25,10 @@ A evolução arquitetural do MiniAutoGen consolida quatro conceitos de primeira 
 
 | Conceito | Descrição |
 |----------|-----------|
-| **Workspace** | Unidade organizacional de topo. Substitui o antigo "Project". Contém configuração, agentes, flows e estado de sessão. *(Proposto — código atual usa "Project")* |
+| **Workspace** | Unidade organizacional de topo. Substitui o antigo "Project". Contém configuração, agentes, flows e estado de sessão. *(Implementado via DA-9 — aliases de compatibilidade mantidos)* |
 | **Engine** | Abstração unificada do provedor de inteligência (API, CLI agent, gateway). Substitui o antigo "EngineProfile". |
 | **Agent** | Entidade com identidade, engine, runtime local, policies e protocol adapters. A anatomia completa é descrita em [`07-agent-anatomy.md`](07-agent-anatomy.md). |
-| **Flow** | Sequência coordenada de interações entre agentes. Substitui o antigo "Pipeline" na terminologia do utilizador. *(Proposto — código atual usa "Pipeline")* |
+| **Flow** | Sequência coordenada de interações entre agentes. Substitui o antigo "Pipeline" na terminologia do utilizador. *(Implementado via DA-9 — aliases de compatibilidade mantidos)* |
 
 A estratégia multi-provider é central ao design: **"O agente é commodity. O runtime é o produto."** O MiniAutoGen trata engines (Claude, GPT, Gemini, Codex CLI, etc.) como recursos intercambiáveis, focando o valor diferencial na camada de runtime -- coordenação, policies, observabilidade e interceptors. Para contexto competitivo, consulte [`../../competitive-landscape.md`](../../competitive-landscape.md).
 

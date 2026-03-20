@@ -232,7 +232,7 @@ google = ["google-genai"]  # Google Gemini SDK
 | **Dependências totais** (incluindo transitivas) | ~85 pacotes |
 | **Módulos top-level** | 22 (`miniautogen/`) |
 | **Testes** | 336+ (unit + integration + E2E) |
-| **Event Types** | 47+ em 12 categorias |
+| **Event Types** | 63+ em 13 categorias |
 | **Drivers implementados** | 7 (OpenAI, Anthropic, Google, LiteLLM, AgentAPI, CLI, Base) |
 | **Coordination Modes** | 4 (Workflow, AgenticLoop, Deliberation, Composite) |
 | **CLI Commands** | 12+ |

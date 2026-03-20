@@ -80,16 +80,18 @@ Isso cria uma nova categoria de interacao: o desenvolvedor opera mais como um **
 
 ### O repositorio
 
-O MiniAutoGen e um framework Python orientado a **Microkernel** para orquestracao de pipelines e agentes assincronos. A arquitetura atual tem ~15.000+ LOC distribuidos em 4 camadas:
+O MiniAutoGen e um framework Python orientado a **Microkernel** para orquestracao de flows e agentes assincronos. A arquitetura atual tem ~15.000+ LOC distribuidos em 4 camadas:
 
 | Camada | Responsabilidade | Modulos |
 |--------|------------------|---------|
 | **Core/Kernel** | Contratos, eventos, runtimes de coordenacao | `core/contracts/`, `core/events/`, `core/runtime/` |
 | **Policies** | Regras transversais (retry, budget, approval, timeout) | `policies/` |
-| **Adapters** | Drivers de backend, templates, LLM providers | `backends/`, `adapters/` |
+| **Adapters** | Engine Drivers, templates, LLM providers | `backends/`, `adapters/` |
 | **Shell** | CLI, TUI Dashboard, Server | `cli/`, `tui/`, `app/` |
 
-A complexidade do repositorio e relevante para entender o ambiente: nao se trata de um projeto simples onde "qualquer LLM resolve". A separacao rigorosa de responsabilidades, os 47+ tipos de evento canonicos, os 4 runtimes de coordenacao e a abstracacao multi-provider criam um contexto onde erros de acoplamento sao faceis de introduzir e dificeis de detectar. O ambiente de desenvolvimento precisa compensar isso.
+A complexidade do repositorio e relevante para entender o ambiente: nao se trata de um projeto simples onde "qualquer LLM resolve". A separacao rigorosa de responsabilidades, os 63 tipos de evento (expandindo para 69 com o AgentRuntime compositor) canonicos, os 4 runtimes de coordenacao e a abstracacao multi-provider criam um contexto onde erros de acoplamento sao faceis de introduzir e dificeis de detectar. O ambiente de desenvolvimento precisa compensar isso.
+
+> **Nota de terminologia (DA-9):** O código interno usa `PipelineRunner` e `backends/` como nomes de classes e módulos. Na terminologia pública, estes correspondem a "Flow runtime" e "Engine drivers" respectivamente. Ver [README estratégico](pt/README.md) para o mapeamento completo.
 
 ### Anatomia de uma sessao tipica
 
@@ -446,7 +448,7 @@ CONSTRAINTS:
 MUST DO:
 - Comparar ambas abordagens com code examples
 - Considerar composabilidade (multiplos interceptors encadeados)
-- Avaliar impacto no sistema de eventos canonicos (47+ types)
+- Avaliar impacto no sistema de eventos canonicos (63 tipos de evento, expandindo para 69 com o AgentRuntime compositor)
 - Fornecer effort estimate (Quick/Short/Medium/Large)
 
 MUST NOT DO:
@@ -1362,9 +1364,7 @@ O CLAUDE.md ganhou uma secao 5 com convencoes de branch naming (`feat/`, `fix/`,
 
 #### Layer 3 canonical patterns pendentes
 
-A documentacao de arquitetura do agente (`07-agent-anatomy.md`) descreve 5 layers do Agent, sendo a Layer 3 (Agent Runtime -- tools, memory, hooks, delegation) identificada como "O DIFERENCIAL". Porem, os padroes canonicos para essa layer ainda nao estao implementados. O runtime do agente e conceitual mas nao tem patterns de referencia que o agente de IA possa seguir.
-
-**Impacto:** Alto para contribuicoes futuras. Sem canonical patterns, cada implementacao de Layer 3 sera ad-hoc, potencialmente violando a consistencia arquitetural.
+> **Actualização (2026-03-20):** O AgentRuntime compositor foi especificado em `.specs/agent-runtime-compositor.md`. Layer 3 agora tem design formal com: compositor que implementa os 3 agent protocols existentes (WorkflowAgent, ConversationalAgent, DeliberationAgent), configuração per-agent em `.miniautogen/agents/{name}/` (prompt.md, tools.yml, memory/), filesystem sandbox para isolamento entre agentes, ToolExecutionPolicy para limites de recursos, e PersistentMemoryProvider para memória cross-session. Os coordination runtimes não mudam — o AgentRuntime satisfaz os mesmos protocols via duck typing.
 
 #### Ausencia de metricas de eficacia
 
@@ -1845,6 +1845,10 @@ Ha um paradoxo inerente a este tipo de ambiente: quanto mais sofisticado ele se 
 A resposta, provavelmente, e que a pergunta esta mal formulada. O valor nao esta no modelo nem no ambiente isoladamente -- esta na **composicao**. Um modelo poderoso sem ambiente produz "vibes". Um ambiente sofisticado com modelo fraco produz friccao sem resultado. A combinacao certa dos dois produz desenvolvimento de qualidade reprodutivel.
 
 E esse e, talvez, o maior insight deste ambiente: **a qualidade de software assistido por agentes nao e uma propriedade do modelo. E uma propriedade do sistema.**
+
+### Contexto competitivo
+
+A análise de 7 concorrentes (AutoGen, LangGraph, CrewAI, DeerFlow, Open SWE, Bit Office, padrões Anthropic) validou as 3 teses centrais do MiniAutoGen e informou o design do AgentRuntime. Detalhes em [análises de concorrentes](../../../.specs/analysis-competitors-deep-dive.md) e no [README estratégico](pt/README.md#validação-de-mercado).
 
 ---
 

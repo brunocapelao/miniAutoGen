@@ -45,7 +45,7 @@ A aplicação hospedeira interage com o Workspace, que por sua vez delega à API
 
 ### Aplicação hospedeira
 
-Não faz parte do pacote. É a aplicação Python que consome o MiniAutoGen como dependência. Instancia objetos, configura planos de coordenação, registra agentes e backends, e inicia a execução assíncrona.
+Não faz parte do pacote. É a aplicação Python que consome o MiniAutoGen como dependência. Instancia objetos, configura planos de coordenação, registra agentes e engines, e inicia a execução assíncrona.
 
 ---
 
@@ -133,6 +133,8 @@ Integrações com sistemas externos, isoladas do domínio por protocolos tipados
 - Jinja2Renderer: renderização de prompts via Jinja2.
 
 **Backend Drivers** (`backends/`):
+> Nota: Backend Drivers implementam o conceito de **Engine** definido no README estratégico. O nome do módulo `backends/` é mantido por compatibilidade de código.
+
 - AgentDriver: classe abstrata base para drivers de backend.
 - AgentAPIDriver: implementação HTTP para endpoints OpenAI-compatible (Gemini CLI gateway, LiteLLM, vLLM, Ollama).
 - BackendResolver: instanciação de drivers a partir de configuração.
@@ -143,13 +145,15 @@ Integrações com sistemas externos, isoladas do domínio por protocolos tipados
 
 **Diretório:** `stores/`
 
-Três tipos de store com duas implementações cada:
+Cinco tipos de store com duas implementações cada:
 
 | Store | InMemory | SQLAlchemy |
 | --- | --- | --- |
 | MessageStore | Sim | Sim |
 | RunStore | Sim | Sim |
 | CheckpointStore | Sim | Sim |
+| EffectJournal | Sim | Sim |
+| EventStore | Sim | Sim |
 
 O domínio comunica exclusivamente com protocolos de store. Os detalhes de infraestrutura (SQL, serialization) ficam encapsulados nas implementações concretas. O backend SQLAlchemy suporta SQLite (via aiosqlite) e PostgreSQL.
 
@@ -159,7 +163,7 @@ O domínio comunica exclusivamente com protocolos de store. Os detalhes de infra
 
 **Diretórios:** `observability/`, `core/events/`
 
-O sistema emite 47+ tipos de evento distribuídos em 12 categorias:
+O sistema emite 63+ tipos de evento distribuídos em 13 categorias:
 
 | Categoria | Quantidade | Exemplos |
 | --- | --- | --- |

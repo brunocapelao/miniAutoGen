@@ -1,5 +1,7 @@
 # MiniAutoGen — Retrospectiva Arquitetural Completa
 
+> **Nota de terminologia:** Este documento foi escrito antes da migração terminológica DA-9. Onde se lê "pipeline", entenda-se "flow"; onde se lê "backend", entenda-se "engine"; onde se lê "project", entenda-se "workspace". Para a terminologia canónica, consultar o [README estratégico](pt/README.md).
+
 **Comparação: v0 (commit 9d2ee2f) → Arquitetura Atual (main)**
 
 ---
@@ -40,7 +42,7 @@ miniautogen/
 ├── compat/            # Facade de compatibilidade
 ├── core/
 │   ├── contracts/     # ~15 Protocols + Pydantic models
-│   ├── events/        # 47+ EventTypes + sinks composáveis
+│   ├── events/        # 63+ EventTypes + sinks composáveis
 │   └── runtime/       # 4 runtimes (Workflow, AgenticLoop, Deliberation, Composite)
 ├── llms/              # Deprecated
 ├── observability/     # structlog
@@ -79,7 +81,7 @@ miniautogen/
 
 | v0 | Atual |
 |----|-------|
-| `logging.info("Round completed")` | 47+ EventTypes canônicos + sinks composáveis |
+| `logging.info("Round completed")` | 63+ EventTypes canônicos + sinks composáveis |
 | Sem correlação | `correlation_id` em cada evento |
 | Sem filtros | `FilteredEventSink` + `CompositeEventSink` |
 

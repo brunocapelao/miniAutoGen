@@ -742,6 +742,8 @@ ADK documents 6 canonical patterns:
 
 ## 7. Implications for MiniAutoGen
 
+> Os padrões identificados nesta pesquisa mapeiam directamente para a arquitectura do MiniAutoGen: Engines abstraem providers heterogéneos, Flows implementam os modos de coordenação (Workflow, Agentic Loop, Deliberation, Composite), e Interceptors/Policies operam lateralmente como middleware composável. A tese "o agente é commodity, o runtime é o produto" é reforçada pela convergência dos protocolos analisados para separação entre agente e orquestração.
+
 ### 7.1 Protocol Layer
 
 **Recommendation**: Align with A2A for inter-agent communication. A2A is the clear winner as the unified standard (absorbed ACP, backed by Google + Linux Foundation). Key concepts to adopt:
@@ -758,7 +760,7 @@ ADK documents 6 canonical patterns:
 - ADK's `instruction` with `{var}` state interpolation is a clean pattern
 - ADK's `output_key` for automatic state persistence is elegant for pipelines
 
-**For MiniAutoGen**: The existing PipelineRunner + component model aligns well with ADK's SequentialAgent/ParallelAgent patterns. Consider:
+**For MiniAutoGen**: The existing PipelineRunner (executor de Flows) + component model aligns well with ADK's SequentialAgent/ParallelAgent patterns. Consider:
 - LLM-driven agents that can transfer control (like ADK/OpenAI handoffs)
 - Deterministic workflow agents (already covered by PipelineRunner)
 - Agent metadata (name, description, skills) for discovery and routing

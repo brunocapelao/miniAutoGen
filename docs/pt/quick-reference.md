@@ -2,6 +2,8 @@
 
 Este documento descreve os módulos ativos do MiniAutoGen e as suas responsabilidades. Serve como mapa de navegação para desenvolvedores que precisam localizar rapidamente onde cada funcionalidade reside.
 
+> **Terminologia:** "Backend" (módulo de código) corresponde ao conceito de "Engine" na arquitectura do MiniAutoGen. "Pipeline" (módulo legado) corresponde ao conceito de "Flow".
+
 ---
 
 ## Núcleo
@@ -34,7 +36,7 @@ Helpers deliberativos: `summarize_peer_reviews`, `build_follow_up_tasks`, `apply
 
 ### `core/events/`
 
-Taxonomia de 47+ tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
+Taxonomia de 63+ tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
 
 ---
 
@@ -100,7 +102,7 @@ Protocolo base: `LLMProvider` (em `protocol.py`).
 
 ---
 
-## Backend drivers
+## Engine Drivers (backends/)
 
 ### `backends/`
 

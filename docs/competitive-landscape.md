@@ -1,18 +1,21 @@
 # MiniAutoGen — Análise Competitiva do Landscape de Orquestradores
 
-**Frameworks analisados:** Claude Code, Kimi CLI, OpenClaw, ChatDev 2.0, Agno (ex-Phidata), OpenHands (ex-OpenDevin), LangGraph, CrewAI
+> **Nota de terminologia:** Este documento usa a terminologia canónica DA-9: "Engine" (conexão com agentes externos), "Flow" (orquestração com coordination modes), "Workspace" (container de alto nível). Onde referências ao código usam nomes antigos (AgentDriver, PipelineRunner, backends/), estes são nomes de implementação — o conceito é Engine/Flow.
+
+**Frameworks analisados:** Claude Code, Kimi CLI, OpenClaw, ChatDev 2.0, Agno (ex-Phidata), OpenHands (ex-OpenDevin), LangGraph, CrewAI, DeerFlow, Open SWE, Bit Office
 
 ---
 
 ## 1. Taxonomia do Mercado
 
-Antes de comparar, é preciso entender que estes frameworks **não competem todos na mesma categoria**. O mercado de orquestração de agentes se divide em três segmentos distintos:
+Antes de comparar, é preciso entender que estes frameworks **não competem todos na mesma categoria**. O mercado de orquestração de agentes se divide em quatro segmentos distintos:
 
 | Segmento | Descrição | Frameworks |
 |---|---|---|
 | **Coding Agents** | Agente único com tool-use para tarefas de desenvolvimento | Claude Code, Kimi CLI, OpenHands |
 | **Multi-Agent Platforms** | Orquestração de múltiplos agentes com coordenação | ChatDev, Agno, CrewAI, LangGraph |
 | **Personal AI Hubs** | Gateway multi-canal com routing para agentes | OpenClaw |
+| **Agent Harnesses** | Orquestração especializada para um domínio específico | DeerFlow, Open SWE, Bit Office |
 
 **MiniAutoGen compete no segmento Multi-Agent Platforms**, mas com ambição de ser um **runtime/SDK** (não um produto end-user como ChatDev ou OpenHands).
 
@@ -67,7 +70,7 @@ Antes de comparar, é preciso entender que estes frameworks **não competem todo
 **Forças:** Suporte nativo a ACP, integração com ecossistema chinês de LLMs
 **Fraquezas:** Zero orquestração multi-agente, sem abstrações de coordenação
 
-**Relevância para MiniAutoGen:** O suporte a **ACP como protocol de exposição** é interessante. MiniAutoGen já tem `AgentDriver` que poderia expor agents via ACP. Convergência de protocols é uma tendência.
+**Relevância para MiniAutoGen:** O suporte a **ACP como protocol de exposição** é interessante. MiniAutoGen já tem Engine (`AgentDriver`) que poderia expor agents via ACP. Convergência de protocols é uma tendência.
 
 ---
 
@@ -250,7 +253,7 @@ Antes de comparar, é preciso entender que estes frameworks **não competem todo
 | **Callbacks apenas observacionais** — não transformam fluxo | Interceptors transformam (before/after/on_routing) |
 | **Acoplado ao ecossistema LangChain** — vendor lock | Protocol-based, provider-agnostic |
 | **Side effects sem formalização** — recomenda idempotência mas não enforce | EffectPolicy + idempotency_key + effect journal |
-| **Heterogeneidade de backends fraca** — focado em LLM calls | AgentDriver abstrai qualquer backend |
+| **Heterogeneidade de backends fraca** — focado em LLM calls | Engine abstrai qualquer engine |
 | **Fan-out estático** — branches definidos no grafo, não em runtime | Fan-out dinâmico via RouterDecision.next_agents |
 
 **Paralelismo:** Fan-out estático (branches no grafo), join nodes
@@ -264,6 +267,35 @@ Antes de comparar, é preciso entender que estes frameworks **não competem todo
 **Paralelismo:** Async tasks (declarado na task config)
 **Extensibilidade:** Custom tools, custom LLMs
 **Fraqueza:** Sem hooks. Sem composição de modos. Process é fixo.
+
+---
+
+### 2.9 Agent Harnesses Especializados (2025-2026)
+
+Uma nova categoria emergiu: **agent harnesses** — sistemas especializados que orquestram agentes para um caso de uso específico. Diferem dos frameworks genéricos por serem opiniados sobre o domínio.
+
+#### DeerFlow (ByteDance)
+- **Tipo:** Research agent harness (MIT, Feb 2026)
+- **Base:** LangGraph + LangChain
+- **Inovações:** Progressive skill loading (3 tiers: metadata ~100 tok, body sob demanda, resources quando referenciado), filesystem-first state (`/mnt/user-data/workspace/`), 9 middlewares composáveis, MCP com `add_to_agents` para scoping de tools por agente
+- **Limitações:** Sem supervision trees, sem idempotência, sem contratos tipados, 1 modo de coordenação (lead → sub-agents), dependência LangChain/LangGraph
+- **Relevância:** Valida os 3 pilares de infraestrutura composável. O padrão de progressive loading reduz custos em 13× vs abordagem monolítica.
+
+#### Open SWE (LangChain)
+- **Tipo:** Coding agent assíncrono (MIT, 7.4k stars)
+- **Base:** LangGraph + Deep Agents
+- **Inovações:** Deterministic backstops (middlewares que garantem ações críticas independente do LLM), SandboxProtocol com 5 providers plugáveis (LangSmith, Modal, Daytona, Runloop, local), tool curation (~15 tools curados vs centenas), message injection mid-run, AGENTS.md como config per-repo
+- **Limitações:** Sem generalidade (só coding), 1 modo de coordenação, sem observabilidade built-in, dependência LangGraph/Deep Agents
+- **Relevância:** Valida que deterministic backstops são essenciais em produção. O SandboxProtocol é um padrão extensível para isolamento.
+
+#### Bit Office
+- **Tipo:** Visual multi-agent office (MIT, 136 stars)
+- **Base:** Node.js + PixiJS + Tauri v2
+- **Inovações:** Git worktree isolation para multi-agente no filesystem, memória persistente com feedback loop (ratings → prompt injection), detecção automática de CLIs instalados, preview resolution automático, pair-code para acesso mobile
+- **Limitações:** 1 modo de coordenação (Leader → Dev → Reviewer), sem contratos tipados, persistência em JSON files, parsing frágil de output de CLIs
+- **Relevância:** Valida a tese "agente é commodity" — trata Claude/Codex/Gemini como processos intercambiáveis. Git worktrees são solução elegante para isolamento de agentes code-writing.
+
+**Implicação estratégica:** Cada harness poderia ser construído usando MiniAutoGen como runtime base — validando a posição de "runtime genérico".
 
 ---
 
@@ -281,7 +313,7 @@ Antes de comparar, é preciso entender que estes frameworks **não competem todo
 | **OpenHands** | SDK + agent autônomo | Escala horizontal (enterprise) | Skills + integrations |
 | **LangGraph** | Grafo de nós + arestas | Nós são agentes | Grafo declarativo |
 | **CrewAI** | Tasks + Agents + Process | Sequential/Hierarchical | Declarativo + tools |
-| **MiniAutoGen** | Runtimes tipados + PipelineRunner | 4 runtimes + composite | Protocols + specs |
+| **MiniAutoGen** | Runtimes tipados + Flow runtime (PipelineRunner) | 4 runtimes + composite | Protocols + specs |
 | **MiniAutoGen (proposta)** | + Interceptors composáveis | + Fan-out dinâmico | + Middleware transformativo |
 
 ### 3.2 Paralelismo
@@ -311,8 +343,8 @@ Antes de comparar, é preciso entender que estes frameworks **não competem todo
 | **OpenHands** | Não documentado | Não | Não |
 | **LangGraph** | Callbacks (observacionais) | Não | Não |
 | **CrewAI** | Não | Não | Não |
-| **MiniAutoGen** | EventSink (47+ tipos) | Não (ainda) | Não (ainda) |
-| **MiniAutoGen (proposta)** | EventSink (47+ tipos) | **Sim (interceptors transformam fluxo)** | **Sim (before/after/on_routing)** |
+| **MiniAutoGen** | EventSink (63+ tipos) | Não (ainda) | Não (ainda) |
+| **MiniAutoGen (proposta)** | EventSink (63+ tipos) | **Sim (interceptors transformam fluxo)** | **Sim (before/after/on_routing)** |
 
 ### 3.4 Human-in-the-Loop
 
@@ -352,7 +384,7 @@ Esta é a dimensão onde o LangGraph lidera o mercado e onde MiniAutoGen tem o m
 O LangGraph vence hoje em durable execution. MiniAutoGen pode superar em:
 1. **Composição mais limpa** (interceptors vs redesenhar grafo)
 2. **Semântica operacional mais explícita** (EffectPolicy, idempotency_key)
-3. **Heterogeneidade de backends** (AgentDriver vs LangChain-only)
+3. **Heterogeneidade de engines** (Engine vs LangChain-only)
 
 ---
 
@@ -411,128 +443,9 @@ Este case study documenta 6 agentes especializados rodando 24/7 em produção re
 
 ## 5. Posicionamento Estratégico
 
-### Onde MiniAutoGen pode vencer
+> O posicionamento estratégico completo — incluindo os 5 pilares, o quadrante competitivo, e a validação de mercado com as 3 teses — está definido no [README estratégico](pt/README.md). Este documento foca nos dados competitivos raw que sustentam esse posicionamento.
 
-```
-                    Flexibilidade de Composição
-                            ▲
-                            │
-                    MiniAutoGen (proposta)
-                            │
-              ChatDev ──────┼────── Agno
-                            │
-              CrewAI ───────┼────── LangGraph
-                            │
-                            │
-         ───────────────────┼──────────────────► Robustez / Type Safety
-                            │
-              OpenHands ────┼────── Claude Code
-                            │
-              Kimi CLI ─────┼────── OpenClaw
-                            │
-```
-
-**Quadrante alvo:** Alta flexibilidade de composição + Alta robustez/type safety. **Nenhum framework ocupa este quadrante hoje.**
-
-- **Agno** tem boa composição mas types fracos
-- **LangGraph** tem boa robustez mas composição rígida (grafo estático)
-- **MiniAutoGen (proposta)** com interceptors + protocols + runtimes tipados seria único
-
-### 5.2 A Mudança Tectônica do Mercado
-
-O mercado de agentes convergiu para dois extremos — e ambos têm um problema estrutural:
-
-**Extremo 1 — Agentes monolíticos cada vez mais poderosos:**
-
-Claude Code, Kimi CLI, OpenHands. O agente único que faz tudo: lê código, executa shell, navega web, spawna subagentes de si mesmo. A tendência é o agente ser **o** runtime — skills, hooks, MCP servers, tudo vive dentro do agente. Claude Code com seu sistema de hooks, subagents em worktrees, e MCP é o melhor exemplo: um agente que é uma plataforma.
-
-**Problema:** Não orquestra múltiplos providers. Claude Code só spawna Claudes. Kimi CLI só spawna Kimis. Cada um é um silo.
-
-**Extremo 2 — Frameworks que tentam recriar o agente do zero:**
-
-LangGraph, CrewAI, Agno. Constroem agentes internos com prompts, tools, memory — reinventando o que Claude/GPT/Gemini já fazem nativamente.
-
-**Problema:** Agentes de framework são mais fracos que os nativos. Um "agente" do CrewAI com um system prompt e uma lista de tools é infinitamente menos capaz que o Claude Code com seus 47+ tools nativos, context de 200k, e capacidade de raciocínio autônomo. O framework adiciona overhead sem adicionar inteligência.
-
-**O buraco no mercado:**
-
-```
-Agentes monolíticos                    Frameworks que recriam agentes
-(Claude Code, Kimi, OpenHands)          (LangGraph, CrewAI, Agno)
-┌─────────────────────┐               ┌─────────────────────┐
-│ Agente poderoso      │               │ Framework            │
-│ mas isolado          │               │  └── Agente fraco   │
-│ (só usa a si mesmo)  │               │      (reinventado)   │
-└─────────────────────┘               └─────────────────────┘
-         │                                       │
-         │         ┌─────────────────┐           │
-         └────────►│  MiniAutoGen    │◄──────────┘
-                   │                 │
-                   │  Não reinventa  │
-                   │  o agente.      │
-                   │                 │
-                   │  Orquestra      │
-                   │  agentes reais  │
-                   │  de qualquer    │
-                   │  provider.      │
-                   └─────────────────┘
-```
-
-Ninguém faz o meio: **pegar agentes que já são poderosos e orquestrá-los como participantes de um runtime customizado.**
-
-### 5.3 A Tese Estratégica do MiniAutoGen
-
-**O agente é commodity. O runtime é o produto.**
-
-Claude é melhor que qualquer agente que um framework consiga construir. GPT também. Gemini também. Cada novo release os torna mais capazes. Competir na qualidade do agente é uma corrida perdida — os providers investem bilhões nisso.
-
-**O valor está em como agentes de diferentes providers trabalham juntos.** E é aqui que o MiniAutoGen se posiciona:
-
-```
-MiniAutoGen não compete com:              MiniAutoGen compete com:
-┌──────────────────────────┐             ┌──────────────────────────┐
-│ Claude Code (agente)      │             │ A cola que junta agentes │
-│ GPT (agente)              │             │ de providers diferentes  │
-│ Gemini (agente)           │             │ num runtime customizado  │
-│ Qualquer LLM (agente)    │             │ com regras formais       │
-└──────────────────────────┘             └──────────────────────────┘
-     ↓ estes são INPUTS                       ↑ isto é o PRODUTO
-```
-
-**O AgentDriver é a abstração central.** Tudo o mais — interceptors, policies, coordination modes — são formas de compor o que os drivers expõem:
-
-```
-Runtime customizado (Flow)
-├── Coordination Mode (como colaboram)
-│   ├── WorkflowPlan, AgenticLoopPlan, DeliberationPlan, CompositePlan
-│
-├── Interceptors (o que acontece entre turns)
-│   ├── ContentBasedRerouter, HumanInputInterceptor, BudgetGuard...
-│
-├── Policies (regras laterais)
-│   ├── RetryPolicy, BudgetPolicy, TimeoutPolicy, EffectPolicy...
-│
-└── Participants (quem executa) ← O DIFERENCIAL
-    ├── Claude via AgentAPIDriver (API nativa)
-    ├── GPT via AgentAPIDriver (API nativa)
-    ├── Gemini via GeminiCLIDriver (gateway local)
-    ├── Ollama/vLLM via AgentAPIDriver (modelos locais)
-    ├── Agente custom via AgentDriver (qualquer implementação)
-    └── Outro MiniAutoGen runtime via CoordinatorCapability (recursão)
-```
-
-Cada participant mantém suas capacidades nativas (tools, memory, code interpreter) — o MiniAutoGen não as reinventa, apenas coordena.
-
-### 5.4 Proposta de Valor Diferenciada (atualizada)
-
-> **MiniAutoGen: o runtime que orquestra agentes de qualquer provider em flows customizados com interceptors composáveis, policies formais, e coordenação tipada — sem reinventar o agente.**
-
-**Os 5 pilares:**
-1. **Multi-provider nativo** — AgentDriver abstrai Claude, GPT, Gemini, modelos locais, agentes custom
-2. **Runtime customizável** — Interceptors + Policies + Coordination Modes composáveis
-3. **O agente é o que ele já é** — não enfraquece reinventando; cada provider expõe suas capacidades nativas
-4. **Contratos tipados** — Protocols + Pydantic garantem segurança na composição
-5. **Operação contínua** — Scheduler + MemoryDistiller + self-healing para agentes 24/7
+**Quadrante resumo:** MiniAutoGen ocupa o quadrante único de alta flexibilidade de composição + alta type safety. Nenhum framework analisado combina 4 modos de coordenação com Protocols runtime-checkable.
 
 ---
 
@@ -657,66 +570,9 @@ Fase 1 (Diferencial + DX)     Fase 2 (Durable + v0)        Fase 3 (Superar + 24/
 
 ## 7. Síntese Final
 
-### A mudança de paradigma
+> A síntese estratégica, incluindo a validação de mercado e o roadmap, está no [README estratégico](pt/README.md).
 
-O mercado ensinou duas lições:
-1. **Agentes monolíticos** (Claude Code, Kimi) ficam cada vez mais poderosos — tentar recriar o agente é uma corrida perdida
-2. **Frameworks que reinventam o agente** (CrewAI, LangGraph) criam agentes mais fracos que os nativos — adicionam overhead sem inteligência
-
-O MiniAutoGen se posiciona no **meio inexplorado**: não compete com o agente, orquestra agentes reais de qualquer provider. O AgentDriver é a abstração central; tudo o mais são formas de compor o que os drivers expõem.
-
-### Posição competitiva atual
-
-MiniAutoGen já tem vantagens estruturais reais:
-- **Contratos tipados** (Protocols + Pydantic) — nenhum concorrente tem no mesmo nível
-- **Composição de modos de coordenação** (CompositeRuntime) — exclusivo
-- **AgentDriver como abstração multi-provider** — qualquer backend converge no mesmo protocol
-- **Neutralidade de provider** — não é acoplado a nenhum ecossistema (vs LangGraph/LangChain)
-
-### Gaps críticos
-
-1. **Durable execution** — LangGraph lidera. Sem Fase 2 (StateMachine, Checkpoint, Interrupt), MiniAutoGen não é production-ready
-2. **Operação contínua** — caso OpenClaw 24/7 demonstra que scheduler + memory lifecycle são essenciais. Sem #15-#16, é um framework on-demand, não um runtime autônomo
-3. **Onboarding** — curva de aprendizado alta. Sem Quickstart (#4), ninguém chega a experimentar os diferenciais
-
-### A refatoração como ativo
-
-A arquitetura v0 tinha 3 insights perdidos na refatoração. O roadmap recupera todos — não como nostalgia, mas modernizados:
-- ChatAdmin → **CoordinatorCapability** com type safety (Fase 2, #9) — um Claude coordena GPTs e Geminis como sub-runtime
-- UserResponseComponent → **HumanInputInterceptor** com payload tipado (Fase 2, #8)
-- Agent.from_json() → **Quickstart mode** (Fase 1, #4)
-
-A refatoração criou a infraestrutura (Protocols, Runtimes, Events, AgentDriver) que permite implementar esses insights de forma **mais robusta** do que o v0 jamais poderia — e com a dimensão multi-provider que o v0 não tinha.
-
-### Por que ninguém pode copiar facilmente
-
-A combinação de:
-
-| Pilar | O que faz | Por que é difícil de copiar |
-|---|---|---|
-| **AgentDriver multi-provider** | Abstrai qualquer agente de qualquer provider | Requer arquitetura protocol-first desde o dia zero |
-| **Interceptors composáveis** | Customiza runtime sem tocar nos agentes | Requer que o runtime seja extensível por design, não por afterthought |
-| **Coordination Modes + Composite** | Sequencia modos diferentes no mesmo flow | Requer runtimes como primitivas composáveis, não grafos monolíticos |
-| **Contratos tipados** | Type safety na composição multi-provider | Requer Protocols formais, não duck typing |
-| **Durable execution** (roadmap) | Checkpoints, interrupt, replay, fork | Requer kernel-level design, não features bolted on |
-| **Operação 24/7** (roadmap) | Scheduler + memory distillation + self-healing | Requer integração com o runtime, não um cron externo |
-
-LangGraph teria que abandonar o modelo de grafo para ter interceptors. Agno teria que adicionar Protocols formais. CrewAI teria que reescrever do zero. Claude Code teria que se abrir para outros providers. Nenhum está posicionado para convergir no que o MiniAutoGen pode oferecer.
-
-### Oportunidade única
-
-> **MiniAutoGen: o runtime que orquestra agentes de qualquer provider em flows customizados — sem reinventar o agente.**
-
-Cada provider (Claude, GPT, Gemini, modelos locais) mantém suas capacidades nativas. O MiniAutoGen adiciona:
-- **Como trabalham juntos** → Coordination Modes composáveis
-- **O que acontece entre turns** → Interceptors transformativos
-- **Que regras aplicam** → Policies laterais tipadas
-- **Que garantias operacionais têm** → Durable execution + scheduler + memory lifecycle
-- **Quem pode coordenar quem** → CoordinatorCapability (agente orquestra sub-runtimes)
-
-### A frase que resume
-
-**O agente é commodity. O runtime é o produto. MiniAutoGen é o runtime.**
+**Conclusão operacional:** A análise de 10+ frameworks confirma que o mercado carece de um runtime genérico multi-provider com coordenação tipada. Os agent harnesses especializados (DeerFlow, Open SWE, Bit Office) validam parcialmente esta tese — cada um resolve um caso de uso mas nenhum oferece a generalidade e robustez do MiniAutoGen.
 
 ---
 

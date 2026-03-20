@@ -4,188 +4,185 @@
 
 ## Sumário executivo
 
-MiniAutoGen é um **runtime Python de orquestração multi-agente multi-provider**. Não reinventa o agente — orquestra agentes reais de qualquer provider (Claude, GPT, Gemini, modelos locais, CLI agents) em Flows customizados com interceptors composáveis, policies formais e coordenação tipada.
+MiniAutoGen é um **runtime Python de orquestração multi-agente multi-provider**. Não reinventa o agente — orquestra agentes reais de qualquer provider (Claude, GPT, Gemini, modelos locais, CLI agents, gateways) em Flows customizados com interceptors composáveis, policies formais e coordenação tipada.
 
-O mercado de agentes convergiu para dois extremos com problemas estruturais: agentes monolíticos poderosos que são silos (Claude Code, Kimi CLI) e frameworks que reinventam o agente mais fraco que o nativo (CrewAI, LangGraph). O MiniAutoGen ocupa o meio inexplorado: o **runtime que coordena o que agentes de diferentes providers fazem juntos**.
-
-### Os 5 pilares
-
-| Pilar | O que faz |
-|---|---|
-| **Multi-provider nativo** | AgentDriver abstrai Claude, GPT, Gemini, modelos locais, CLI agents, gateways |
-| **Runtime customizável** | Interceptors + Policies + Coordination Modes composáveis em Flows |
-| **O agente é o que ele já é** | Cada provider expõe suas capacidades nativas — o framework não as enfraquece |
-| **Contratos tipados** | Protocols + Pydantic garantem segurança na composição multi-provider |
-| **Operação contínua** | Scheduler + MemoryDistiller + self-healing para agentes 24/7 (roadmap) |
+O mercado de agentes convergiu para dois extremos com problemas estruturais: agentes monolíticos poderosos que são silos (Claude Code, Kimi CLI) e frameworks que reinventam o agente mais fraco que o nativo (CrewAI, LangGraph). Recentemente, uma nova onda de "agent harnesses" (DeerFlow, Open SWE, Bit Office) valida a tese de que **infraestrutura composável bate frameworks monolíticos** — mas cada um resolve apenas um caso de uso específico (research, coding, visual office). O MiniAutoGen ocupa o meio inexplorado: o **runtime genérico que coordena o que agentes de diferentes providers fazem juntos**, servindo como base para construir qualquer um desses sistemas especializados.
 
 ---
 
-## Conceitos de primeira classe
+## Os 5 pilares
+
+| Pilar | O que significa |
+|---|---|
+| **Multi-provider nativo** | Qualquer agente externo é um Engine — API, CLI ou gateway. O framework abstrai a conexão sem enfraquecer o provider. |
+| **O agente é o que ele já é** | Cada provider expõe suas capacidades nativas. O MiniAutoGen não reimplementa tool calling, code execution ou memory — usa o que o agente já sabe fazer e adiciona camadas de coordenação. |
+| **Runtime customizável** | Interceptors transformam o fluxo. Policies observam e reagem lateralmente. Coordination Modes definem como agentes colaboram. Tudo composável. |
+| **Contratos tipados** | Protocols runtime-checkable + Pydantic garantem que agentes de diferentes providers se compõem com segurança. A composição multi-provider é verificada, não assumida. |
+| **Operação contínua** | Agentes que operam 24/7 com scheduling, destilação de memória e self-healing. *(roadmap — sem validação de mercado ainda)* |
+
+---
+
+## O modelo mental
 
 O MiniAutoGen organiza-se em torno de **4 conceitos de primeira classe**:
 
 ```
 Workspace (miniautogen.yml)
-├── Engines        — conexão com agentes externos (Claude Code, GPT API, Gemini CLI, ...)
-├── Agents         — abstração sobre Engines com runtime próprio (tools, memory, hooks)
-├── Flows          — orquestração com interceptors, policies e coordenação composável
-└── Server/Gateway — exposição externa (capacidade do Workspace)
+├── Engines        — conexão com agentes externos
+├── Agents         — Engines enriquecidos com superpoderes locais
+├── Flows          — como os Agents colaboram entre si
+└── Server/Gateway — como o mundo externo interage com o Workspace
 ```
 
-### Workspace
+### Engines: o agente externo como commodity
 
-O container de mais alto nível. Define Engines, Agents, Flows e Defaults num único ficheiro `miniautogen.yml`. Também atua como servidor/gateway para interação externa.
+O Engine é a conexão com um agente externo. Pode ser uma API stateless (OpenAI, Anthropic, Google), um CLI agent stateful (Claude Code, Gemini CLI, Codex CLI), ou um gateway/hub (OpenClaw). O MiniAutoGen não se importa com a implementação interna do Engine — só precisa que ele fale o protocolo.
 
-### Engines
+Múltiplas instâncias do mesmo provider com configurações diferentes são suportadas (ex: "claude-architect" com skills de arquitetura vs "claude-reviewer" com skills de code review). O agente é o mesmo; o runtime que o envolve é diferente.
 
-A conexão com agentes monolíticos externos — a peça-chave da estratégia multi-provider. Três categorias:
+### Agents: o Engine + superpoderes
 
-| Categoria | Exemplos | Driver |
-|---|---|---|
-| **API Providers** (stateless) | OpenAI, Anthropic, Google, LiteLLM | OpenAISDKDriver, AnthropicSDKDriver, GoogleGenAIDriver |
-| **CLI Agents** (stateful, subprocess) | Claude Code, Gemini CLI, Codex CLI | CLIAgentDriver |
-| **Gateway/Hub** (stateful, WebSocket) | OpenClaw | WebSocketDriver (proposto) |
+O Agent é um Engine enriquecido com capacidades que o provider sozinho não fornece: tool calling unificado, memória persistente, hooks composáveis, enforcement de permissões e delegação controlada. Essas camadas são adicionadas pelo runtime, não reimplementadas sobre o agente.
 
-Múltiplas instâncias do mesmo provider com configurações diferentes são suportadas (ex: "claude-architect" com skills de arquitetura vs "claude-reviewer" com skills de code review).
+A ideia central: **o Agent herda tudo o que o Engine já sabe fazer e ganha coordenação, observabilidade e governança por cima.**
 
-### Agents
+> Para a anatomia completa das 5 camadas do Agent, ver [architecture/07-agent-anatomy.md](architecture/07-agent-anatomy.md).
 
-Abstração sobre Engines com **5 camadas**:
+### Flows: o grande diferencial
 
-```
-Agent
-├── Layer 1: Identity      — AgentSpec (name, role, goal, capabilities)
-├── Layer 2: Engine        — Binding para o driver concreto
-├── Layer 3: Agent Runtime — Tools, memory, hooks, delegation (O DIFERENCIAL)
-├── Layer 4: Policies      — Limits, permissions, budget, retry
-└── Layer 5: Protocols     — Como participa de Flows (workflow/deliberation/conversational/coordinator)
-```
+O Flow define **como** múltiplos Agents colaboram. Quatro modos de coordenação nativos, composáveis entre si:
 
-O Agent Runtime (Layer 3) adiciona capacidades locais que o Engine sozinho não fornece: tool calling unificado, memória persistente, hooks composáveis, enforcement de permissões e delegação controlada. Para anatomia completa, ver [architecture/07-agent-anatomy.md](architecture/07-agent-anatomy.md).
-
-### Flows
-
-O **grande diferencial competitivo**. Quatro modos de coordenação nativos, composáveis via CompositeRuntime:
-
-| Modo | Como funciona |
+| Modo | Quando usar |
 |---|---|
-| **WorkflowRuntime** | Steps sequenciais ou fan-out paralelo com synthesis opcional |
-| **AgenticLoopRuntime** | Router seleciona próximo speaker, com detecção de estagnação |
-| **DeliberationRuntime** | Rounds de contribuição + peer review + consolidação por líder |
-| **CompositeRuntime** | Encadeia sub-Flows de modos diferentes numa única execução |
+| **Workflow** | Tarefas decomponiveis em steps sequenciais ou paralelos |
+| **Agentic Loop** | Conversação roteada onde um agente decide quem fala a seguir |
+| **Deliberation** | Revisão por pares multi-round com consolidação |
+| **Composite** | Encadeamento de sub-Flows de modos diferentes |
 
-**RuntimeInterceptors** (proposto): middleware composável e transformativo nos Flows. Tipos de hook inspirados no Tapable (Webpack): Waterfall (transforma), Bail (short-circuit), Series (observa). Boundary-aware: FlowInterceptor, StepInterceptor, AgentInterceptor. Nenhum framework concorrente oferece middleware transformativo em runtimes agênticos.
+**Interceptors** transformam o fluxo em cada step (before, after, on_error) — não apenas observam, modificam. **Policies** observam eventos e reagem lateralmente (budget, timeout, approval, retry). Ambos são composáveis e configuráveis por Flow.
 
----
-
-## Arquitetura
-
-A arquitetura segue o pattern **Microkernel** com 4 camadas:
-
-| Camada | Responsabilidade | Módulos |
-|---|---|---|
-| **Core/Kernel** | Contratos, eventos, runtimes de coordenação | `core/contracts/`, `core/events/`, `core/runtime/` |
-| **Policies** | Regras transversais (retry, budget, approval, timeout) | `policies/` |
-| **Adapters** | Drivers de backend, templates, LLM providers | `backends/`, `adapters/` |
-| **Shell** | CLI, TUI Dashboard, Server | `cli/`, `tui/`, `app/` |
-
-O sistema emite **47+ tipos de evento** canônicos em 12 categorias, garantindo observabilidade completa. Oito políticas transversais operam **lateralmente** ao kernel, reagindo a eventos sem acoplar-se à lógica central.
-
-**Invariante central:** Adapters concretos NUNCA vazam para o domínio interno. O Core comunica apenas através de Protocols tipados.
-
----
-
-## Como funciona
-
-```
-Developer define:                    MiniAutoGen executa:
-┌──────────────┐                    ┌─────────────────────────────┐
-│ miniautogen  │                    │ PipelineRunner              │
-│ .yml         │                    │  ├── Resolve Engines        │
-│              │───────────────────►│  ├── Build Agent Runtimes   │
-│ engines:     │                    │  ├── Apply Interceptors     │
-│ agents:      │                    │  ├── Execute Flow           │
-│ flows:       │                    │  │   ├── Coordination Mode  │
-│ defaults:    │                    │  │   ├── Agent Turns        │
-└──────────────┘                    │  │   └── Event Emission     │
-                                    │  └── Persist Results        │
-                                    └─────────────────────────────┘
-```
-
-1. O Workspace define Engines, Agents e Flows declarativamente
-2. O EngineResolver converte engine names em AgentDrivers concretos
-3. O Agent Runtime enriquece cada Engine com tools, memory e hooks locais
-4. O PipelineRunner executa o Flow com o Coordination Mode selecionado
-5. Interceptors transformam o fluxo em cada step (before, after, on_error)
-6. Policies observam eventos e aplicam regras (budget, timeout, approval)
-7. EventSink emite eventos canônicos para observabilidade
+> Para detalhes de implementação dos runtimes, ver [architecture/04-fluxos.md](architecture/04-fluxos.md).
 
 ---
 
 ## Posicionamento competitivo
 
-> Para análise detalhada, ver [competitive-landscape.md](../competitive-landscape.md)
+> Para análises detalhadas, ver [competitive-landscape.md](../competitive-landscape.md) e [análises de concorrentes](../../.specs/)
 
-| Dimensão | LangGraph | Agno | CrewAI | MiniAutoGen |
+### vs Frameworks genéricos
+
+| Dimensão | LangGraph | CrewAI | AutoGen | MiniAutoGen |
 |---|---|---|---|---|
-| Multi-provider | Acoplado a LangChain | Sim (types fracos) | Custom tools/LLMs | **7 drivers, Protocols formais** |
-| Composição | Grafo estático | 3 team modes (mutuamente exclusivos) | Process fixo | **4 runtimes + CompositeRuntime + Interceptors** |
-| Type safety | Typed state | Básico | Nenhum | **Protocols + Pydantic** |
-| Middleware | Callbacks (observacionais) | Guardrails (validação) | Nenhum | **Interceptors (transformativos)** |
-| Durable execution | Best-in-class | Session-level | Nenhum | Roadmap Fase 2 |
+| Multi-provider | Acoplado a LangChain | Custom tools/LLMs | Extensions + MCP | **Multi-driver com Protocols formais** |
+| Coordenação | Grafo livre (boilerplate pesado) | 2 processos (não-determinístico) | 1 modo (GroupChat, overhead O(n×m)) | **4 modos + composição** |
+| Type safety | TypedDict | Nenhum | Parcial | **Protocols + Pydantic** |
+| Middleware | Callbacks (observacionais) | Nenhum | Nenhum | **Interceptors (transformativos)** |
+| Observabilidade | Via estado | Básico | Básico | **63+ eventos tipados** |
+| Tolerância a falhas | Checkpoint recovery | Nenhum | Nenhum | **Supervision trees + circuit breakers** |
+| Idempotência | Nenhum | Nenhum | Nenhum | **EffectJournal** |
+| Durable execution | Best-in-class | Nenhum | Efémero | Roadmap |
 
-**Quadrante único:** Alta flexibilidade de composição + Alta type safety. Nenhum concorrente ocupa este quadrante.
+### vs Agent harnesses especializados
+
+| Dimensão | DeerFlow (ByteDance) | Open SWE (LangChain) | Bit Office |
+|---|---|---|---|
+| **Propósito** | Research agent | Coding agent | Visual multi-agent office |
+| **Inovação** | Progressive skill loading, filesystem state, 9 middlewares | Deterministic backstops, SandboxProtocol, ~15 tools curados | Git worktree isolation, memória com feedback loop |
+| **Coordenação** | 1 modo | 1 modo | 1 modo |
+| **O que lhes falta** | Supervision, idempotência, type safety, múltiplos modos | Generalidade, observabilidade built-in | Persistência robusta, flexibilidade |
+
+Cada harness valida a tese do MiniAutoGen — e poderia ser **construído usando MiniAutoGen como runtime base**.
+
+### vs Padrões Anthropic
+
+A Anthropic documenta [6 padrões compostos](https://www.anthropic.com/engineering/building-effective-agents) para sistemas agênticos. O MiniAutoGen cobre todos nativamente:
+
+| Padrão | Runtime correspondente |
+|---|---|
+| Prompt Chaining | Workflow (steps sequenciais) |
+| Routing | Agentic Loop (router decide speaker) |
+| Parallelization | Workflow (fan-out + synthesis) |
+| Orchestrator-Workers | Composite (orquestrador + workers) |
+| Evaluator-Optimizer | Deliberation (contribute → review → refine) |
+| Autonomous Agents | Agentic Loop (com detecção de estagnação) |
+
+### Quadrante único
+
+```
+     Flexibilidade de composição
+          ▲
+          │
+          │  LangGraph ●
+          │                    ★ MiniAutoGen
+          │
+          │  AutoGen ●              DeerFlow ●
+          │
+          │  CrewAI ●
+          │
+          └──────────────────────────────────► Type safety
+```
+
+**Alta flexibilidade + Alta type safety.** Nenhum concorrente ocupa este quadrante.
 
 ---
 
-## Navegação da documentação
+## Validação de mercado
 
-### Documentos estratégicos
+A análise de 7 concorrentes e 1 artigo de referência confirma as 3 teses centrais:
 
-- [Análise competitiva](../competitive-landscape.md) — 10+ frameworks, tese estratégica, roadmap 4 fases
-- [Retrospectiva arquitetural](../architecture-retrospective.md) — v0 vs atual, features perdidas, plano de recuperação
-- [Pesquisa de frameworks](../agent-frameworks-research-2026.md) — A2A, Agent SDK, ACP, Swarm, ADK
-- [Plano de superação do LangGraph](plano-langgraph.md) — spec para durable execution e composição superior
+**Tese 1 — O agente é commodity, o runtime é o produto.**
+Bit Office trata Claude/Codex/Gemini como processos intercambiáveis. Open SWE troca modelo em 1 linha. DeerFlow lista 4+ modelos como opções equivalentes. O artigo "5 Agent Frameworks, One Pattern Won" prova que **13× de diferença de custo** vem do runtime, não do modelo.
 
-### Documentos de arquitetura
+**Tese 2 — Infraestrutura composável bate monolítica.**
+Progressive skill loading + filesystem-first state + middleware pipeline reduz custos de $4.93 para $0.38 por run (13×). DeerFlow e Open SWE validam este padrão. O MiniAutoGen já está alinhado: microkernel com policies plugáveis, protocols tipados e arquitetura event-driven.
 
-1. [Contexto do sistema](architecture/01-contexto.md) — posicionamento e fronteiras externas
-2. [Containers lógicos](architecture/02-containers.md) — Workspace, Core, CLI, TUI, Adapters
-3. [Componentes internos](architecture/03-componentes.md) — módulos, contratos, protocols
-4. [Fluxos de execução](architecture/04-fluxos.md) — 9 fluxos (coordenação, workspace, interceptors)
-5. [Invariantes e taxonomias](architecture/05-invariantes.md) — regras invioláveis, 47+ event types
-6. [Decisões arquiteturais](architecture/06-decisoes.md) — 12 ADRs (DA-1 a DA-12)
-7. [Anatomia do agente](architecture/07-agent-anatomy.md) — 5 layers, comparação com 10+ protocols de mercado
-8. [Stack tecnológica](architecture/08-tech-stack.md) — dependências, justificativas, diagrama de dependências
-9. [Invariantes do Sistema Operacional](architecture/09-invariantes-sistema-operacional.md) — 6 invariantes invioláveis, auditoria arquitetural, plano de ação
+**Tese 3 — Nenhum concorrente oferece 4 modos de coordenação com type safety.**
+AutoGen tem 1 modo. CrewAI tem 2 (não-determinísticos). DeerFlow tem 1. Open SWE tem 1. LangGraph tem grafos livres sem type safety forte. **Nenhum combina múltiplos modos + Protocols runtime-checkable.**
 
-### Referências
+> Análises completas: [Bit Office](../../.specs/analysis-bit-office-vs-miniautogen.md) · [5 Frameworks](../../.specs/analysis-5-frameworks-one-pattern.md) · [Deep Dive Concorrentes](../../.specs/analysis-competitors-deep-dive.md) · [Open SWE](../../.specs/analysis-open-swe.md)
 
-- [Referência rápida dos módulos](quick-reference.md) — índice compacto de pacotes
-- [Guia do Gemini CLI Gateway](guides/gemini-cli-gateway.md) — configuração do backend Gemini CLI
-- [Especificação funcional E2E](e2e-funcional.md) — jornada completa CLI-First (v3.2.0)
+---
+
+## Documentação
+
+### Estratégia e posicionamento
+
+| Documento | Conteúdo |
+|---|---|
+| **Este README** | Visão, pilares, modelo mental, posicionamento competitivo |
+| [competitive-landscape.md](../competitive-landscape.md) | 10+ frameworks, tese estratégica, roadmap 4 fases |
+| [agent-frameworks-research-2026.md](../agent-frameworks-research-2026.md) | A2A, Agent SDK, ACP, Swarm, ADK |
+
+### Arquitetura
+
+| # | Documento | Conteúdo |
+|---|---|---|
+| 1 | [Contexto do sistema](architecture/01-contexto.md) | Posicionamento e fronteiras externas |
+| 2 | [Containers lógicos](architecture/02-containers.md) | Workspace, Core, CLI, TUI, Adapters |
+| 3 | [Componentes internos](architecture/03-componentes.md) | Módulos, contratos, protocols |
+| 4 | [Fluxos de execução](architecture/04-fluxos.md) | Coordenação, workspace, interceptors |
+| 5 | [Invariantes e taxonomias](architecture/05-invariantes.md) | Regras invioláveis, 63+ event types |
+| 6 | [Decisões arquiteturais](architecture/06-decisoes.md) | 12 ADRs (DA-1 a DA-12) |
+| 7 | [Anatomia do agente](architecture/07-agent-anatomy.md) | 5 layers, comparação com 10+ protocols |
+| 8 | [Stack tecnológica](architecture/08-tech-stack.md) | Dependências e justificativas |
+| 9 | [Invariantes do SO](architecture/09-invariantes-sistema-operacional.md) | 6 invariantes invioláveis |
+
+### Operacional
+
+| Documento | Conteúdo |
+|---|---|
+| [Retrospectiva arquitetural](../architecture-retrospective.md) | v0 vs atual, plano de recuperação |
+| [Plano LangGraph](plano-langgraph.md) | Spec para durable execution |
+| [Referência rápida](quick-reference.md) | Índice compacto de módulos e API pública |
+| [Guia Gemini CLI](guides/gemini-cli-gateway.md) | Configuração do backend Gemini CLI |
+| [Spec funcional E2E](e2e-funcional.md) | Jornada completa CLI-First |
 
 ---
 
 ## Leitura recomendada
 
-Para compreensão completa, recomenda-se:
+**5 minutos →** Este README.
 
-**Se tem 5 minutos:** Leia apenas este README.
+**30 minutos →** Este README + [competitive-landscape.md](../competitive-landscape.md).
 
-**Se tem 30 minutos:** Este README + [competitive-landscape.md](../competitive-landscape.md) (posicionamento + roadmap).
-
-**Se vai contribuir:** Sequência completa de arquitetura (1→7) + [e2e-funcional.md](e2e-funcional.md).
-
----
-
-## API pública
-
-O módulo `miniautogen/api.py` exporta 54+ tipos e constitui o ponto de entrada único para consumidores da biblioteca:
-
-```python
-from miniautogen.api import (
-    WorkflowRuntime, DeliberationRuntime, AgenticLoopRuntime,
-    PipelineRunner, AgentSpec, RunContext, EventSink,
-)
-```
+**Vai contribuir →** Sequência de arquitetura (1→9) + [e2e-funcional.md](e2e-funcional.md).

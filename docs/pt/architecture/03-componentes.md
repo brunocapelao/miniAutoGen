@@ -136,6 +136,8 @@ Dependências injetáveis: `EventSink`, `RunStore`, `CheckpointStore`, `Executio
 
 ## 5. Motor de pipeline
 
+> Nota: este módulo corresponde ao conceito de **Flows** na terminologia actual. O nome `pipeline/` é mantido por compatibilidade de código.
+
 Módulo: `miniautogen/pipeline/`
 
 ### Pipeline
@@ -243,6 +245,8 @@ As implementações InMemory servem para testes e execuções efémeras. As impl
 ---
 
 ## 9. Backend drivers
+
+> Backend Drivers implementam o conceito de **Engine** definido no README estratégico. O nome do módulo `backends/` é mantido por compatibilidade de código.
 
 Módulo: `miniautogen/backends/`
 

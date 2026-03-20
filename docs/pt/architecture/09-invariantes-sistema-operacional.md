@@ -149,7 +149,7 @@ class StepSupervision(BaseModel):
 
 **Hierarquia de supervisão:**
 ```
-PipelineRunner (Supervisor raiz)
+PipelineRunner (executor de Flows, Supervisor raiz)
 └── FlowSupervisor (por flow)
     ├── StepSupervisor (por step)
     │   └── AgentRuntime (leaf — "let it crash")
