@@ -207,6 +207,12 @@ def run_command(
             echo_success(
                 f"Flow '{pipeline_name}' completed successfully"
             )
+            # Show pipeline output if available
+            output = result.get("output")
+            if isinstance(output, dict) and "output" in output:
+                click.echo(f"\n{output['output']}")
+            elif isinstance(output, str):
+                click.echo(f"\n{output}")
             if events:
                 echo_info(f"Events emitted: {events}")
         else:

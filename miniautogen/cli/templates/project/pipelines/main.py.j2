@@ -26,28 +26,32 @@ class MainPipeline:
         if engine_config is None:
             return {**state, "status": "completed", "output": "(no engine configured)"}
 
-        # Lazy import to avoid circular dependencies at scaffold time
+        # Lazy imports to avoid circular dependencies at scaffold time
         from miniautogen.backends.engine_resolver import EngineResolver
         from miniautogen.backends.models import SendTurnRequest, StartSessionRequest
-        from miniautogen.cli.config import load_project_config
+        from miniautogen.cli.config import require_project_config
 
-        project_root, config = load_project_config()
+        _project_root, config = require_project_config()
         resolver = EngineResolver()
 
         engine_name = engine_config.get("engine_name", config.defaults.engine)
         driver = resolver.resolve(engine_name, config)
 
-        session = await driver.start_session(StartSessionRequest())
+        session = await driver.start_session(
+            StartSessionRequest(backend_id=engine_name),
+        )
         turn_request = SendTurnRequest(
             session_id=session.session_id,
-            message=user_input,
+            messages=[{"role": "user", "content": user_input}],
         )
 
         # Collect streamed events into a final response
         response_parts: list[str] = []
         async for event in driver.send_turn(turn_request):
-            if hasattr(event, "text") and event.text:
-                response_parts.append(event.text)
+            if event.payload:
+                text = event.payload.get("text", "")
+                if text:
+                    response_parts.append(text)
 
         response_text = "".join(response_parts) if response_parts else "(empty response)"
 
