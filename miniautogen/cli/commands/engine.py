@@ -19,12 +19,13 @@ from miniautogen.cli.output import (
     echo_warning,
 )
 
+_CLI_PROVIDERS: set[str] = {"gemini-cli", "claude-code", "codex-cli"}
+
 _PROVIDER_DEFAULTS: dict[str, str] = {
     "openai": "https://api.openai.com/v1",
     "anthropic": "https://api.anthropic.com/v1",
     "gemini": "https://generativelanguage.googleapis.com/v1",
     "vllm": "http://localhost:8000/v1",
-    "gemini-cli": "http://localhost:8080/v1",
 }
 
 _PROVIDER_ENV_VARS: dict[str, str] = {
@@ -68,6 +69,10 @@ def engine_create(
 
     root, _config = require_project_config()
 
+    # Auto-set kind for CLI providers
+    if provider is not None and provider in _CLI_PROVIDERS:
+        kind = "cli"
+
     # Interactive wizard for missing required fields
     if provider is None:
         provider = click.prompt(
@@ -77,8 +82,11 @@ def engine_create(
     if model is None:
         model = click.prompt("Model", type=str)
 
+    is_cli_provider = provider in _CLI_PROVIDERS
+
     # Interactive: prompt for endpoint with provider-specific default
-    if endpoint is None:
+    # CLI providers don't use endpoints — skip the prompt entirely
+    if endpoint is None and not is_cli_provider:
         default_ep = _PROVIDER_DEFAULTS.get(provider, "")
         if default_ep:
             endpoint = click.prompt(
@@ -91,7 +99,8 @@ def engine_create(
             endpoint = raw_ep if raw_ep.strip() else None
 
     # Interactive: prompt for API key env var
-    if api_key_env is None:
+    # CLI providers use OAuth or system auth — skip the prompt entirely
+    if api_key_env is None and not is_cli_provider:
         default_env = _PROVIDER_ENV_VARS.get(provider, "")
         if default_env:
             api_key_env = click.prompt(
