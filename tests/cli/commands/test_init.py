@@ -108,3 +108,24 @@ def test_init_force_adds_missing_files(tmp_path, monkeypatch) -> None:
     result = runner.invoke(cli, ["init", "myproject", "--force"])
     assert result.exit_code == 0
     assert (tmp_path / "myproject" / "agents" / "researcher.yaml").is_file()
+
+
+def test_init_invalid_name_shows_friendly_error(tmp_path, monkeypatch) -> None:
+    """Invalid project names (e.g. '123invalid') should show a friendly error, not a traceback."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["init", "123invalid"])
+    assert result.exit_code != 0
+    assert "Invalid project name" in result.output
+    # Must NOT produce a raw traceback
+    assert "Traceback" not in result.output
+
+
+def test_init_name_with_spaces_shows_friendly_error(tmp_path, monkeypatch) -> None:
+    """Project name with spaces should show a friendly error."""
+    monkeypatch.chdir(tmp_path)
+    runner = CliRunner()
+    result = runner.invoke(cli, ["init", "my project"])
+    assert result.exit_code != 0
+    assert "Invalid project name" in result.output
+    assert "Traceback" not in result.output

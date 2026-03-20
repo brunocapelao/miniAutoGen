@@ -67,3 +67,6 @@ def init_command(
             f"Use --force to add missing files without overwriting."
         )
         raise SystemExit(1)
+    except ValueError as exc:
+        echo_error(str(exc))
+        raise SystemExit(1)
