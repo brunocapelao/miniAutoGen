@@ -14,13 +14,14 @@ from typing import Any, Callable
 import click
 
 from miniautogen.api import (
+    CompositeEventSink,
+    EventSink,
+    ExecutionEvent,
     ExecutionPolicy,
     InMemoryEventSink,
     PipelineRunner,
 )
 from miniautogen.cli.config import ProjectConfig
-from miniautogen.core.contracts.events import ExecutionEvent
-from miniautogen.core.events.event_sink import CompositeEventSink, EventSink
 
 
 class _VerboseEventSink:
@@ -187,11 +188,30 @@ async def execute_pipeline(
         if resume_run_id is not None:
             from miniautogen.cli.errors import ExecutionError
 
-            raise ExecutionError(
-                "Resume requires a configured checkpoint store. "
-                "Ensure your project has persistence configured.",
-                hint="Check your miniautogen.yml for store configuration.",
-            )
+            if config.database is None:
+                raise ExecutionError(
+                    "Resume requires a configured checkpoint store. "
+                    "Ensure your project has persistence configured.",
+                    hint="Add a 'database' section to your miniautogen.yaml.",
+                )
+
+            from miniautogen.api import SQLAlchemyCheckpointStore
+
+            checkpoint_store = SQLAlchemyCheckpointStore(config.database.url)
+            await checkpoint_store.init_db()
+
+            checkpoint = await checkpoint_store.get_checkpoint(resume_run_id)
+            await checkpoint_store.engine.dispose()
+
+            if checkpoint is None:
+                raise ExecutionError(
+                    f"No checkpoint found for run_id '{resume_run_id}'.",
+                    hint="Verify the run_id is correct with 'miniautogen sessions list'.",
+                )
+
+            # Merge checkpoint state into context for resumed execution
+            if isinstance(checkpoint, dict):
+                context.update(checkpoint.get("state", {}))
 
         result = await runner.run_pipeline(pipeline, context)
 
