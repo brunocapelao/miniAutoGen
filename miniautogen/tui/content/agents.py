@@ -183,6 +183,22 @@ class AgentsContent(Widget, can_focus=True):
         except Exception:
             pass
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle click/Enter on a DataTable row -- view agent detail."""
+        if event.data_table.id == "agents-table":
+            row = event.data_table.get_row(event.row_key)
+            if row:
+                name = str(row[0])
+                if self.provider is not None and hasattr(self.provider, "get_agent"):
+                    try:
+                        agent_data = self.provider.get_agent(name)
+                        if agent_data:
+                            from miniautogen.tui.screens.agent_detail import AgentDetailScreen
+
+                            self.app.push_screen(AgentDetailScreen(agent_data))
+                    except Exception:
+                        pass
+
     def _on_form_result(self, result: object) -> None:
         """Callback from form screen."""
         if result:

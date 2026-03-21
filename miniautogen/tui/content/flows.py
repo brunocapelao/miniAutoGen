@@ -178,6 +178,19 @@ class FlowsContent(Widget, can_focus=True):
         self._refresh_table()
         self.notify("Refreshed")
 
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle click/Enter on a DataTable row -- open edit form."""
+        if event.data_table.id == "flows-table":
+            row = event.data_table.get_row(event.row_key)
+            if row:
+                name = str(row[0])
+                from miniautogen.tui.screens.create_form import CreateFormScreen
+
+                self.app.push_screen(
+                    CreateFormScreen(resource_type="pipeline", edit_name=name),
+                    callback=self._on_form_result,
+                )
+
     def _on_form_result(self, result: object) -> None:
         """Callback from form screen."""
         if result:

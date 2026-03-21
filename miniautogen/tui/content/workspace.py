@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widget import Widget
-from textual.widgets import Static
+from textual.widgets import Button, Static
 
 
 class StatCard(Widget):
@@ -87,14 +87,8 @@ class WorkspaceContent(Widget):
         height: auto;
         margin: 1 0 0 0;
     }
-    WorkspaceContent .action-btn {
-        background: $surface;
-        border: tall $primary;
-        padding: 0 2;
+    WorkspaceContent #action-row Button {
         margin: 0 1 0 0;
-        height: 3;
-        content-align: center middle;
-        color: $primary;
     }
     """
 
@@ -111,9 +105,32 @@ class WorkspaceContent(Widget):
 
         yield Static("QUICK ACTIONS", classes="section-title")
         with Horizontal(id="action-row"):
-            yield Static("[bold][n][/bold] New Agent", classes="action-btn")
-            yield Static("[bold][r][/bold] Run Flow", classes="action-btn")
-            yield Static("[bold][:][/bold] Commands", classes="action-btn")
+            yield Button("[n] New Agent", id="btn-new-agent", variant="primary")
+            yield Button("[r] Run Flow", id="btn-run-flow", variant="primary")
+            yield Button("[:] Commands", id="btn-commands", variant="primary")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle quick action button clicks."""
+        if event.button.id == "btn-new-agent":
+            self.app.action_switch_tab("Agents")
+            try:
+                agents = self.app.query_one(
+                    "AgentsContent",
+                )
+                agents.action_new_agent()
+            except Exception:
+                pass
+        elif event.button.id == "btn-run-flow":
+            self.app.action_switch_tab("Flows")
+            try:
+                flows = self.app.query_one(
+                    "FlowsContent",
+                )
+                flows.action_run_flow()
+            except Exception:
+                pass
+        elif event.button.id == "btn-commands":
+            self.app.action_command_palette()
 
     def refresh_data(
         self,

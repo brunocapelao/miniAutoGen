@@ -6,7 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
 from textual.widget import Widget
-from textual.widgets import DataTable, Static
+from textual.widgets import Button, DataTable, Static
 
 from miniautogen.tui.themes import THEMES
 
@@ -48,14 +48,8 @@ class ConfigContent(Widget, can_focus=True):
         height: auto;
         margin: 0 0 1 0;
     }
-    ConfigContent .action-btn {
-        background: $surface;
-        border: tall $primary;
-        padding: 0 2;
+    ConfigContent .server-controls Button {
         margin: 0 1 0 0;
-        height: 3;
-        content-align: center middle;
-        color: $primary;
     }
     """
 
@@ -91,11 +85,11 @@ class ConfigContent(Widget, can_focus=True):
         yield Static("SERVER", classes="section-title")
         yield Static("Status: checking...", id="server-status", classes="config-box")
         with Horizontal(classes="server-controls"):
-            yield Static("[bold]S[/bold] Start", classes="action-btn")
-            yield Static("[bold]X[/bold] Stop", classes="action-btn")
+            yield Button("[S] Start", id="btn-server-start", variant="success")
+            yield Button("[X] Stop", id="btn-server-stop", variant="error")
 
         yield Static("THEME", classes="section-title")
-        yield Static("Active: tokyo-night  [bold]T[/bold] Switch", id="theme-info", classes="config-box")
+        yield Button("[T] Switch Theme", id="btn-theme-switch", variant="primary")
 
     def on_mount(self) -> None:
         """Populate tables and displays on mount."""
@@ -189,6 +183,15 @@ class ConfigContent(Widget, can_focus=True):
         except Exception as exc:
             self.app.notify(str(exc), severity="error")
 
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle server control and theme button clicks."""
+        if event.button.id == "btn-server-start":
+            self.action_server_start()
+        elif event.button.id == "btn-server-stop":
+            self.action_server_stop()
+        elif event.button.id == "btn-theme-switch":
+            self.action_cycle_theme()
+
     def action_server_start(self) -> None:
         """Start the server."""
         if self.provider:
@@ -216,8 +219,8 @@ class ConfigContent(Widget, can_focus=True):
             next_idx = (idx + 1) % len(theme_names)
             next_theme = theme_names[next_idx]
             self.app.apply_theme(next_theme)
-            self.query_one("#theme-info", Static).update(
-                f"Active: {next_theme}  [bold]T[/bold] Switch"
+            self.query_one("#btn-theme-switch", Button).label = (
+                f"[T] Theme: {next_theme}"
             )
             self.app.notify(f"Theme changed to {next_theme}")
         except Exception as e:

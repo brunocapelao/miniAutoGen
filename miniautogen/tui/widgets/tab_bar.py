@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
+from textual.events import Click
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.widgets import Static
@@ -11,6 +12,23 @@ from textual.widgets import Static
 from miniautogen.tui.messages import TabChanged
 
 _TABS = ["Workspace", "Flows", "Agents", "Config"]
+
+
+class _ClickableTab(Static):
+    """A Static widget that handles click events to switch tabs."""
+
+    def __init__(self, label: str, tab_name: str, **kwargs) -> None:
+        super().__init__(label, **kwargs)
+        self._tab_name = tab_name
+
+    def on_click(self, event: Click) -> None:
+        """Handle click on this tab."""
+        event.stop()
+        tab_bar = self.ancestors_with_self[-1]
+        for ancestor in self.ancestors_with_self:
+            if isinstance(ancestor, TabBar):
+                ancestor.active_tab = self._tab_name
+                break
 
 
 class TabBar(Widget):
@@ -77,7 +95,9 @@ class TabBar(Widget):
         with Horizontal(id="tab-nav"):
             for name in _TABS:
                 classes = "tab --active" if name == self.active_tab else "tab"
-                yield Static(name, classes=classes, id=f"tab-{name.lower()}")
+                yield _ClickableTab(
+                    name, tab_name=name, classes=classes, id=f"tab-{name.lower()}"
+                )
         yield Static("", id="tab-status")
 
     def watch_active_tab(self, old_value: str, new_value: str) -> None:
@@ -85,7 +105,7 @@ class TabBar(Widget):
             return
         for name in _TABS:
             try:
-                tab = self.query_one(f"#tab-{name.lower()}", Static)
+                tab = self.query_one(f"#tab-{name.lower()}")
                 tab.set_classes("tab --active" if name == new_value else "tab")
             except Exception:
                 pass
