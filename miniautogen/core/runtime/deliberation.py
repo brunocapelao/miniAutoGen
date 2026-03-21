@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from miniautogen.core.contracts.deliberation import DeliberationState, PeerReview, ResearchOutput
+from miniautogen.core.contracts.deliberation import DeliberationState, PeerReview, ResearchOutput, Review
 
 
-def summarize_peer_reviews(reviews: list[PeerReview]) -> dict[str, list[PeerReview]]:
-    grouped: dict[str, list[PeerReview]] = defaultdict(list)
+def summarize_peer_reviews(reviews: list[Review]) -> dict[str, list[Review]]:
+    grouped: dict[str, list[Review]] = defaultdict(list)
     for review in reviews:
-        grouped[review.target_role].append(review)
+        grouped[review.target_id].append(review)
     return dict(grouped)
 
 
-def build_follow_up_tasks(grouped_reviews: dict[str, list[PeerReview]]) -> dict[str, list[str]]:
+def build_follow_up_tasks(grouped_reviews: dict[str, list[Review]]) -> dict[str, list[str]]:
     follow_ups: dict[str, list[str]] = {}
     for target_role, reviews in grouped_reviews.items():
         ordered_items: list[str] = []

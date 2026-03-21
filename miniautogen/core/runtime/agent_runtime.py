@@ -33,7 +33,7 @@ from miniautogen.core.contracts.delegation import (
     DelegationRouterProtocol,
     PersistableMemory,
 )
-from miniautogen.core.contracts.deliberation import Contribution, Review
+from miniautogen.core.contracts.deliberation import Contribution, DeliberationState, FinalDocument, Review
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.contracts.memory_provider import MemoryProvider
 from miniautogen.core.contracts.run_context import RunContext
@@ -264,6 +264,99 @@ class AgentRuntime:
             strengths=data.get("strengths", []),
             concerns=data.get("concerns", []),
             questions=data.get("questions", []),
+        )
+
+    async def consolidate(
+        self,
+        topic: str,
+        contributions: list[Contribution],
+        reviews: list[Review],
+    ) -> DeliberationState:
+        """Leader consolidates contributions and reviews into a state."""
+        self._check_closed()
+        contrib_summary = "\n".join(
+            f"- {c.participant_id}: {c.title}" for c in contributions
+        )
+        review_summary = "\n".join(
+            f"- {r.reviewer_id} on {r.target_id}: strengths={r.strengths}, concerns={r.concerns}"
+            for r in reviews
+        )
+        prompt = (
+            f"As leader, consolidate the deliberation on: {topic}\n\n"
+            f"Contributions:\n{contrib_summary}\n\n"
+            f"Reviews:\n{review_summary}\n\n"
+            "Respond with JSON:\n"
+            '{"accepted_facts":["..."],"open_conflicts":["..."],'
+            '"pending_gaps":["..."],"leader_decision":"...",'
+            '"is_sufficient":true/false,"rejection_reasons":["..."]}'
+        )
+        messages = self._build_messages(prompt)
+        result = await self._execute_turn(messages)
+        try:
+            text = result.text or ""
+            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+            raw = fence_match.group(1).strip() if fence_match else text
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return DeliberationState(
+                review_cycle=1,
+                is_sufficient=True,
+                leader_decision=result.text or "Approved",
+            )
+        return DeliberationState(
+            review_cycle=1,
+            accepted_facts=data.get("accepted_facts", []),
+            open_conflicts=data.get("open_conflicts", []),
+            pending_gaps=data.get("pending_gaps", []),
+            leader_decision=data.get("leader_decision"),
+            is_sufficient=data.get("is_sufficient", True),
+            rejection_reasons=data.get("rejection_reasons", []),
+        )
+
+    async def produce_final_document(
+        self,
+        state: DeliberationState,
+        contributions: list[Contribution],
+    ) -> FinalDocument:
+        """Leader produces the final consolidated document."""
+        self._check_closed()
+        contrib_text = "\n".join(
+            f"- {c.participant_id}: {json.dumps(c.content)[:500]}"
+            for c in contributions
+        )
+        prompt = (
+            "Produce a final document summarizing the deliberation.\n\n"
+            f"State: decision={state.leader_decision}, "
+            f"accepted_facts={state.accepted_facts}, "
+            f"open_conflicts={state.open_conflicts}\n\n"
+            f"Contributions:\n{contrib_text}\n\n"
+            "Respond with JSON:\n"
+            '{"executive_summary":"...","accepted_facts":["..."],'
+            '"open_conflicts":["..."],"pending_decisions":["..."],'
+            '"recommendations":["..."],"decision_summary":"...",'
+            '"body_markdown":"..."}'
+        )
+        messages = self._build_messages(prompt)
+        result = await self._execute_turn(messages)
+        try:
+            text = result.text or ""
+            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+            raw = fence_match.group(1).strip() if fence_match else text
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return FinalDocument(
+                executive_summary=result.text or "Deliberation complete.",
+                decision_summary=state.leader_decision or "Approved",
+                body_markdown=result.text or "",
+            )
+        return FinalDocument(
+            executive_summary=data.get("executive_summary", ""),
+            accepted_facts=data.get("accepted_facts", []),
+            open_conflicts=data.get("open_conflicts", []),
+            pending_decisions=data.get("pending_decisions", []),
+            recommendations=data.get("recommendations", []),
+            decision_summary=data.get("decision_summary", ""),
+            body_markdown=data.get("body_markdown", ""),
         )
 
     # ------------------------------------------------------------------
