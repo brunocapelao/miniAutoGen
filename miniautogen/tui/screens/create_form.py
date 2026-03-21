@@ -51,6 +51,16 @@ class CreateFormScreen(ModalScreen[bool]):
     Dismissed with True on successful create/edit, False on cancel.
     """
 
+    DEFAULT_CSS = """
+    CreateFormScreen Input.invalid {
+        border: tall $error;
+    }
+
+    CreateFormScreen Select.invalid {
+        border: tall $error;
+    }
+    """
+
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=True),
     ]
@@ -175,6 +185,37 @@ class CreateFormScreen(ModalScreen[bool]):
                 pass
         return values
 
+    def _validate(self) -> list[str]:
+        """Validate form fields and return a list of error messages.
+
+        Returns an empty list when all fields are valid.
+        For each required field that is missing or empty, returns a descriptive
+        error message and highlights the offending input widget.
+        """
+        errors: list[str] = []
+        for field in self._fields:
+            if not field.get("required"):
+                continue
+            field_id = f"field-{field['name']}"
+            try:
+                widget = self.query_one(f"#{field_id}")
+                missing = False
+                if isinstance(widget, Input):
+                    if not widget.value.strip():
+                        missing = True
+                elif isinstance(widget, Select):
+                    if widget.value == Select.BLANK:
+                        missing = True
+                if missing:
+                    errors.append(f"'{field['label']}' is required")
+                    # Highlight the invalid field with an error border
+                    widget.add_class("invalid")
+                else:
+                    widget.remove_class("invalid")
+            except Exception:
+                pass
+        return errors
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle save/cancel buttons."""
         if event.button.id == "btn-cancel":
@@ -190,13 +231,14 @@ class CreateFormScreen(ModalScreen[bool]):
             self.notify("No project found", severity="error")
             return
 
-        values = self._collect_values()
+        # Run improved validation: show all missing fields at once
+        errors = self._validate()
+        if errors:
+            for msg in errors:
+                self.notify(msg, severity="warning")
+            return
 
-        # Check required fields
-        for field in self._fields:
-            if field.get("required") and field["name"] not in values:
-                self.notify(f"'{field['label']}' is required", severity="warning")
-                return
+        values = self._collect_values()
 
         try:
             if self._edit_name:

@@ -10,6 +10,8 @@ from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ProgressBar, Static
 
+from miniautogen.core.events.types import EventType
+from miniautogen.tui.messages import TuiEvent
 from miniautogen.tui.widgets.interaction_log import InteractionLog
 
 
@@ -35,6 +37,10 @@ class WorkPanel(Widget):
     WorkPanel #step-label {
         text-align: center;
         color: $text-muted;
+    }
+
+    WorkPanel #step-progress.failed {
+        color: $error;
     }
 
     WorkPanel #onboarding-guide {
@@ -163,5 +169,41 @@ class WorkPanel(Widget):
             bar.progress = current
             lbl = self.query_one("#step-label", Static)
             lbl.update(label or f"Step {current} of {total}")
+        except Exception:
+            pass
+
+    def on_tui_event(self, message: TuiEvent) -> None:
+        """Handle TuiEvent messages to update the progress bar.
+
+        - RUN_STARTED  → "Running..." + indeterminate progress
+        - RUN_FINISHED → "Completed" + 100%
+        - RUN_FAILED   → "Failed" + red styling
+        """
+        event_type = message.event.type
+        try:
+            bar = self.query_one("#step-progress", ProgressBar)
+            lbl = self.query_one("#step-label", Static)
+
+            if event_type == EventType.RUN_STARTED.value:
+                bar.total = None  # indeterminate
+                lbl.update("Running...")
+                bar.remove_class("failed")
+
+            elif event_type == EventType.RUN_FINISHED.value:
+                bar.total = 100
+                bar.progress = 100
+                lbl.update("Completed")
+                bar.remove_class("failed")
+
+            elif event_type in (
+                EventType.RUN_FAILED.value,
+                EventType.RUN_TIMED_OUT.value,
+                EventType.RUN_CANCELLED.value,
+            ):
+                bar.total = 100
+                bar.progress = 0
+                lbl.update("Failed")
+                bar.add_class("failed")
+
         except Exception:
             pass

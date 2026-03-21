@@ -30,6 +30,7 @@ from miniautogen.tui.views.pipelines import PipelinesView
 from miniautogen.tui.views.runs import RunsView
 from miniautogen.tui.views.engines import EnginesView
 from miniautogen.tui.views.config import ConfigView
+from miniautogen.tui.widgets.hint_bar import HintBar
 from miniautogen.tui.widgets.team_sidebar import TeamSidebar
 from miniautogen.tui.widgets.work_panel import WorkPanel
 
@@ -80,6 +81,7 @@ class MiniAutoGenDash(App):
         yield Header()
         yield TeamSidebar()
         yield WorkPanel()
+        yield HintBar()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -203,17 +205,18 @@ class MiniAutoGenDash(App):
 
     def action_help(self) -> None:
         """Show help overlay."""
-        self.notify("Help: Press [b]:[/b] for commands, [b]/[/b] to search")
+        from miniautogen.tui.screens.help_screen import HelpScreen
+        self.push_screen(HelpScreen())
 
     def action_back(self) -> None:
         """Navigate back or close panel."""
         pass
 
     def action_fullscreen(self) -> None:
-        """Toggle fullscreen for work panel."""
+        """Toggle fullscreen for work panel (hide/show sidebar)."""
         try:
             sidebar = self.query_one(TeamSidebar)
-            sidebar.display = False
+            sidebar.display = not sidebar.display
         except Exception:
             pass
 

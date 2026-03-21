@@ -62,4 +62,14 @@ class RunsView(SecondaryView):
         if table.cursor_row is not None and table.row_count > 0:
             row = table.get_row_at(table.cursor_row)
             if row:
-                self.notify(f"Run: {row[0]} | Status: {row[2]}")
+                from miniautogen.tui.screens.run_detail import RunDetailScreen
+                self.app.push_screen(
+                    RunDetailScreen(
+                        run_id=str(row[0]),
+                        pipeline=str(row[1]),
+                        status=str(row[2]),
+                        started=str(row[3]),
+                        duration=str(row[4]),
+                        events=str(row[5]),
+                    )
+                )

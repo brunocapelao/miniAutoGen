@@ -10,8 +10,11 @@ NOT from core internals, keeping zero-coupling intact.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from miniautogen.cli.config import (
     CONFIG_FILENAME,
@@ -100,6 +103,7 @@ class DashDataProvider:
                 "database": config.database.url if config.database else "(none)",
             }
         except Exception:
+            logger.exception("Failed to load project config from %s", self._config_path)
             return {}
 
     def get_engines(self) -> list[dict[str, Any]]:
@@ -135,9 +139,11 @@ class DashDataProvider:
             return yaml_engines
         except Exception:
             # Fallback to YAML-only if discovery fails
+            logger.exception("Engine discovery failed; falling back to YAML-only")
             try:
                 return _list_engines(self._root)
             except Exception:
+                logger.exception("Failed to list engines from YAML config")
                 return []
 
     def get_agents(self) -> list[dict[str, Any]]:
@@ -145,6 +151,7 @@ class DashDataProvider:
         try:
             return _list_agents(self._root)
         except Exception:
+            logger.exception("Failed to list agents from project at %s", self._root)
             return []
 
     def get_pipelines(self) -> list[dict[str, Any]]:
@@ -152,6 +159,7 @@ class DashDataProvider:
         try:
             return _list_pipelines(self._root)
         except Exception:
+            logger.exception("Failed to list pipelines from project at %s", self._root)
             return []
 
     def get_runs(self) -> list[dict[str, Any]]:
@@ -347,6 +355,7 @@ class DashDataProvider:
             config = load_config(self._config_path)
             return _check_project(config, self._root)
         except Exception:
+            logger.exception("Failed to run project checks at %s", self._root)
             return []
 
     # ── Server ───────────────────────────────────────────────
