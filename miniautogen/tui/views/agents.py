@@ -31,6 +31,11 @@ class AgentsView(SecondaryView):
         table = DataTable(id="agents-table")
         table.add_columns("Name", "Role", "Engine", "Status")
         yield table
+        yield Static(
+            "Nenhum agente ainda. Pressione [bold]n[/bold] para criar o primeiro.",
+            id="agents-empty",
+            classes="empty-state",
+        )
 
     def on_mount(self) -> None:
         """Populate table with agent data on mount."""
@@ -41,6 +46,7 @@ class AgentsView(SecondaryView):
         table = self.query_one("#agents-table", DataTable)
         table.clear()
         if self.provider is None:
+            self._set_empty_visible(True)
             return
         for agent in self.provider.get_agents():
             table.add_row(
@@ -49,6 +55,15 @@ class AgentsView(SecondaryView):
                 agent.get("engine_profile", "?"),
                 "ready",
             )
+        self._set_empty_visible(table.row_count == 0)
+
+    def _set_empty_visible(self, visible: bool) -> None:
+        """Show or hide the empty-state message."""
+        try:
+            empty = self.query_one("#agents-empty", Static)
+            empty.display = visible
+        except Exception:
+            pass
 
     def _get_selected_name(self) -> str | None:
         """Get the name from the currently selected row."""
@@ -86,6 +101,15 @@ class AgentsView(SecondaryView):
         if not name:
             self.notify("No agent selected", severity="warning")
             return
+        from miniautogen.tui.screens.confirm_dialog import ConfirmDialog
+
+        self.app.push_screen(
+            ConfirmDialog(f"Excluir agente '{name}'? Esta ação não pode ser desfeita."),
+            callback=lambda confirmed: self._do_delete_agent(name) if confirmed else None,
+        )
+
+    def _do_delete_agent(self, name: str) -> None:
+        """Perform the actual agent deletion after confirmation."""
         if self.provider is None:
             return
         try:

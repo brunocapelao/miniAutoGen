@@ -28,6 +28,11 @@ class EnginesView(SecondaryView):
         table = DataTable(id="engines-table")
         table.add_columns("Name", "Kind", "Provider", "Model", "Temperature")
         yield table
+        yield Static(
+            "Nenhum engine configurado. Pressione [bold]n[/bold] para adicionar.",
+            id="engines-empty",
+            classes="empty-state",
+        )
 
     def on_mount(self) -> None:
         """Populate table with engine data on mount."""
@@ -38,6 +43,7 @@ class EnginesView(SecondaryView):
         table = self.query_one("#engines-table", DataTable)
         table.clear()
         if self.provider is None:
+            self._set_empty_visible(True)
             return
         for engine in self.provider.get_engines():
             table.add_row(
@@ -47,6 +53,15 @@ class EnginesView(SecondaryView):
                 engine.get("model", "?"),
                 str(engine.get("temperature", "0.2")),
             )
+        self._set_empty_visible(table.row_count == 0)
+
+    def _set_empty_visible(self, visible: bool) -> None:
+        """Show or hide the empty-state message."""
+        try:
+            empty = self.query_one("#engines-empty", Static)
+            empty.display = visible
+        except Exception:
+            pass
 
     def _get_selected_name(self) -> str | None:
         """Get the name from the currently selected row."""
@@ -84,6 +99,15 @@ class EnginesView(SecondaryView):
         if not name:
             self.notify("No engine selected", severity="warning")
             return
+        from miniautogen.tui.screens.confirm_dialog import ConfirmDialog
+
+        self.app.push_screen(
+            ConfirmDialog(f"Excluir engine '{name}'? Esta ação não pode ser desfeita."),
+            callback=lambda confirmed: self._do_delete_engine(name) if confirmed else None,
+        )
+
+    def _do_delete_engine(self, name: str) -> None:
+        """Perform the actual engine deletion after confirmation."""
         if self.provider is None:
             return
         try:

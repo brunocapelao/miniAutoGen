@@ -66,7 +66,6 @@ class AgentCardScreen(ModalScreen[None]):
     BINDINGS = [
         Binding("escape", "dismiss", "Close", show=True),
         Binding("e", "edit", "Edit", show=True),
-        Binding("h", "history", "History", show=True),
     ]
 
     def __init__(
@@ -159,17 +158,17 @@ class AgentCardScreen(ModalScreen[None]):
 
             # Action hints
             yield Static(
-                "[dim][e]dit  [h]istory  [Esc] close[/dim]",
+                "[dim][e]dit  [Esc] close[/dim]",
                 classes="agent-card-actions",
             )
 
     def action_edit(self) -> None:
-        """Edit agent configuration (stub)."""
-        self.notify("Edit agent: not yet implemented")
+        """Open edit form for this agent."""
+        from miniautogen.tui.screens.create_form import CreateFormScreen
 
-    def action_history(self) -> None:
-        """View agent history (stub)."""
-        self.notify("Agent history: not yet implemented")
+        self.app.push_screen(
+            CreateFormScreen(resource_type="agent", edit_name=self.agent_name),
+        )
 
     def action_dismiss(self) -> None:
         """Close the modal."""

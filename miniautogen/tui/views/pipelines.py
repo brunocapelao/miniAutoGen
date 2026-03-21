@@ -18,18 +18,24 @@ class PipelinesView(SecondaryView):
         Binding("n", "new_pipeline", "New", show=True),
         Binding("e", "edit_pipeline", "Edit", show=True),
         Binding("d", "delete_pipeline", "Delete", show=True),
-        Binding("r", "run_pipeline", "Run", show=True),
-        Binding("f5", "refresh_pipelines", "Refresh", show=True),
+        Binding("x", "run_pipeline", "Run", show=True),
+        Binding("r", "refresh_pipelines", "Refresh", show=True),
+        Binding("f5", "refresh_pipelines", "Refresh", show=False),
     ]
 
     def compose_content(self) -> ComposeResult:
         yield Static(
-            "[dim]Keys: [b]n[/b]ew  [b]e[/b]dit  [b]d[/b]elete  [b]r[/b]un  [b]F5[/b] refresh[/dim]",
+            "[dim]Keys: [b]n[/b]ew  [b]e[/b]dit  [b]d[/b]elete  [b]x[/b] run  [b]r[/b]efresh[/dim]",
             id="pipelines-hint",
         )
         table = DataTable(id="pipelines-table")
         table.add_columns("Name", "Target", "Mode", "Agents", "Status")
         yield table
+        yield Static(
+            "Nenhum flow definido. Pressione [bold]n[/bold] para criar.",
+            id="pipelines-empty",
+            classes="empty-state",
+        )
 
     def on_mount(self) -> None:
         """Populate table with pipeline data on mount."""
@@ -40,6 +46,7 @@ class PipelinesView(SecondaryView):
         table = self.query_one("#pipelines-table", DataTable)
         table.clear()
         if self.provider is None:
+            self._set_empty_visible(True)
             return
         for pipeline in self.provider.get_pipelines():
             participants = pipeline.get("participants", [])
@@ -51,6 +58,15 @@ class PipelinesView(SecondaryView):
                 agents_str,
                 "ready",
             )
+        self._set_empty_visible(table.row_count == 0)
+
+    def _set_empty_visible(self, visible: bool) -> None:
+        """Show or hide the empty-state message."""
+        try:
+            empty = self.query_one("#pipelines-empty", Static)
+            empty.display = visible
+        except Exception:
+            pass
 
     def _get_selected_name(self) -> str | None:
         """Get the name from the currently selected row."""
@@ -88,6 +104,15 @@ class PipelinesView(SecondaryView):
         if not name:
             self.notify("No pipeline selected", severity="warning")
             return
+        from miniautogen.tui.screens.confirm_dialog import ConfirmDialog
+
+        self.app.push_screen(
+            ConfirmDialog(f"Excluir flow '{name}'? Esta ação não pode ser desfeita."),
+            callback=lambda confirmed: self._do_delete_pipeline(name) if confirmed else None,
+        )
+
+    def _do_delete_pipeline(self, name: str) -> None:
+        """Perform the actual pipeline deletion after confirmation."""
         if self.provider is None:
             return
         try:

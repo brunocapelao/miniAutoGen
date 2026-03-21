@@ -36,6 +36,15 @@ class WorkPanel(Widget):
         text-align: center;
         color: $text-muted;
     }
+
+    WorkPanel #onboarding-guide {
+        height: auto;
+        padding: 2 4;
+        margin: 1 2;
+        background: $surface;
+        border: round $primary;
+        color: $text;
+    }
     """
 
     def __init__(self) -> None:
@@ -44,11 +53,105 @@ class WorkPanel(Widget):
         self._total_steps = 0
         self._current_step = 0
 
+    @property
+    def _provider(self):
+        """Access the DashDataProvider from the app."""
+        return getattr(self.app, "_provider", None)
+
+    def _get_onboarding_message(self) -> str:
+        """Determine the contextual onboarding message based on workspace state."""
+        provider = self._provider
+        if provider is None or not provider.has_project():
+            return "Crie um workspace para começar."
+
+        try:
+            engines = provider.get_engines()
+        except Exception:
+            engines = []
+        if not engines:
+            return (
+                "Configure um engine. "
+                "Pressione [bold]:[/bold] e digite [bold]engines[/bold]."
+            )
+
+        try:
+            agents = provider.get_agents()
+        except Exception:
+            agents = []
+        if not agents:
+            return (
+                "Crie seu primeiro agente. "
+                "Pressione [bold]:[/bold] e digite [bold]agents[/bold]."
+            )
+
+        try:
+            pipelines = provider.get_pipelines()
+        except Exception:
+            pipelines = []
+        if not pipelines:
+            return (
+                "Defina um flow. "
+                "Pressione [bold]:[/bold] e digite [bold]pipelines[/bold]."
+            )
+
+        return (
+            "Equipe pronta! "
+            "Vá em [bold]:[/bold] > [bold]pipelines[/bold] "
+            "e pressione [bold]x[/bold] para executar."
+        )
+
     def compose(self) -> ComposeResult:
+        yield Static("", id="onboarding-guide")
         yield self.interaction_log
         with Vertical(id="progress-section"):
             yield ProgressBar(total=100, show_eta=False, id="step-progress")
             yield Static("Ready", id="step-label")
+
+    def on_mount(self) -> None:
+        """Populate onboarding guide on mount and wire onboarding hide."""
+        self._refresh_onboarding()
+        self._patch_interaction_log()
+
+    def _patch_interaction_log(self) -> None:
+        """Wrap InteractionLog entry methods to hide onboarding on first entry."""
+        log = self.interaction_log
+        original_add_agent = log.add_agent_message
+        original_add_tool = log.add_tool_call
+        original_add_step = log.add_step_header
+        original_add_streaming = log.add_streaming_indicator
+
+        def _wrap(original):
+            def wrapper(*args, **kwargs):
+                result = original(*args, **kwargs)
+                self.hide_onboarding()
+                return result
+            return wrapper
+
+        log.add_agent_message = _wrap(original_add_agent)
+        log.add_tool_call = _wrap(original_add_tool)
+        log.add_step_header = _wrap(original_add_step)
+        log.add_streaming_indicator = _wrap(original_add_streaming)
+
+    def _refresh_onboarding(self) -> None:
+        """Update onboarding visibility based on log state and workspace."""
+        try:
+            guide = self.query_one("#onboarding-guide", Static)
+            if self.interaction_log.entry_count == 0:
+                msg = self._get_onboarding_message()
+                guide.update(msg)
+                guide.display = True
+            else:
+                guide.display = False
+        except Exception:
+            pass
+
+    def hide_onboarding(self) -> None:
+        """Hide the onboarding guide (called when log receives entries)."""
+        try:
+            guide = self.query_one("#onboarding-guide", Static)
+            guide.display = False
+        except Exception:
+            pass
 
     def update_progress(self, current: int, total: int, label: str = "") -> None:
         """Update the step progress bar."""

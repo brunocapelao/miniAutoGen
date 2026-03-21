@@ -33,6 +33,8 @@ _AGENT_FIELDS = [
 _PIPELINE_FIELDS = [
     {"name": "name", "label": "Pipeline Name", "type": "input", "required": True},
     {"name": "mode", "label": "Mode", "type": "select", "options": ["workflow", "deliberation", "loop", "composite"], "default": "workflow"},
+    {"name": "participants", "label": "Participants (comma-separated)", "type": "input", "required": True, "placeholder": "agent1, agent2"},
+    {"name": "leader", "label": "Leader (for deliberation/loop)", "type": "input", "placeholder": "agent_name"},
     {"name": "target", "label": "Target (optional)", "type": "input", "placeholder": "module.path:callable"},
 ]
 
@@ -144,7 +146,12 @@ class CreateFormScreen(ModalScreen[bool]):
             try:
                 widget = self.query_one(f"#{field_id}")
                 if isinstance(widget, Input):
-                    widget.value = str(value)
+                    # Convert lists to comma-separated strings for display
+                    if isinstance(value, list):
+                        display_value = ", ".join(str(v) for v in value)
+                    else:
+                        display_value = str(value)
+                    widget.value = display_value
                 elif isinstance(widget, Select):
                     widget.value = str(value)
             except Exception:
@@ -212,6 +219,12 @@ class CreateFormScreen(ModalScreen[bool]):
             self.notify(f"Agent '{name}' created")
         elif self._resource_type == "pipeline":
             name = values.pop("name")
+            # Parse participants from comma-separated string to list
+            raw_participants = values.pop("participants", None)
+            if raw_participants:
+                values["participants"] = [
+                    p.strip() for p in raw_participants.split(",") if p.strip()
+                ]
             self.provider.create_pipeline(name, **values)
             self.notify(f"Pipeline '{name}' created")
 
@@ -225,6 +238,12 @@ class CreateFormScreen(ModalScreen[bool]):
             self.provider.update_agent(self._edit_name, **values)
             self.notify(f"Agent '{self._edit_name}' updated")
         elif self._resource_type == "pipeline":
+            # Parse participants from comma-separated string to list
+            raw_participants = values.pop("participants", None)
+            if raw_participants:
+                values["participants"] = [
+                    p.strip() for p in raw_participants.split(",") if p.strip()
+                ]
             self.provider.update_pipeline(self._edit_name, **values)
             self.notify(f"Pipeline '{self._edit_name}' updated")
 

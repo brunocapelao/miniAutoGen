@@ -104,6 +104,11 @@ class ApprovalBanner(Widget):
             yield Button("[A]pprove", variant="success", id="approve-btn")
             yield Button("[D]eny", variant="error", id="deny-btn")
 
+    def on_mount(self) -> None:
+        """Focus this banner so key bindings are active immediately."""
+        self.focus()
+        self.scroll_visible()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle approve/deny button presses."""
         if event.button.id == "approve-btn":

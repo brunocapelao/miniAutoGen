@@ -61,7 +61,7 @@ class MiniAutoGenDash(App):
         Binding("f", "fullscreen", "Fullscreen", show=True),
         Binding("t", "toggle_sidebar", "Team", show=True),
         Binding("d", "diff_view", "Diff", show=False),
-        Binding("slash", "search", "Search", show=True),
+        Binding("slash", "search", "Search", show=False),
         Binding("tab", "next_pipeline", "Next Tab", show=False),
     ]
 
