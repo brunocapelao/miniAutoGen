@@ -9,7 +9,6 @@
 /* ── Screen & Layout ─────────────────────────────────────── */
 
 Screen {
-    layout: horizontal;
     background: $background;
 }
 

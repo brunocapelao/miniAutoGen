@@ -15,6 +15,13 @@ from textual.widgets import Footer, Header, Static
 class SecondaryView(Screen):
     """Base screen for secondary views like :agents, :pipelines, etc."""
 
+    DEFAULT_CSS = """
+    SecondaryView DataTable {
+        width: 1fr;
+        height: 1fr;
+    }
+    """
+
     VIEW_TITLE: str = "View"
 
     BINDINGS = [
