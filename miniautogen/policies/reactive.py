@@ -7,12 +7,13 @@ that tracks cost from COMPONENT_FINISHED events.
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.policies.budget import BudgetPolicy, BudgetTracker
 
 
+@runtime_checkable
 class ReactivePolicy(Protocol):
     """Policy that reacts to events asynchronously.
 

@@ -64,3 +64,19 @@ class PolicyChain:
                 decision="retry", reason="retry requested by policy",
             )
         return PolicyResult(decision="proceed")
+
+    def register_reactive_on_bus(self, event_bus: object) -> None:
+        """Subscribe reactive evaluators to an EventBus.
+
+        Iterates over evaluators; any that implement the ReactivePolicy
+        protocol (subscribed_events + on_event) are auto-subscribed.
+
+        Args:
+            event_bus: An EventBus instance with a subscribe(event_type, handler) method.
+        """
+        from miniautogen.policies.reactive import ReactivePolicy
+
+        for evaluator in self._evaluators:
+            if isinstance(evaluator, ReactivePolicy):
+                for event_type in evaluator.subscribed_events:
+                    event_bus.subscribe(event_type, evaluator.on_event)  # type: ignore[union-attr]

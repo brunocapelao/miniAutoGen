@@ -139,7 +139,7 @@ O agente deve recuperar o que se perdeu (runtime próprio, composição recursiv
 | **Multi-provider** | Agnóstico (protocol) | Claude only | Agnóstico (protocol) | OpenAI only | Gemini only | ✅ Qualquer via AgentDriver |
 | **Runtime próprio** | Não (só protocol) | Sim (loop + tools) | Não (só protocol) | Mínimo (loop simples) | Sim (loop + tools) | ✅ Agent Runtime (implementado) |
 | **Tool calling** | Via provider | Nativo + guardrails | Via provider | Nativo | Nativo + MCP | ✅ ToolProtocol + MCP |
-| **Observabilidade** | Não | Básica | Não | Não | Tracing built-in | ✅ 63 EventTypes |
+| **Observabilidade** | Não | Básica | Não | Não | Tracing built-in | ✅ 69 EventTypes |
 
 ### 3.2 Google A2A (Agent-to-Agent Protocol)
 
@@ -367,7 +367,7 @@ class AgentRuntime:
 | Hooks before/after | Não | AgentHook composáveis |
 | Budget/cost tracking | Não | BudgetPolicy lateral |
 | Permissions enforcement | Não | PermissionsConfig enforced localmente |
-| Observabilidade | Depende do provider | EventSink com 63 event types |
+| Observabilidade | Depende do provider | EventSink com 69 event types |
 | Delegation | Não (ou provider-specific) | DelegationConfig + CoordinatorCapability |
 
 ---
@@ -664,7 +664,7 @@ O Workspace (container) atua como servidor/gateway, expondo os Flows e Agents in
 | **Multi-provider real** | 7 drivers implementados; mesmo agente pode trocar de Engine sem mudar spec |
 | **Agent Runtime com hooks** | Capacidades locais (tools, memory, permissions) independentes do provider |
 | **CoordinatorCapability** | Agente que orquestra sub-Flows — composição recursiva com type safety |
-| **Observabilidade built-in** | 63 event types canônicos; qualquer Engine é observável |
+| **Observabilidade built-in** | 69 event types canônicos; qualquer Engine é observável |
 | **Memory lifecycle** | Session → long-term → distillation como policy do runtime |
 
 ### 8.2 O que MiniAutoGen NÃO faz (e por quê)

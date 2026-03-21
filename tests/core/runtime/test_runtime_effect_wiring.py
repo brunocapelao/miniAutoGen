@@ -118,4 +118,4 @@ class TestPolicyPropagation:
         rt = WorkflowRuntime(runner=runner, effect_policy=policy)
         interceptor = rt._effect_interceptor
         assert interceptor is not None
-        assert interceptor._event_sink is sink
+        assert interceptor._event_sink is runner.event_sink

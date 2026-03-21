@@ -116,7 +116,7 @@ Notas:
 
 ## Taxonomia canônica de eventos
 
-O enum `EventType` em `core/events/types.py` define 63 tipos de evento organizados em 13 categorias.
+O enum `EventType` em `core/events/types.py` define 69 tipos de evento organizados em 13 categorias.
 
 ### Ciclo de vida do run (5)
 

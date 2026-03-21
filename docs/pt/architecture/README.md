@@ -2,7 +2,7 @@
 
 ## Posicionamento
 
-MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (63 tipos em 13 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
+MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece quatro modos de coordenação nativos -- workflow, deliberation, agentic loop e composite -- composíveis via composite runtime. O kernel centraliza a gestão de contexto de execução (RunContext), emissão de eventos (69 tipos em 13 categorias), enforcement de políticas transversais e propagação de resultados (RunResult). Toda concorrência é estruturada via AnyIO, garantindo cancelamento determinístico e isolamento de falhas.
 
 ---
 
@@ -64,7 +64,7 @@ flowchart TB
     Modes --> AL["AgenticLoopRuntime"]
     Modes --> CR["CompositeRuntime"]
     Kernel --> Policies["Policies"]
-    Kernel --> Events["Eventos (63 tipos)"]
+    Kernel --> Events["Eventos (69 tipos)"]
     Kernel --> Stores["Stores"]
     Kernel --> Adapters["Adapters"]
     Adapters --> LLM["Provedores LLM"]

@@ -42,7 +42,7 @@ miniautogen/
 ├── compat/            # Facade de compatibilidade
 ├── core/
 │   ├── contracts/     # ~15 Protocols + Pydantic models
-│   ├── events/        # 69+ EventTypes + sinks composáveis
+│   ├── events/        # 69 EventTypes + sinks composáveis
 │   └── runtime/       # 4 runtimes (Workflow, AgenticLoop, Deliberation, Composite)
 ├── llms/              # Deprecated
 ├── observability/     # structlog
@@ -81,7 +81,7 @@ miniautogen/
 
 | v0 | Atual |
 |----|-------|
-| `logging.info("Round completed")` | 69+ EventTypes canônicos + sinks composáveis |
+| `logging.info("Round completed")` | 69 EventTypes canônicos + sinks composáveis |
 | Sem correlação | `correlation_id` em cada evento |
 | Sem filtros | `FilteredEventSink` + `CompositeEventSink` |
 

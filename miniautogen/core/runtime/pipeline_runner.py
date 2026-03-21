@@ -9,6 +9,8 @@ import anyio
 
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.events import EventSink, EventType, NullEventSink
+from miniautogen.core.events.event_bus import EventBus
+from miniautogen.core.events.event_sink import CompositeEventSink
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
 from miniautogen.policies.chain import PolicyChain, PolicyContext
@@ -39,7 +41,13 @@ class PipelineRunner:
         policy_chain: PolicyChain | None = None,
         engine_resolver: EngineResolver | None = None,
     ) -> None:
-        self.event_sink = event_sink or NullEventSink()
+        self._event_bus = EventBus()
+
+        if event_sink is None:
+            self.event_sink: EventSink = self._event_bus
+        else:
+            self.event_sink = CompositeEventSink([event_sink, self._event_bus])
+
         self.run_store = run_store
         self.checkpoint_store = checkpoint_store
         self.execution_policy = execution_policy
@@ -49,6 +57,11 @@ class PipelineRunner:
         self._engine_resolver = engine_resolver
         self.last_run_id: str | None = None
         self.logger = get_logger(__name__)
+
+    @property
+    def event_bus(self) -> EventBus:
+        """EventBus for reactive policy subscriptions."""
+        return self._event_bus
 
     # ------------------------------------------------------------------
     # Agent runtime factory
@@ -246,6 +259,10 @@ class PipelineRunner:
                 },
             )
 
+        # Register reactive policies on EventBus before any events are emitted
+        if self._policy_chain is not None:
+            self._policy_chain.register_reactive_on_bus(self._event_bus)
+
         await self.event_sink.publish(
             ExecutionEvent(
                 type=EventType.RUN_STARTED.value,
@@ -399,6 +416,7 @@ class PipelineRunner:
         workspace: Path,
         config: WorkspaceConfig,
         input_text: str | None = None,
+        resume_run_id: str | None = None,
     ) -> RunResult:
         """Execute a config-driven flow (no Python callable needed).
 
@@ -427,7 +445,7 @@ class PipelineRunner:
         from miniautogen.core.contracts.run_context import RunContext
         from miniautogen.core.contracts.run_result import RunResult
 
-        run_id = str(uuid4())
+        run_id = resume_run_id or str(uuid4())
         correlation_id = run_id
         self.last_run_id = run_id
 
@@ -476,6 +494,10 @@ class PipelineRunner:
                 correlation_id=correlation_id,
                 input_payload=input_text,
             )
+
+            # Register reactive policies on EventBus before any events are emitted
+            if self._policy_chain is not None:
+                self._policy_chain.register_reactive_on_bus(self._event_bus)
 
             # Emit RUN_STARTED
             await self.event_sink.publish(
@@ -624,6 +646,19 @@ def _build_coordination_from_config(
 
     mode = flow_config.mode
 
+    # Build CheckpointManager when runner has a checkpoint_store so that
+    # coordination runtimes can persist step-level progress.
+    checkpoint_manager = None
+    if runner.checkpoint_store is not None:
+        from miniautogen.core.runtime.checkpoint_manager import CheckpointManager
+        from miniautogen.stores.in_memory_event_store import InMemoryEventStore
+
+        checkpoint_manager = CheckpointManager(
+            checkpoint_store=runner.checkpoint_store,
+            event_store=InMemoryEventStore(),
+            event_sink=runner.event_sink,
+        )
+
     if mode == "workflow":
         steps = [
             WorkflowStep(
@@ -636,6 +671,7 @@ def _build_coordination_from_config(
         coordination_runtime = WorkflowRuntime(
             runner=runner,
             agent_registry=agent_registry,
+            checkpoint_manager=checkpoint_manager,
         )
         return plan, coordination_runtime
 

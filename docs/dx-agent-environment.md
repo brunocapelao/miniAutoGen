@@ -89,7 +89,7 @@ O MiniAutoGen e um framework Python orientado a **Microkernel** para orquestraca
 | **Adapters** | Engine Drivers, templates, LLM providers | `backends/`, `adapters/` |
 | **Shell** | CLI, TUI Dashboard, Server | `cli/`, `tui/`, `app/` |
 
-A complexidade do repositorio e relevante para entender o ambiente: nao se trata de um projeto simples onde "qualquer LLM resolve". A separacao rigorosa de responsabilidades, os 63 tipos de evento (expandindo para 69 com o AgentRuntime compositor) canonicos, os 4 runtimes de coordenacao e a abstracacao multi-provider criam um contexto onde erros de acoplamento sao faceis de introduzir e dificeis de detectar. O ambiente de desenvolvimento precisa compensar isso.
+A complexidade do repositorio e relevante para entender o ambiente: nao se trata de um projeto simples onde "qualquer LLM resolve". A separacao rigorosa de responsabilidades, os 69 tipos de evento canonicos, os 4 runtimes de coordenacao e a abstracacao multi-provider criam um contexto onde erros de acoplamento sao faceis de introduzir e dificeis de detectar. O ambiente de desenvolvimento precisa compensar isso.
 
 > **Nota de terminologia (DA-9):** O código interno usa `PipelineRunner` e `backends/` como nomes de classes e módulos. Na terminologia pública, estes correspondem a "Flow runtime" e "Engine drivers" respectivamente. Ver [README estratégico](pt/README.md) para o mapeamento completo.
 
@@ -448,7 +448,7 @@ CONSTRAINTS:
 MUST DO:
 - Comparar ambas abordagens com code examples
 - Considerar composabilidade (multiplos interceptors encadeados)
-- Avaliar impacto no sistema de eventos canonicos (63 tipos de evento, expandindo para 69 com o AgentRuntime compositor)
+- Avaliar impacto no sistema de eventos canonicos (69 tipos de evento)
 - Fornecer effort estimate (Quick/Short/Medium/Large)
 
 MUST NOT DO:

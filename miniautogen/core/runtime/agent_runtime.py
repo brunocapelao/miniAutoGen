@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any, AsyncIterator
 
 import anyio
@@ -244,7 +245,18 @@ class AgentRuntime:
         )
         messages = self._build_messages(prompt)
         result = await self._execute_turn(messages)
-        data = json.loads(result.text)
+        try:
+            text = result.text or ""
+            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+            raw = fence_match.group(1).strip() if fence_match else text
+            data = json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            text = result.text or ""
+            data = {
+                "strengths": [],
+                "concerns": [text] if text else [],
+                "questions": [],
+            }
         return Review(
             reviewer_id=self._agent_id,
             target_id=target_id,

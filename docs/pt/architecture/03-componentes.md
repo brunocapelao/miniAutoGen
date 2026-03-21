@@ -171,7 +171,7 @@ Todos em `miniautogen/pipeline/`:
 
 Módulo: `miniautogen/core/events/`
 
-O framework emite 63 tipos de evento canônico organizados em 13 categorias:
+O framework emite 69 tipos de evento canônico organizados em 13 categorias:
 
 | Categoria | Eventos |
 | --- | --- |

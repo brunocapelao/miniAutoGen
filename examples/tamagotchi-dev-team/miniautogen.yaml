@@ -3,6 +3,11 @@ project:
   version: "0.1.0"
 defaults:
   engine: gemini
+  supervision:
+    max_restarts: 2
+    restart_window_seconds: 60
+    circuit_breaker_threshold: 5
+    strategy: restart
 engines:
   gemini:
     provider: gemini-cli

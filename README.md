@@ -21,7 +21,7 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 - Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
 - 5 stores especializados (messages, runs, checkpoints, effects, events) com backends InMemory e SQLAlchemy
 - 10 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
-- 63 tipos de evento em 13 categorias para observabilidade via structlog
+- 69 tipos de evento em 13 categorias para observabilidade via structlog
 - Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
 - CLI com comandos `init`, `check`, `run` e `sessions`
 - Taxonomia canónica de erros com 8 categorias e `classify_error()` extensível
