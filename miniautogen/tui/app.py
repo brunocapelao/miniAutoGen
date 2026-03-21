@@ -81,7 +81,6 @@ class MiniAutoGenDash(App):
         yield Header()
         yield TeamSidebar()
         yield WorkPanel()
-        yield HintBar()
         yield Footer()
 
     def on_mount(self) -> None:

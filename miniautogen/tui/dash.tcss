@@ -58,6 +58,7 @@ AgentCard.--highlighted {
 /* ── WorkPanel ───────────────────────────────────────────── */
 
 WorkPanel {
+    width: 1fr;
     height: 1fr;
 }
 
