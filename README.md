@@ -2,6 +2,10 @@
 
 Biblioteca Python de microkernel para orquestração de pipelines e coordenação multi-agente assíncrona.
 
+## Getting Started
+
+See the [Quickstart Guide](docs/quickstart.md) for install -> first run in 5 minutes.
+
 O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies transversais para construir sistemas multi-agente. A arquitetura separa rigorosamente o núcleo dos adapters externos, permitindo trocar providers LLM, stores e backends sem alterar lógica de domínio. Todo o fluxo de execução é assíncrono via AnyIO.
 
 ---

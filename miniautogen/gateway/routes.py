@@ -1,7 +1,5 @@
 """API routes for run management."""
 
-from __future__ import annotations
-
 import re
 import uuid
 

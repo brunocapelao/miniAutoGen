@@ -19,7 +19,7 @@ from miniautogen.cli.services.init_project import scaffold_project
 )
 @click.option(
     "--provider",
-    default="litellm",
+    default="openai",
     help="Default LLM provider.",
 )
 @click.option(

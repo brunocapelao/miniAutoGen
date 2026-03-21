@@ -40,7 +40,7 @@ def scaffold_project(
     target_dir: Path,
     *,
     model: str = "gpt-4o-mini",
-    provider: str = "litellm",
+    provider: str = "openai",
     include_examples: bool = True,
     force: bool = False,
 ) -> Path:

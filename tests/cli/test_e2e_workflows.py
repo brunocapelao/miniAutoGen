@@ -20,6 +20,7 @@ class TestInitCheckRunWorkflow:
 
     def test_full_lifecycle(self, tmp_path, monkeypatch) -> None:
         """Create project, validate it, run the pipeline."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
 
@@ -46,6 +47,7 @@ class TestInitCheckRunWorkflow:
         self, tmp_path, monkeypatch,
     ) -> None:
         """Full lifecycle with JSON output format."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
 
@@ -100,6 +102,7 @@ class TestInitCheckRunWorkflow:
         self, tmp_path, monkeypatch,
     ) -> None:
         """Init without examples, check, run -- all should work."""
+        monkeypatch.setenv("OPENAI_API_KEY", "test-key")
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
 

@@ -262,6 +262,9 @@ def _check_pipelines(
     results: list[CheckResult] = []
     for name, pipeline_cfg in config.pipelines.items():
         target = pipeline_cfg.target
+        if target is None:
+            # Config-driven flow (mode + participants) — no target to resolve
+            continue
         if ":" not in target:
             results.append(CheckResult(
                 name=f"pipeline:{name}",
