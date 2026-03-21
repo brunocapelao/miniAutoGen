@@ -34,6 +34,7 @@ from miniautogen.cli.services.engine_ops import (
 )
 from miniautogen.cli.services.pipeline_ops import (
     create_pipeline as _create_pipeline,
+    delete_pipeline as _delete_pipeline,
     list_pipelines as _list_pipelines,
     show_pipeline as _show_pipeline,
     update_pipeline as _update_pipeline,
@@ -43,10 +44,10 @@ from miniautogen.cli.services.server_ops import (
     start_server as _start_server,
     stop_server as _stop_server,
 )
+from miniautogen.cli.services.check_project import check_project as _check_project
 from miniautogen.cli.services.run_pipeline import (
     execute_pipeline as _execute_pipeline,
 )
-from miniautogen.cli.services.yaml_ops import read_yaml
 
 
 class DashDataProvider:
@@ -271,23 +272,13 @@ class DashDataProvider:
     def delete_pipeline(self, name: str) -> dict[str, Any]:
         """Delete a pipeline from project config.
 
+        Delegates to pipeline_ops.delete_pipeline which performs referential
+        integrity checks (agents referencing the flow, composite chains).
+
         Returns info about the deleted pipeline.
-        Raises KeyError if not found.
+        Raises KeyError if not found, ValueError if referenced by other resources.
         """
-        from miniautogen.cli.services.yaml_ops import write_yaml
-
-        data = read_yaml(self._config_path)
-        pipelines = data.get("flows", data.get("pipelines", {}))
-        if name not in pipelines:
-            available = ", ".join(pipelines) or "(none)"
-            msg = f"Pipeline '{name}' not found. Available: {available}"
-            raise KeyError(msg)
-
-        pipeline_data = pipelines.pop(name)
-        write_yaml(self._config_path, data)
-
-        result = pipeline_data if isinstance(pipeline_data, dict) else {"target": str(pipeline_data)}
-        return {"deleted": name, "config": result}
+        return _delete_pipeline(self._root, name)
 
     # ── Pipeline Execution ────────────────────────────────────
 
@@ -341,6 +332,22 @@ class DashDataProvider:
                 "error": str(exc),
                 "error_type": type(exc).__name__,
             }
+
+    # ── Project Validation ───────────────────────────────────
+
+    def check_project(self):
+        """Run all validation checks on the project.
+
+        Returns a list of CheckResult objects, or an empty list if no
+        project config is present.
+        """
+        if not self._config_path.is_file():
+            return []
+        try:
+            config = load_config(self._config_path)
+            return _check_project(config, self._root)
+        except Exception:
+            return []
 
     # ── Server ───────────────────────────────────────────────
 

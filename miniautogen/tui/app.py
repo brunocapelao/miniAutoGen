@@ -24,6 +24,7 @@ from miniautogen.tui.event_sink import TuiEventSink
 from miniautogen.tui.messages import RunCompleted, SidebarRefresh, TuiEvent
 from miniautogen.tui.workers import EventBridgeWorker
 from miniautogen.tui.views.agents import AgentsView
+from miniautogen.tui.views.check import CheckView
 from miniautogen.tui.views.events import EventsView
 from miniautogen.tui.views.pipelines import PipelinesView
 from miniautogen.tui.views.runs import RunsView
@@ -47,6 +48,7 @@ class MiniAutoGenDash(App):
 
     SCREENS = {
         "agents": AgentsView,
+        "check": CheckView,
         "events": EventsView,
         "pipelines": PipelinesView,
         "runs": RunsView,
@@ -63,6 +65,8 @@ class MiniAutoGenDash(App):
         Binding("d", "diff_view", "Diff", show=False),
         Binding("slash", "search", "Search", show=False),
         Binding("tab", "next_pipeline", "Next Tab", show=False),
+        Binding("ctrl+s", "server_start", "Server Start", show=False),
+        Binding("ctrl+x", "server_stop", "Server Stop", show=False),
     ]
 
     def __init__(self, project_root=None) -> None:
