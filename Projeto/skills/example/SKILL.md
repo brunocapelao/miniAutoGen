@@ -1,0 +1,15 @@
+# Example Skill
+
+This is a starter skill template for the Projeto project.
+
+## When to use
+
+Replace this with instructions for when this skill should be activated.
+
+## How to act
+
+Replace this with the operational procedure this skill teaches.
+
+## Quality criteria
+
+Replace this with the quality standards for this skill's output.

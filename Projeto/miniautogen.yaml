@@ -1,0 +1,29 @@
+project:
+  name: "Projeto"
+  version: "0.1.0"
+
+defaults:
+  engine: default_api
+  memory_profile: default
+
+engines:
+  default_api:
+    kind: api
+    provider: "litellm"
+    model: "gpt-4o-mini"
+    temperature: 0.2
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
+
+flows:
+  main:
+    target: pipelines.main:build_pipeline
+
+database:
+  url: sqlite+aiosqlite:///miniautogen.db

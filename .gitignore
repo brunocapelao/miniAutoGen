@@ -58,3 +58,9 @@ dist/
 output/
 !output/jupyter-notebook/
 !output/jupyter-notebook/*.ipynb
+
+# Superpowers brainstorm artifacts
+.superpowers/
+
+# Test databases
+test.db
