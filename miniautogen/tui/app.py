@@ -29,9 +29,9 @@ from miniautogen.tui.workers import EventBridgeWorker
 from miniautogen.tui.views.check import CheckView
 from miniautogen.tui.views.events import EventsView
 from miniautogen.tui.views.monitor import MonitorView
-from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
 from miniautogen.tui.widgets.main_content import MainContent
 from miniautogen.tui.widgets.tab_bar import TabBar
+from miniautogen.tui.widgets.team_sidebar import TeamSidebar
 from miniautogen.tui.content.workspace import WorkspaceContent
 from miniautogen.tui.content.flows import FlowsContent
 from miniautogen.tui.content.agents import AgentsContent
@@ -89,7 +89,7 @@ class MiniAutoGenDash(App):
         main.register_tab("Config", ConfigContent())
         with Horizontal(id="app-grid"):
             yield main
-            yield ExecutionSidebar()
+            yield TeamSidebar()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -135,15 +135,10 @@ class MiniAutoGenDash(App):
             self.notify("No project -- some features unavailable", severity="warning")
 
     def _populate_sidebar(self) -> None:
-        """Populate the ExecutionSidebar with agents and recent runs from data provider."""
+        """Populate the TeamSidebar with agents from data provider."""
         try:
-            sidebar = self.query_one(ExecutionSidebar)
-            if self._provider:
-                agents = self._provider.get_agents()
-                agent_list = [{"name": a.get("name", ""), "status": "idle"} for a in agents]
-                sidebar.set_agents(agent_list)
-                runs = self._provider.get_runs()
-                sidebar.set_recent_runs(runs)
+            sidebar = self.query_one(TeamSidebar)
+            sidebar.refresh_agents()
         except Exception:
             pass
 
@@ -232,7 +227,7 @@ class MiniAutoGenDash(App):
         """Show/hide sidebar and adjust width based on terminal width."""
         width = self.size.width
         try:
-            sidebar = self.query_one(ExecutionSidebar)
+            sidebar = self.query_one(TeamSidebar)
             if width < _NARROW_BREAKPOINT:
                 sidebar.display = False
             else:
@@ -276,24 +271,38 @@ class MiniAutoGenDash(App):
             pass
 
     def on_tui_event(self, message: TuiEvent) -> None:
-        """Forward execution events to sidebar log and record in provider."""
+        """Forward execution events to TeamSidebar and record in provider."""
+        event = message.event
         try:
-            sidebar = self.query_one(ExecutionSidebar)
-            sidebar.interaction_log.handle_event(message.event)
+            sidebar = self.query_one(TeamSidebar)
+            # Update agent status based on event type
+            agent_name = event.scope or ""
+            event_type = event.type or ""
+            if "started" in event_type:
+                sidebar.update_agent_status(agent_name, "working", event_type)
+            elif "finished" in event_type or "completed" in event_type:
+                sidebar.update_agent_status(agent_name, "ready")
+            elif "error" in event_type or "failed" in event_type:
+                sidebar.update_agent_status(agent_name, "error", event_type)
+            # Add to activity feed
+            payload = event.payload if hasattr(event, "payload") else {}
+            detail = payload.get("message", event_type) if isinstance(payload, dict) else event_type
+            if agent_name:
+                sidebar.add_activity(agent_name, detail)
         except Exception:
             pass
         # Record event in provider for queryable history
         if self._provider is not None:
             try:
                 event_dict = {
-                    "type": message.event.type,
-                    "run_id": message.event.run_id,
-                    "scope": message.event.scope,
-                    "timestamp": message.event.timestamp.isoformat()
-                    if hasattr(message.event, "timestamp") and message.event.timestamp
+                    "type": event.type,
+                    "run_id": event.run_id,
+                    "scope": event.scope,
+                    "timestamp": event.timestamp.isoformat()
+                    if hasattr(event, "timestamp") and event.timestamp
                     else None,
-                    "payload": message.event.payload
-                    if hasattr(message.event, "payload")
+                    "payload": event.payload
+                    if hasattr(event, "payload")
                     else {},
                 }
                 self._provider.record_event(event_dict)
@@ -308,16 +317,17 @@ class MiniAutoGenDash(App):
     def on_run_started(self, event: RunStarted) -> None:
         """Handle flow execution start."""
         try:
-            sidebar = self.query_one(ExecutionSidebar)
-            sidebar.start_execution()
+            sidebar = self.query_one(TeamSidebar)
+            sidebar.clear_activity()
+            sidebar.is_running = True
         except Exception:
             pass
 
     def on_run_stopped(self, event: RunStopped) -> None:
         """Handle flow execution end."""
         try:
-            sidebar = self.query_one(ExecutionSidebar)
-            sidebar.stop_execution()
+            sidebar = self.query_one(TeamSidebar)
+            sidebar.is_running = False
         except Exception:
             pass
 
@@ -333,9 +343,9 @@ class MiniAutoGenDash(App):
         pass
 
     def action_toggle_sidebar(self) -> None:
-        """Toggle execution sidebar visibility."""
+        """Toggle team sidebar visibility."""
         try:
-            sidebar = self.query_one(ExecutionSidebar)
+            sidebar = self.query_one(TeamSidebar)
             sidebar.display = not sidebar.display
         except Exception:
             pass
@@ -343,7 +353,7 @@ class MiniAutoGenDash(App):
     def action_fullscreen(self) -> None:
         """Toggle fullscreen (hide/show sidebar)."""
         try:
-            sidebar = self.query_one(ExecutionSidebar)
+            sidebar = self.query_one(TeamSidebar)
             sidebar.display = not sidebar.display
         except Exception:
             pass
@@ -374,6 +384,113 @@ class MiniAutoGenDash(App):
         result = self._provider.stop_server()
         self.notify(result.get("message", "Server stopped"))
         self._update_server_status()
+
+    # --- Wizard actions ---
+
+    def action_run_flow(self) -> None:
+        """Open the RunFlowWizard to select and run a flow."""
+        from miniautogen.tui.screens.run_flow_wizard import RunFlowWizard
+
+        self.push_screen(RunFlowWizard(), callback=self._on_run_flow_result)
+
+    def _on_run_flow_result(self, result: dict | None) -> None:
+        """Callback from RunFlowWizard -- start the selected flow."""
+        if result is None or self._provider is None:
+            return
+
+        async def _run() -> None:
+            try:
+                sidebar = self.query_one(TeamSidebar)
+                sidebar.clear_activity()
+                sidebar.is_running = True
+            except Exception:
+                pass
+            try:
+                r = await self._provider.run_pipeline(
+                    result["flow"], pipeline_input=result["input"]
+                )
+                status = r.get("status", "?")
+                self.notify(f"Flow '{result['flow']}' finished: {status}")
+            except Exception as exc:
+                self.notify(f"Flow failed: {exc}", severity="error")
+            finally:
+                try:
+                    sidebar = self.query_one(TeamSidebar)
+                    sidebar.is_running = False
+                except Exception:
+                    pass
+
+        self.run_worker(_run(), exclusive=True)
+
+    def action_new_agent(self) -> None:
+        """Open the AgentWizard to create a new agent."""
+        from miniautogen.tui.screens.agent_wizard import AgentWizard
+
+        self.push_screen(AgentWizard(), callback=self._on_agent_created)
+
+    def _on_agent_created(self, result: dict | None) -> None:
+        """Callback from AgentWizard -- create the agent via provider."""
+        if result is None or self._provider is None:
+            return
+        try:
+            self._provider.create_agent(
+                result["name"],
+                role=result["role"],
+                goal=result.get("goal", ""),
+                engine_profile=result.get("engine_profile", ""),
+            )
+            self.notify(f"Agent '{result['name']}' created")
+            self._populate_sidebar()
+            self._refresh_workspace()
+            self.post_message(SidebarRefresh())
+        except Exception as exc:
+            self.notify(f"Failed to create agent: {exc}", severity="error")
+
+    def action_new_flow(self) -> None:
+        """Open the FlowWizard to create a new flow."""
+        from miniautogen.tui.screens.flow_wizard import FlowWizard
+
+        self.push_screen(FlowWizard(), callback=self._on_flow_created)
+
+    def _on_flow_created(self, result: dict | None) -> None:
+        """Callback from FlowWizard -- create the flow via provider."""
+        if result is None or self._provider is None:
+            return
+        try:
+            self._provider.create_pipeline(
+                result["name"],
+                mode=result.get("mode", "workflow"),
+                participants=result.get("participants"),
+                leader=result.get("leader"),
+            )
+            self.notify(f"Flow '{result['name']}' created")
+            self._refresh_workspace()
+            self.post_message(SidebarRefresh())
+        except Exception as exc:
+            self.notify(f"Failed to create flow: {exc}", severity="error")
+
+    def action_new_engine(self) -> None:
+        """Open the EngineWizard to configure a new engine."""
+        from miniautogen.tui.screens.engine_wizard import EngineWizard
+
+        self.push_screen(EngineWizard(), callback=self._on_engine_created)
+
+    def _on_engine_created(self, result: dict | None) -> None:
+        """Callback from EngineWizard -- create the engine via provider."""
+        if result is None or self._provider is None:
+            return
+        try:
+            self._provider.create_engine(
+                result["name"],
+                provider=result["provider"],
+                model=result["model"],
+                api_key_env=result.get("api_key_env"),
+                endpoint=result.get("endpoint"),
+            )
+            self.notify(f"Engine '{result['name']}' configured")
+            self._refresh_workspace()
+        except Exception as exc:
+            self.notify(f"Failed to create engine: {exc}", severity="error")
 
     def on_unmount(self) -> None:
         """Stop server on TUI exit."""

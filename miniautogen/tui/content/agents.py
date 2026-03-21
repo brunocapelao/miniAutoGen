@@ -116,25 +116,25 @@ class AgentsContent(Widget, can_focus=True):
         return None
 
     def action_new_agent(self) -> None:
-        """Open agent creation form."""
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        """Open the AgentWizard to create a new agent."""
+        from miniautogen.tui.screens.agent_wizard import AgentWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="agent"),
-            callback=self._on_form_result,
+            AgentWizard(),
+            callback=self._on_agent_wizard_result,
         )
 
     def action_edit_agent(self) -> None:
-        """Open agent edit form."""
+        """Open the AgentWizard to edit an existing agent."""
         name = self._get_selected_name()
         if not name:
             self.notify("No agent selected", severity="warning")
             return
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        from miniautogen.tui.screens.agent_wizard import AgentWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="agent", edit_name=name),
-            callback=self._on_form_result,
+            AgentWizard(edit_name=name),
+            callback=self._on_agent_wizard_result,
         )
 
     def action_delete_agent(self) -> None:
@@ -199,8 +199,27 @@ class AgentsContent(Widget, can_focus=True):
                     except Exception:
                         pass
 
+    def _on_agent_wizard_result(self, result: dict | None) -> None:
+        """Callback from AgentWizard -- create or update agent via provider."""
+        if result is None:
+            return
+        if self.provider is None:
+            return
+        try:
+            self.provider.create_agent(
+                result["name"],
+                role=result["role"],
+                goal=result.get("goal", ""),
+                engine_profile=result.get("engine_profile", ""),
+            )
+            self._refresh_table()
+            self.app.post_message(SidebarRefresh())
+            self.notify(f"Agent '{result['name']}' created")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
+
     def _on_form_result(self, result: object) -> None:
-        """Callback from form screen."""
+        """Callback from form screen (legacy)."""
         if result:
             self._refresh_table()
             self.app.post_message(SidebarRefresh())

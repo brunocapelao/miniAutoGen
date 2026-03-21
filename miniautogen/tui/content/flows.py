@@ -8,7 +8,7 @@ from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
-from miniautogen.tui.messages import RunStarted, SidebarRefresh
+from miniautogen.tui.messages import SidebarRefresh
 
 
 class FlowsContent(Widget, can_focus=True):
@@ -118,25 +118,25 @@ class FlowsContent(Widget, can_focus=True):
         return None
 
     def action_new_flow(self) -> None:
-        """Open flow creation form."""
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        """Open the FlowWizard to create a new flow."""
+        from miniautogen.tui.screens.flow_wizard import FlowWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="pipeline"),
-            callback=self._on_form_result,
+            FlowWizard(),
+            callback=self._on_flow_wizard_result,
         )
 
     def action_edit_flow(self) -> None:
-        """Open flow edit form."""
+        """Open the FlowWizard to edit an existing flow."""
         name = self._get_selected_name()
         if not name:
             self.notify("No flow selected", severity="warning")
             return
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        from miniautogen.tui.screens.flow_wizard import FlowWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="pipeline", edit_name=name),
-            callback=self._on_form_result,
+            FlowWizard(edit_name=name),
+            callback=self._on_flow_wizard_result,
         )
 
     def action_delete_flow(self) -> None:
@@ -165,13 +165,8 @@ class FlowsContent(Widget, can_focus=True):
             self.notify(str(exc), severity="error")
 
     def action_run_flow(self) -> None:
-        """Start execution of the selected flow."""
-        name = self._get_selected_name()
-        if not name:
-            self.notify("No flow selected", severity="warning")
-            return
-        self.post_message(RunStarted(flow_name=name, run_id=""))
-        self.notify(f"Starting flow '{name}'...")
+        """Open the RunFlowWizard to select and run a flow."""
+        self.app.action_run_flow()
 
     def action_refresh(self) -> None:
         """Refresh the flows table."""
@@ -179,20 +174,39 @@ class FlowsContent(Widget, can_focus=True):
         self.notify("Refreshed")
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle click/Enter on a DataTable row -- open edit form."""
+        """Handle click/Enter on a DataTable row -- open edit wizard."""
         if event.data_table.id == "flows-table":
             row = event.data_table.get_row(event.row_key)
             if row:
                 name = str(row[0])
-                from miniautogen.tui.screens.create_form import CreateFormScreen
+                from miniautogen.tui.screens.flow_wizard import FlowWizard
 
                 self.app.push_screen(
-                    CreateFormScreen(resource_type="pipeline", edit_name=name),
-                    callback=self._on_form_result,
+                    FlowWizard(edit_name=name),
+                    callback=self._on_flow_wizard_result,
                 )
 
+    def _on_flow_wizard_result(self, result: dict | None) -> None:
+        """Callback from FlowWizard -- create or update flow via provider."""
+        if result is None:
+            return
+        if self.provider is None:
+            return
+        try:
+            self.provider.create_pipeline(
+                result["name"],
+                mode=result.get("mode", "workflow"),
+                participants=result.get("participants"),
+                leader=result.get("leader"),
+            )
+            self._refresh_table()
+            self.app.post_message(SidebarRefresh())
+            self.notify(f"Flow '{result['name']}' created")
+        except Exception as exc:
+            self.notify(str(exc), severity="error")
+
     def _on_form_result(self, result: object) -> None:
-        """Callback from form screen."""
+        """Callback from form screen (legacy)."""
         if result:
             self._refresh_table()
             self.app.post_message(SidebarRefresh())

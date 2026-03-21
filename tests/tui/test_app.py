@@ -73,11 +73,10 @@ async def test_app_populates_sidebar_on_mount(tmp_path) -> None:
 
     app = MiniAutoGenDash(project_root=str(tmp_path))
     async with app.run_test(size=(120, 40)) as pilot:
-        from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
-        from miniautogen.tui.widgets.idle_panel import IdlePanel
-        sidebar = app.query_one(ExecutionSidebar)
-        idle = sidebar.query_one(IdlePanel)
-        assert idle.agent_count >= 1
+        from miniautogen.tui.widgets.team_sidebar import TeamSidebar
+        sidebar = app.query_one(TeamSidebar)
+        # TeamSidebar loads agents from provider into _agents dict
+        assert len(sidebar._agents) >= 1
         await pilot.press("q")
 
 
@@ -92,11 +91,11 @@ async def test_app_has_event_sink_after_mount() -> None:
 
 
 @pytest.mark.asyncio
-async def test_events_flow_to_interaction_log() -> None:
-    """Events published to TuiEventSink should reach InteractionLog via EventBridge."""
+async def test_events_flow_to_team_sidebar() -> None:
+    """Events published to TuiEventSink should reach TeamSidebar activity feed."""
     from miniautogen.core.contracts.events import ExecutionEvent
     from miniautogen.core.events.types import EventType
-    from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
+    from miniautogen.tui.widgets.team_sidebar import TeamSidebar
 
     app = MiniAutoGenDash()
     async with app.run_test(size=(120, 40)) as pilot:
@@ -105,6 +104,7 @@ async def test_events_flow_to_interaction_log() -> None:
         event = ExecutionEvent(
             type=EventType.COMPONENT_STARTED.value,
             run_id="test-run",
+            scope="researcher",
             payload={"component_name": "Planning", "step_number": 1},
         )
         await app._event_sink.publish(event)
@@ -113,9 +113,9 @@ async def test_events_flow_to_interaction_log() -> None:
         import asyncio
         await asyncio.sleep(0.3)
 
-        # Verify the interaction log received the event via ExecutionSidebar
-        sidebar = app.query_one(ExecutionSidebar)
-        assert sidebar.interaction_log.entry_count >= 1
+        # Verify the TeamSidebar received the event in its activity feed
+        sidebar = app.query_one(TeamSidebar)
+        assert len(sidebar._activity) >= 1
         await pilot.press("q")
 
 

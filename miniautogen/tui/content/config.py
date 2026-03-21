@@ -138,25 +138,25 @@ class ConfigContent(Widget, can_focus=True):
         return None
 
     def action_new_engine(self) -> None:
-        """Open engine creation form."""
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        """Open the EngineWizard to configure a new engine."""
+        from miniautogen.tui.screens.engine_wizard import EngineWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="engine"),
-            callback=self._on_form_result,
+            EngineWizard(),
+            callback=self._on_engine_wizard_result,
         )
 
     def action_edit_engine(self) -> None:
-        """Open engine edit form."""
+        """Open the EngineWizard to edit an existing engine."""
         name = self._get_selected_engine_name()
         if not name:
             self.app.notify("No engine selected", severity="warning")
             return
-        from miniautogen.tui.screens.create_form import CreateFormScreen
+        from miniautogen.tui.screens.engine_wizard import EngineWizard
 
         self.app.push_screen(
-            CreateFormScreen(resource_type="engine", edit_name=name),
-            callback=self._on_form_result,
+            EngineWizard(edit_name=name),
+            callback=self._on_engine_wizard_result,
         )
 
     def action_delete_engine(self) -> None:
@@ -232,7 +232,26 @@ class ConfigContent(Widget, can_focus=True):
         self._refresh_project()
         self.app.notify("Refreshed")
 
+    def _on_engine_wizard_result(self, result: dict | None) -> None:
+        """Callback from EngineWizard -- create or update engine via provider."""
+        if result is None:
+            return
+        if self.provider is None:
+            return
+        try:
+            self.provider.create_engine(
+                result["name"],
+                provider=result["provider"],
+                model=result["model"],
+                api_key_env=result.get("api_key_env"),
+                endpoint=result.get("endpoint"),
+            )
+            self._refresh_engines()
+            self.app.notify(f"Engine '{result['name']}' configured")
+        except Exception as exc:
+            self.app.notify(str(exc), severity="error")
+
     def _on_form_result(self, result: bool) -> None:
-        """Callback from form screen."""
+        """Callback from form screen (legacy)."""
         if result:
             self._refresh_engines()

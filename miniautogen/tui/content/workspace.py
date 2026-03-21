@@ -112,23 +112,9 @@ class WorkspaceContent(Widget):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle quick action button clicks."""
         if event.button.id == "btn-new-agent":
-            self.app.action_switch_tab("Agents")
-            try:
-                agents = self.app.query_one(
-                    "AgentsContent",
-                )
-                agents.action_new_agent()
-            except Exception:
-                pass
+            self.app.action_new_agent()
         elif event.button.id == "btn-run-flow":
-            self.app.action_switch_tab("Flows")
-            try:
-                flows = self.app.query_one(
-                    "FlowsContent",
-                )
-                flows.action_run_flow()
-            except Exception:
-                pass
+            self.app.action_run_flow()
         elif event.button.id == "btn-commands":
             self.app.action_command_palette()
 
