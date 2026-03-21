@@ -62,4 +62,7 @@ class MainContent(Widget):
             new_value: The new active tab name.
         """
         for name, widget in self._tabs.items():
-            widget.display = name == new_value
+            is_active = name == new_value
+            widget.display = is_active
+            if is_active and hasattr(widget, "_refresh_table"):
+                widget._refresh_table()
