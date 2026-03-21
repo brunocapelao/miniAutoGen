@@ -62,7 +62,13 @@ class AgentWizard(ModalScreen[dict | None]):
 
     AgentWizard .step-container {
         height: auto;
+        max-height: 18;
         padding: 0 1;
+    }
+
+    AgentWizard TextArea {
+        height: 8;
+        max-height: 8;
     }
 
     AgentWizard .button-bar {
