@@ -89,7 +89,16 @@ class MiniAutoGenDash(App):
         self._init_provider()
         self._update_server_status()
         self._populate_sidebar()
+        self._refresh_onboarding()
         self._start_event_bridge()
+
+    def _refresh_onboarding(self) -> None:
+        """Refresh the WorkPanel onboarding guide after provider is ready."""
+        try:
+            work_panel = self.query_one(WorkPanel)
+            work_panel._refresh_onboarding()
+        except Exception:
+            pass
 
     def _start_event_bridge(self) -> None:
         """Create TuiEventSink and start the EventBridgeWorker."""
