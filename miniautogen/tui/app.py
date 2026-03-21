@@ -97,6 +97,7 @@ class MiniAutoGenDash(App):
         self.apply_theme(self._current_theme)
         self._apply_responsive()
         self._init_provider()
+        self._auto_start_server()
         self._update_server_status()
         self._populate_sidebar()
         self._refresh_workspace()
@@ -180,6 +181,17 @@ class MiniAutoGenDash(App):
                     engines_count=len(engines),
                     health_items=health_items if health_items else None,
                 )
+        except Exception:
+            pass
+
+    def _auto_start_server(self) -> None:
+        """Auto-start the gateway server if a project is loaded and server is not running."""
+        if self._provider is None or not self._provider.has_project():
+            return
+        try:
+            status = self._provider.server_status()
+            if status.get("status") != "running":
+                self._provider.start_server(daemon=True)
         except Exception:
             pass
 
@@ -362,3 +374,13 @@ class MiniAutoGenDash(App):
         result = self._provider.stop_server()
         self.notify(result.get("message", "Server stopped"))
         self._update_server_status()
+
+    def on_unmount(self) -> None:
+        """Stop server on TUI exit."""
+        if self._provider is not None:
+            try:
+                status = self._provider.server_status()
+                if status.get("status") == "running":
+                    self._provider.stop_server()
+            except Exception:
+                pass
