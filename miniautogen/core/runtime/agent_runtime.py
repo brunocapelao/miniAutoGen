@@ -216,7 +216,15 @@ class AgentRuntime:
         )
         messages = self._build_messages(prompt)
         result = await self._execute_turn(messages)
-        data = json.loads(result.text)
+        try:
+            data = json.loads(result.text)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            # Backend returned free text — wrap it as a contribution
+            return Contribution(
+                participant_id=self._agent_id,
+                title=topic,
+                content={"text": result.text},
+            )
         return Contribution(
             participant_id=self._agent_id,
             title=data.get("title", topic),

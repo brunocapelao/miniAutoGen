@@ -2,11 +2,16 @@
 
 Uses semantic color tokens for consistent theming across widgets.
 4 built-in themes: tokyo-night (default dark), catppuccin, monokai, light.
+
+Each DashTheme is converted to a Textual ``Theme`` via ``to_textual_theme()``
+so that ``app.theme = name`` triggers the built-in CSS variable refresh.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+
+from textual.theme import Theme as TextualTheme
 
 
 @dataclass(frozen=True)
@@ -14,6 +19,7 @@ class DashTheme:
     """Theme definition with semantic color tokens."""
 
     name: str
+    dark: bool = True
     primary: str = "#7aa2f7"
     secondary: str = "#bb9af7"
     accent: str = "#7dcfff"
@@ -27,6 +33,28 @@ class DashTheme:
     status_waiting: str = "#ff9e64"
     status_failed: str = "#f7768e"
     status_cancelled: str = "#db4b4b"
+
+    def to_textual_theme(self) -> TextualTheme:
+        """Convert to a Textual Theme for CSS variable injection."""
+        return TextualTheme(
+            name=self.name,
+            primary=self.primary,
+            secondary=self.secondary,
+            accent=self.accent,
+            background=self.background,
+            surface=self.surface,
+            foreground=self.text,
+            dark=self.dark,
+            variables={
+                "text-muted": self.text_muted,
+                "status-active": self.status_active,
+                "status-done": self.status_done,
+                "status-working": self.status_working,
+                "status-waiting": self.status_waiting,
+                "status-failed": self.status_failed,
+                "status-cancelled": self.status_cancelled,
+            },
+        )
 
 
 _TOKYO_NIGHT = DashTheme(name="tokyo-night")
@@ -67,6 +95,7 @@ _MONOKAI = DashTheme(
 
 _LIGHT = DashTheme(
     name="light",
+    dark=False,
     primary="#4078f2",
     secondary="#a626a4",
     accent="#0184bc",
@@ -90,6 +119,21 @@ THEMES: dict[str, DashTheme] = {
 }
 
 
+DEFAULT_THEME = "tokyo-night"
+
+
 def get_theme(name: str) -> DashTheme:
     """Get a theme by name. Falls back to tokyo-night."""
     return THEMES.get(name, _TOKYO_NIGHT)
+
+
+def register_dash_themes(app: object) -> None:
+    """Register all DashThemes as Textual themes on *app*.
+
+    Call this once during ``App.__init__`` or ``on_mount``.
+    """
+    register = getattr(app, "register_theme", None)
+    if register is None:
+        return
+    for dash_theme in THEMES.values():
+        register(dash_theme.to_textual_theme())

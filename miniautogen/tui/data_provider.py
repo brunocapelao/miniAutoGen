@@ -64,6 +64,8 @@ class DashDataProvider:
         self._root = project_root.resolve()
         self._config_path = self._root / CONFIG_FILENAME
         self._run_history: list[dict[str, Any]] = []
+        self._event_sink: Any | None = None
+        self._events: list[dict[str, Any]] = []
 
     @classmethod
     def from_cwd(cls) -> DashDataProvider | None:
@@ -75,6 +77,13 @@ class DashDataProvider:
         if root is None:
             return None
         return cls(root)
+
+    def set_event_sink(self, sink: Any) -> None:
+        """Set the TuiEventSink for streaming pipeline events to the TUI.
+
+        Called by the app after creating the event sink and bridge worker.
+        """
+        self._event_sink = sink
 
     @property
     def project_root(self) -> Path:
@@ -171,12 +180,19 @@ class DashDataProvider:
         return list(self._run_history)
 
     def get_events(self) -> list[dict[str, Any]]:
-        """Get recent events.
+        """Get recent events recorded during pipeline executions.
 
-        Currently returns an empty list. Events are streamed live
-        via TuiEventSink during pipeline execution.
+        Events are also streamed live via TuiEventSink to the sidebar.
+        This list provides a queryable history for views that need it.
         """
-        return []
+        return list(self._events)
+
+    def record_event(self, event: dict[str, Any]) -> None:
+        """Record an event dict for later retrieval via get_events().
+
+        Called by the app's on_tui_event handler to accumulate events.
+        """
+        self._events.append(event)
 
     def get_engine(self, name: str) -> dict[str, Any]:
         """Get a single engine by name."""
@@ -303,12 +319,14 @@ class DashDataProvider:
         Args:
             pipeline_name: Key in project config pipelines section.
             event_sink: Optional event sink (e.g., TuiEventSink) for live events.
+                Falls back to the sink set via set_event_sink() if not provided.
             timeout: Optional timeout in seconds.
             pipeline_input: Optional input text for the pipeline.
 
         Returns:
             Result dict with status, output, events count.
         """
+        effective_sink = event_sink or self._event_sink
         if not self._config_path.is_file():
             return {"status": "failed", "error": "No project config found"}
         try:
@@ -319,7 +337,7 @@ class DashDataProvider:
                 self._root,
                 timeout=timeout,
                 pipeline_input=pipeline_input,
-                event_sink=event_sink,
+                event_sink=effective_sink,
             )
             # Record run in session history
             from datetime import datetime, timezone

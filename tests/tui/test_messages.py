@@ -49,3 +49,38 @@ def test_tui_event_is_textual_message() -> None:
     )
     msg = TuiEvent(event)
     assert isinstance(msg, Message)
+
+
+def test_tab_changed_message() -> None:
+    """TabChanged message must carry tab_name."""
+    from textual.message import Message
+
+    from miniautogen.tui.messages import TabChanged
+
+    msg = TabChanged(tab_name="flows")
+    assert isinstance(msg, Message)
+    assert msg.tab_name == "flows"
+
+
+def test_run_started_message() -> None:
+    """RunStarted message must carry flow_name and run_id."""
+    from textual.message import Message
+
+    from miniautogen.tui.messages import RunStarted
+
+    msg = RunStarted(flow_name="research-flow", run_id="abc123")
+    assert isinstance(msg, Message)
+    assert msg.flow_name == "research-flow"
+    assert msg.run_id == "abc123"
+
+
+def test_run_stopped_message() -> None:
+    """RunStopped message must carry run_id and final_status."""
+    from textual.message import Message
+
+    from miniautogen.tui.messages import RunStopped
+
+    msg = RunStopped(run_id="abc123", final_status="completed")
+    assert isinstance(msg, Message)
+    assert msg.run_id == "abc123"
+    assert msg.final_status == "completed"

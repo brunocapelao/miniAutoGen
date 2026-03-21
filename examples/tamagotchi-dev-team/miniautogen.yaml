@@ -1,0 +1,25 @@
+project:
+  name: tamagotchi-dev-team
+  version: "0.1.0"
+defaults:
+  engine: gemini
+engines:
+  gemini:
+    provider: gemini-cli
+    model: gemini-2.5-pro
+    timeout_seconds: 300
+    command: "gemini --yolo"
+flows:
+  build:
+    mode: workflow
+    participants:
+      - architect
+      - developer
+      - tester
+  review:
+    mode: deliberation
+    participants:
+      - architect
+      - developer
+      - tester
+    leader: architect

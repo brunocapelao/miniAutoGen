@@ -1,0 +1,13 @@
+id: tech_lead
+name: Tech Lead
+role: Reviews consolidated report, approves or requests changes
+goal: Ensure the team delivers a working, clean, and well-tested Tamagotchi game
+engine_profile: gemini
+tool_access:
+  mode: all
+permissions:
+  shell: allow
+  network: allow
+  filesystem:
+    read: true
+    write: true

@@ -19,6 +19,11 @@ class Contribution(BaseModel):
     title: str
     content: dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def role_name(self) -> str:
+        """Backward-compatible alias for participant_id."""
+        return self.participant_id
+
 
 class Review(BaseModel):
     """General-purpose review of another participant's contribution.

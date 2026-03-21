@@ -1,0 +1,13 @@
+id: developer
+name: Developer
+role: Writes Python code for the Tamagotchi game
+goal: Implement a fully working terminal Tamagotchi based on the architect's design
+engine_profile: gemini
+tool_access:
+  mode: all
+permissions:
+  shell: allow
+  network: allow
+  filesystem:
+    read: true
+    write: true

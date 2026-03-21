@@ -14,5 +14,5 @@ def test_app_has_command_providers() -> None:
 
 def test_app_screens_contain_all_views() -> None:
     """App SCREENS dict must contain all secondary view names."""
-    expected = {"agents", "events", "pipelines", "runs", "engines", "config"}
+    expected = {"monitor", "check", "events"}
     assert expected.issubset(set(MiniAutoGenDash.SCREENS.keys()))

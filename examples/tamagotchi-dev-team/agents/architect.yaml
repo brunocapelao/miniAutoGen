@@ -1,0 +1,13 @@
+id: architect
+name: Architect
+role: Designs the game structure, modules, and API
+goal: Produce a clear, implementable design spec for the Tamagotchi game
+engine_profile: gemini
+tool_access:
+  mode: all
+permissions:
+  shell: allow
+  network: allow
+  filesystem:
+    read: true
+    write: true

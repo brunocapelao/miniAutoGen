@@ -273,7 +273,10 @@ class EngineResolver:
         # Determine command for CLI drivers
         command: list[str] | None = None
         if driver_type == DriverType.CLI:
-            command = _CLI_COMMANDS.get(engine.provider, [engine.provider])
+            if engine.command:
+                command = engine.command.split()
+            else:
+                command = _CLI_COMMANDS.get(engine.provider, [engine.provider])
 
         # Determine endpoint for API drivers
         endpoint = engine.endpoint

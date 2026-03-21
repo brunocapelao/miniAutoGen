@@ -25,6 +25,32 @@ class RunCompleted(Message):
         self.status = status
 
 
+class TabChanged(Message):
+    """Posted when user switches tabs."""
+
+    def __init__(self, tab_name: str) -> None:
+        super().__init__()
+        self.tab_name = tab_name
+
+
+class RunStarted(Message):
+    """Posted when a flow execution begins."""
+
+    def __init__(self, flow_name: str, run_id: str) -> None:
+        super().__init__()
+        self.flow_name = flow_name
+        self.run_id = run_id
+
+
+class RunStopped(Message):
+    """Posted when a flow execution ends (any reason)."""
+
+    def __init__(self, run_id: str, final_status: str) -> None:
+        super().__init__()
+        self.run_id = run_id
+        self.final_status = final_status
+
+
 class TuiEvent(Message):
     """Wraps a core ExecutionEvent as a Textual Message.
 

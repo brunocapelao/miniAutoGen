@@ -1,9 +1,13 @@
 /* MiniAutoGen Dash -- Main Textual CSS Stylesheet
  *
- * Grid layout for workspace (sidebar + main).
- * Styling for all widgets: StepBlock, ToolCallCard, ApprovalBanner,
- * TeamSidebar, WorkPanel, InteractionLog, HintBar, etc.
- * Responsive breakpoints and transitions.
+ * Layout glue and shared overrides for the AI Flow Studio layout.
+ *
+ * Widget-specific styles live in each widget's DEFAULT_CSS.
+ * This file handles:
+ *   - Screen background
+ *   - #app-grid horizontal layout
+ *   - Shared component styles: StepBlock, ToolCallCard, ApprovalBanner,
+ *     InteractionLog / RichLog, EmptyState, DataTable fills
  */
 
 /* ── Screen & Layout ─────────────────────────────────────── */
@@ -12,69 +16,10 @@ Screen {
     background: $background;
 }
 
-#workspace {
+/* Main layout grid: MainContent (1fr) + ExecutionSidebar (dock right) */
+#app-grid {
     layout: horizontal;
     height: 1fr;
-}
-
-/* ── TeamSidebar ─────────────────────────────────────────── */
-
-TeamSidebar {
-    width: 28;
-    dock: left;
-    background: $surface;
-    border-right: solid $primary-background;
-    transition: background 200ms;
-}
-
-TeamSidebar .sidebar-title {
-    text-style: bold;
-    text-align: center;
-    padding: 1;
-    color: $text;
-}
-
-TeamSidebar VerticalScroll {
-    height: 1fr;
-}
-
-/* ── AgentCard ───────────────────────────────────────────── */
-
-AgentCard {
-    height: 3;
-    padding: 0 1;
-    transition: background 150ms;
-}
-
-AgentCard:hover {
-    background: $primary-background;
-}
-
-AgentCard.--highlighted {
-    background: $accent 20%;
-}
-
-/* ── WorkPanel ───────────────────────────────────────────── */
-
-WorkPanel {
-    width: 1fr;
-    height: 1fr;
-}
-
-WorkPanel #progress-section {
-    dock: bottom;
-    height: 3;
-    padding: 0 1;
-    background: $surface;
-}
-
-WorkPanel #step-progress {
-    width: 1fr;
-}
-
-WorkPanel #step-label {
-    text-align: center;
-    color: $text-muted;
 }
 
 /* ── InteractionLog ──────────────────────────────────────── */
@@ -159,23 +104,6 @@ ApprovalBanner Button {
     margin: 0 1;
 }
 
-/* ── PipelineTabs ────────────────────────────────────────── */
-
-PipelineTabs {
-    dock: top;
-    height: 1;
-    background: $surface;
-}
-
-PipelineTabs .tab {
-    padding: 0 2;
-}
-
-PipelineTabs .tab.--active {
-    text-style: bold;
-    background: $primary-background;
-}
-
 /* ── EmptyState ──────────────────────────────────────────── */
 
 EmptyState {
@@ -200,12 +128,88 @@ EmptyState #empty-instructions {
     color: $text-muted;
 }
 
-/* ── HintBar ─────────────────────────────────────────────── */
+/* ── DataTable (SecondaryView fills) ─────────────────────── */
 
-HintBar {
-    dock: bottom;
-    height: 1;
-    padding: 0 1;
+DataTable {
+    height: 1fr;
+    width: 1fr;
+}
+
+/* ── Shared Visual Utilities (visual polish) ─── */
+
+.stat-card {
     background: $surface;
+    border: round $primary-background;
+    padding: 1 2;
+    margin: 0 1 0 0;
+    width: 1fr;
+    height: auto;
+    min-height: 7;
+}
+
+.stat-card .stat-label {
     color: $text-muted;
+    height: 1;
+}
+
+.stat-card .stat-value {
+    text-style: bold;
+    color: $primary;
+    height: 1;
+}
+
+.stat-card .stat-sub {
+    color: $text-muted;
+    height: 1;
+}
+
+.section-box {
+    background: $surface;
+    border: round $primary-background;
+    padding: 1 2;
+    margin: 0 0 1 0;
+    height: auto;
+}
+
+.section-title {
+    color: $text-muted;
+    text-style: bold;
+    margin: 1 0 0 0;
+    height: 1;
+}
+
+.action-btn {
+    background: $surface;
+    border: tall $primary;
+    padding: 0 2;
+    margin: 0 1 0 0;
+    height: 3;
+    content-align: center middle;
+    color: $primary;
+}
+
+.action-btn:hover {
+    background: $primary-background;
+}
+
+.content-title {
+    text-style: bold;
+    color: $text;
+    height: 1;
+    padding: 1 2 0 2;
+}
+
+.content-hint {
+    color: $text-muted;
+    height: 1;
+    padding: 0 2;
+    margin: 0 0 1 0;
+}
+
+.crud-empty {
+    content-align: center middle;
+    height: 1fr;
+    color: $text-muted;
+    text-style: italic;
+    padding: 4;
 }

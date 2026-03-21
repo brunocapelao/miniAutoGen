@@ -41,7 +41,7 @@ def test_app_has_css() -> None:
 
 @pytest.mark.asyncio
 async def test_app_populates_sidebar_on_mount(tmp_path) -> None:
-    """TeamSidebar should be populated with agents from data provider on mount."""
+    """ExecutionSidebar should be populated with agents from data provider on mount."""
     import yaml
 
     # Create a minimal project with one agent
@@ -73,9 +73,11 @@ async def test_app_populates_sidebar_on_mount(tmp_path) -> None:
 
     app = MiniAutoGenDash(project_root=str(tmp_path))
     async with app.run_test(size=(120, 40)) as pilot:
-        from miniautogen.tui.widgets.team_sidebar import TeamSidebar
-        sidebar = app.query_one(TeamSidebar)
-        assert sidebar.agent_count >= 1
+        from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
+        from miniautogen.tui.widgets.idle_panel import IdlePanel
+        sidebar = app.query_one(ExecutionSidebar)
+        idle = sidebar.query_one(IdlePanel)
+        assert idle.agent_count >= 1
         await pilot.press("q")
 
 
@@ -94,7 +96,7 @@ async def test_events_flow_to_interaction_log() -> None:
     """Events published to TuiEventSink should reach InteractionLog via EventBridge."""
     from miniautogen.core.contracts.events import ExecutionEvent
     from miniautogen.core.events.types import EventType
-    from miniautogen.tui.widgets.work_panel import WorkPanel
+    from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
 
     app = MiniAutoGenDash()
     async with app.run_test(size=(120, 40)) as pilot:
@@ -111,16 +113,16 @@ async def test_events_flow_to_interaction_log() -> None:
         import asyncio
         await asyncio.sleep(0.3)
 
-        # Verify the interaction log received the event
-        work_panel = app.query_one(WorkPanel)
-        assert work_panel.interaction_log.entry_count >= 1
+        # Verify the interaction log received the event via ExecutionSidebar
+        sidebar = app.query_one(ExecutionSidebar)
+        assert sidebar.interaction_log.entry_count >= 1
         await pilot.press("q")
 
 
-def test_app_has_run_completed_handler() -> None:
-    """App must have an on_run_completed handler method."""
-    assert hasattr(MiniAutoGenDash, "on_run_completed")
-    assert callable(MiniAutoGenDash.on_run_completed)
+def test_app_has_run_stopped_handler() -> None:
+    """App must have an on_run_stopped handler method."""
+    assert hasattr(MiniAutoGenDash, "on_run_stopped")
+    assert callable(MiniAutoGenDash.on_run_stopped)
 
 
 @pytest.mark.asyncio

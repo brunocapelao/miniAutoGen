@@ -2,9 +2,10 @@
 
 The app shell provides:
 - Header with title
+- TabBar for primary navigation (Workspace / Flows / Agents / Config)
+- Horizontal layout: MainContent (1fr) + ExecutionSidebar (dock right)
 - Footer with key hints
-- Two-panel workspace (Team sidebar + Work panel)
-- Global key bindings
+- Global key bindings (number keys 1-4 switch tabs)
 - Command palette (built-in)
 - SVG export (built-in via Ctrl+P)
 - Theme support
@@ -17,24 +18,27 @@ from __future__ import annotations
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.containers import Horizontal
 from textual.widgets import Footer, Header
 
 from miniautogen.tui.data_provider import DashDataProvider
 from miniautogen.tui.event_sink import TuiEventSink
-from miniautogen.tui.messages import RunCompleted, SidebarRefresh, TuiEvent
+from miniautogen.tui.messages import RunStarted, RunStopped, SidebarRefresh, TabChanged, TuiEvent
+from miniautogen.tui.themes import DEFAULT_THEME, THEMES, register_dash_themes
 from miniautogen.tui.workers import EventBridgeWorker
-from miniautogen.tui.views.agents import AgentsView
 from miniautogen.tui.views.check import CheckView
 from miniautogen.tui.views.events import EventsView
-from miniautogen.tui.views.pipelines import PipelinesView
-from miniautogen.tui.views.runs import RunsView
-from miniautogen.tui.views.engines import EnginesView
-from miniautogen.tui.views.config import ConfigView
-from miniautogen.tui.widgets.hint_bar import HintBar
-from miniautogen.tui.widgets.team_sidebar import TeamSidebar
-from miniautogen.tui.widgets.work_panel import WorkPanel
+from miniautogen.tui.views.monitor import MonitorView
+from miniautogen.tui.widgets.execution_sidebar import ExecutionSidebar
+from miniautogen.tui.widgets.main_content import MainContent
+from miniautogen.tui.widgets.tab_bar import TabBar
+from miniautogen.tui.content.workspace import WorkspaceContent
+from miniautogen.tui.content.flows import FlowsContent
+from miniautogen.tui.content.agents import AgentsContent
+from miniautogen.tui.content.config import ConfigContent
 
 _NARROW_BREAKPOINT = 100
+_MEDIUM_BREAKPOINT = 130
 
 
 class MiniAutoGenDash(App):
@@ -48,26 +52,22 @@ class MiniAutoGenDash(App):
     CSS_PATH = "dash.tcss"
 
     SCREENS = {
-        "agents": AgentsView,
+        "monitor": MonitorView,
         "check": CheckView,
         "events": EventsView,
-        "pipelines": PipelinesView,
-        "runs": RunsView,
-        "engines": EnginesView,
-        "config": ConfigView,
     }
 
     BINDINGS = [
         Binding("q", "quit", "Quit", show=True),
         Binding("question_mark", "help", "Help", show=True),
         Binding("escape", "back", "Back", show=True),
-        Binding("f", "fullscreen", "Fullscreen", show=True),
-        Binding("t", "toggle_sidebar", "Team", show=True),
-        Binding("d", "diff_view", "Diff", show=False),
-        Binding("slash", "search", "Search", show=False),
-        Binding("tab", "next_pipeline", "Next Tab", show=False),
-        Binding("ctrl+s", "server_start", "Server Start", show=False),
-        Binding("ctrl+x", "server_stop", "Server Stop", show=False),
+        Binding("t", "toggle_sidebar", "Sidebar", show=True),
+        Binding("f", "fullscreen", "Fullscreen", show=False),
+        Binding("s", "stop_run", "Stop", show=False),
+        Binding("1", "switch_tab('Workspace')", "1", show=False),
+        Binding("2", "switch_tab('Flows')", "2", show=False),
+        Binding("3", "switch_tab('Agents')", "3", show=False),
+        Binding("4", "switch_tab('Config')", "4", show=False),
     ]
 
     def __init__(self, project_root=None) -> None:
@@ -76,33 +76,37 @@ class MiniAutoGenDash(App):
         self._project_root = project_root
         self._event_sink: TuiEventSink | None = None
         self._bridge: EventBridgeWorker | None = None
+        self._current_theme: str = DEFAULT_THEME
+        register_dash_themes(self)
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield TeamSidebar()
-        yield WorkPanel()
+        yield TabBar()
+        main = MainContent()
+        main.register_tab("Workspace", WorkspaceContent())
+        main.register_tab("Flows", FlowsContent())
+        main.register_tab("Agents", AgentsContent())
+        main.register_tab("Config", ConfigContent())
+        with Horizontal(id="app-grid"):
+            yield main
+            yield ExecutionSidebar()
         yield Footer()
 
     def on_mount(self) -> None:
         """Handle initial mount -- load provider, apply responsive, check project."""
+        self.apply_theme(self._current_theme)
         self._apply_responsive()
         self._init_provider()
         self._update_server_status()
         self._populate_sidebar()
-        self._refresh_onboarding()
+        self._refresh_workspace()
         self._start_event_bridge()
 
-    def _refresh_onboarding(self) -> None:
-        """Refresh the WorkPanel onboarding guide after provider is ready."""
-        try:
-            work_panel = self.query_one(WorkPanel)
-            work_panel._refresh_onboarding()
-        except Exception:
-            pass
-
     def _start_event_bridge(self) -> None:
-        """Create TuiEventSink and start the EventBridgeWorker."""
+        """Create TuiEventSink, wire it to the provider, and start the EventBridgeWorker."""
         self._event_sink = TuiEventSink()
+        if self._provider is not None:
+            self._provider.set_event_sink(self._event_sink)
         self._bridge = EventBridgeWorker(self._event_sink)
         self.run_worker(self._bridge.run(self), exclusive=True)
 
@@ -123,35 +127,73 @@ class MiniAutoGenDash(App):
         """Callback from init wizard."""
         if created:
             self._provider = DashDataProvider.from_cwd()
+            if self._provider is not None and self._event_sink is not None:
+                self._provider.set_event_sink(self._event_sink)
             self.notify("Project initialized!")
         else:
             self.notify("No project -- some features unavailable", severity="warning")
 
     def _populate_sidebar(self) -> None:
-        """Populate the TeamSidebar with agents from the data provider."""
-        if self._provider is None:
-            return
+        """Populate the ExecutionSidebar with agents and recent runs from data provider."""
         try:
-            sidebar = self.query_one(TeamSidebar)
-            sidebar.clear_agents()
-            for agent in self._provider.get_agents():
-                sidebar.add_agent(
-                    agent_id=agent.get("name", "unknown"),
-                    name=agent.get("name", "Unknown"),
-                    role=agent.get("role", "agent"),
+            sidebar = self.query_one(ExecutionSidebar)
+            if self._provider:
+                agents = self._provider.get_agents()
+                agent_list = [{"name": a.get("name", ""), "status": "idle"} for a in agents]
+                sidebar.set_agents(agent_list)
+                runs = self._provider.get_runs()
+                sidebar.set_recent_runs(runs)
+        except Exception:
+            pass
+
+    def _refresh_workspace(self) -> None:
+        """Refresh workspace tab stats from data provider."""
+        try:
+            ws = self.query_one(WorkspaceContent)
+            if self._provider:
+                agents = self._provider.get_agents()
+                flows = self._provider.get_pipelines()
+                engines = self._provider.get_engines()
+
+                # Build health check items
+                health_items: list[tuple[str, str]] = []
+                if self._provider.has_project():
+                    health_items.append(("[green]\u2713[/green]", "miniautogen.yaml found"))
+                for eng in engines:
+                    health_items.append(
+                        ("[green]\u2713[/green]", f'Engine "{eng.get("name", "?")}" configured')
+                    )
+                for agent in agents:
+                    engine_name = agent.get("engine_profile", "") or agent.get("engine", "")
+                    if engine_name:
+                        health_items.append(
+                            ("[green]\u2713[/green]", f'Agent "{agent.get("name", "?")}" has engine profile')
+                        )
+                    else:
+                        health_items.append(
+                            ("[yellow]\u26a0[/yellow]", f'Agent "{agent.get("name", "?")}" has no engine configured')
+                        )
+
+                ws.refresh_data(
+                    agents_count=len(agents),
+                    flows_count=len(flows),
+                    engines_count=len(engines),
+                    health_items=health_items if health_items else None,
                 )
         except Exception:
-            pass  # Provider or sidebar not ready
+            pass
 
     def _update_server_status(self) -> None:
-        """Update subtitle with server status."""
+        """Update subtitle and tab bar with server status."""
         if self._provider is None:
             return
+        server_state = "stopped"
+        port = "?"
         try:
             status = self._provider.server_status()
             server_state = status.get("status", "stopped")
+            port = status.get("port", "?")
             if server_state == "running":
-                port = status.get("port", "?")
                 self.sub_title = f"Your AI Team at Work | Server: running (:{port})"
             elif server_state == "stopped":
                 self.sub_title = "Your AI Team at Work | Server: stopped"
@@ -160,56 +202,114 @@ class MiniAutoGenDash(App):
         except Exception:
             pass
 
+        # Update tab bar server indicator
+        try:
+            tab_bar = self.query_one(TabBar)
+            if server_state == "running":
+                tab_bar.update_server_status(f"[green]\u25cf Server :{port}[/green]")
+            else:
+                tab_bar.update_server_status("[dim]\u25cf Server: off[/dim]")
+        except Exception:
+            pass
+
     def on_resize(self, event: object) -> None:
         """Handle terminal resize for responsive breakpoints."""
         self._apply_responsive()
 
     def _apply_responsive(self) -> None:
-        """Show/hide sidebar based on terminal width."""
+        """Show/hide sidebar and adjust width based on terminal width."""
         width = self.size.width
         try:
-            sidebar = self.query_one(TeamSidebar)
+            sidebar = self.query_one(ExecutionSidebar)
             if width < _NARROW_BREAKPOINT:
                 sidebar.display = False
             else:
                 sidebar.display = True
-                if width < 120:
-                    sidebar.styles.width = "6"
+                if width < _MEDIUM_BREAKPOINT:
+                    sidebar.styles.width = "25"
                 else:
-                    sidebar.styles.width = "28"
+                    sidebar.styles.width = "35"
+        except Exception:
+            pass
+
+    # --- Theme ---
+
+    def apply_theme(self, name: str) -> None:
+        """Apply a DashTheme by *name*.
+
+        Sets the Textual ``theme`` reactive which triggers CSS variable
+        refresh and dark/light mode switching automatically.
+        """
+        if name not in THEMES:
+            name = DEFAULT_THEME
+        self._current_theme = name
+        self.theme = name
+
+    # --- Message handlers ---
+
+    def action_switch_tab(self, tab_name: str) -> None:
+        """Switch active tab via number keys."""
+        try:
+            tab_bar = self.query_one(TabBar)
+            tab_bar.active_tab = tab_name
+        except Exception:
+            pass
+
+    def on_tab_changed(self, event: TabChanged) -> None:
+        """Handle tab changes from TabBar."""
+        try:
+            main = self.query_one(MainContent)
+            main.switch_to(event.tab_name)
         except Exception:
             pass
 
     def on_tui_event(self, message: TuiEvent) -> None:
-        """Handle incoming TUI events from the event bridge."""
-        event = message.event
-        # Forward to work panel
+        """Forward execution events to sidebar log and record in provider."""
         try:
-            work_panel = self.query_one(WorkPanel)
-            work_panel.interaction_log.handle_event(event)
+            sidebar = self.query_one(ExecutionSidebar)
+            sidebar.interaction_log.handle_event(message.event)
         except Exception:
             pass
+        # Record event in provider for queryable history
+        if self._provider is not None:
+            try:
+                event_dict = {
+                    "type": message.event.type,
+                    "run_id": message.event.run_id,
+                    "scope": message.event.scope,
+                    "timestamp": message.event.timestamp.isoformat()
+                    if hasattr(message.event, "timestamp") and message.event.timestamp
+                    else None,
+                    "payload": message.event.payload
+                    if hasattr(message.event, "payload")
+                    else {},
+                }
+                self._provider.record_event(event_dict)
+            except Exception:
+                pass
 
     def on_sidebar_refresh(self, message: SidebarRefresh) -> None:
         """Handle sidebar refresh request (agent created/deleted)."""
         self._populate_sidebar()
+        self._refresh_workspace()
 
-    def on_run_completed(self, message: RunCompleted) -> None:
-        """Handle pipeline run completion -- log result to interaction log."""
+    def on_run_started(self, event: RunStarted) -> None:
+        """Handle flow execution start."""
         try:
-            work_panel = self.query_one(WorkPanel)
-            if message.status == "completed":
-                work_panel.interaction_log.add_step_header(
-                    step_number=0,
-                    step_label=f"Pipeline '{message.pipeline_name}' completed",
-                )
-            else:
-                work_panel.interaction_log.add_step_header(
-                    step_number=0,
-                    step_label=f"Pipeline '{message.pipeline_name}' {message.status}",
-                )
+            sidebar = self.query_one(ExecutionSidebar)
+            sidebar.start_execution()
         except Exception:
             pass
+
+    def on_run_stopped(self, event: RunStopped) -> None:
+        """Handle flow execution end."""
+        try:
+            sidebar = self.query_one(ExecutionSidebar)
+            sidebar.stop_execution()
+        except Exception:
+            pass
+
+    # --- Actions ---
 
     def action_help(self) -> None:
         """Show help overlay."""
@@ -220,34 +320,30 @@ class MiniAutoGenDash(App):
         """Navigate back or close panel."""
         pass
 
-    def action_fullscreen(self) -> None:
-        """Toggle fullscreen for work panel (hide/show sidebar)."""
-        try:
-            sidebar = self.query_one(TeamSidebar)
-            sidebar.display = not sidebar.display
-        except Exception:
-            pass
-
     def action_toggle_sidebar(self) -> None:
-        """Toggle team sidebar visibility."""
+        """Toggle execution sidebar visibility."""
         try:
-            sidebar = self.query_one(TeamSidebar)
+            sidebar = self.query_one(ExecutionSidebar)
             sidebar.display = not sidebar.display
         except Exception:
             pass
 
-    def action_search(self) -> None:
-        """Open search/filter in current view."""
-        pass
+    def action_fullscreen(self) -> None:
+        """Toggle fullscreen (hide/show sidebar)."""
+        try:
+            sidebar = self.query_one(ExecutionSidebar)
+            sidebar.display = not sidebar.display
+        except Exception:
+            pass
+
+    def action_stop_run(self) -> None:
+        """Stop the current flow execution."""
+        self.post_message(RunStopped(run_id="", final_status="stopped"))
 
     def action_diff_view(self) -> None:
         """Open diff view."""
         from miniautogen.tui.screens.diff_view import DiffViewScreen
         self.push_screen(DiffViewScreen())
-
-    def action_next_pipeline(self) -> None:
-        """Switch to next pipeline tab."""
-        pass
 
     def action_server_start(self) -> None:
         """Start the gateway server."""

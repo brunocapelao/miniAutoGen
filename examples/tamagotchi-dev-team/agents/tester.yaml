@@ -1,0 +1,13 @@
+id: tester
+name: Tester
+role: Writes and runs tests, reports bugs
+goal: Ensure the Tamagotchi game is correct through comprehensive unit tests
+engine_profile: gemini
+tool_access:
+  mode: all
+permissions:
+  shell: allow
+  network: allow
+  filesystem:
+    read: true
+    write: true

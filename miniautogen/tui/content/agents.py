@@ -1,40 +1,79 @@
-"""`:agents` view -- agent roster with DataTable CRUD."""
+"""Agents tab: DataTable with CRUD operations."""
 
 from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import Vertical
+from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
 from miniautogen.tui.messages import SidebarRefresh
-from miniautogen.tui.views.base import SecondaryView
 
 
-class AgentsView(SecondaryView):
-    """Agent roster view with DataTable and CRUD operations."""
+class AgentsContent(Widget, can_focus=True):
+    """Agents tab with DataTable CRUD."""
 
-    VIEW_TITLE = "Agents"
+    DEFAULT_CSS = """
+    AgentsContent {
+        height: 1fr;
+    }
+    AgentsContent .content-header {
+        height: auto;
+        padding: 1 2 0 2;
+    }
+    AgentsContent .content-title {
+        text-style: bold;
+        color: $text;
+        height: 1;
+    }
+    AgentsContent .content-hint {
+        color: $text-muted;
+        height: 1;
+        margin: 0 0 1 0;
+    }
+    AgentsContent DataTable {
+        height: 1fr;
+        width: 1fr;
+        margin: 0 2;
+    }
+    AgentsContent .crud-empty {
+        content-align: center middle;
+        height: 1fr;
+        color: $text-muted;
+        text-style: italic;
+        padding: 4;
+    }
+    """
 
     BINDINGS = [
-        Binding("escape", "pop_screen", "Back", show=True),
         Binding("n", "new_agent", "New", show=True),
         Binding("e", "edit_agent", "Edit", show=True),
-        Binding("d", "delete_agent", "Delete", show=True),
-        Binding("r", "refresh_agents", "Refresh", show=True),
+        Binding("x", "delete_agent", "Delete", show=True),
+        Binding("f5", "refresh", "Refresh", show=True),
+        Binding("enter", "view_detail", "Detail", show=True),
     ]
 
-    def compose_content(self) -> ComposeResult:
-        yield Static(
-            "[dim]Keys: [b]n[/b]ew  [b]e[/b]dit  [b]d[/b]elete  [b]r[/b]efresh[/dim]",
-            id="agents-hint",
-        )
+    @property
+    def provider(self):
+        """Access the DashDataProvider from the app."""
+        return getattr(self.app, "_provider", None)
+
+    def compose(self) -> ComposeResult:
+        """Compose the agents content sections."""
+        with Vertical(classes="content-header"):
+            yield Static("Agents", classes="content-title")
+            yield Static(
+                "Keys: [bold]n[/bold] new  [bold]e[/bold] edit  [bold]x[/bold] delete  [bold]F5[/bold] refresh  [bold]Enter[/bold] detail",
+                classes="content-hint",
+            )
         table = DataTable(id="agents-table")
         table.add_columns("Name", "Role", "Engine", "Status")
         yield table
         yield Static(
-            "Nenhum agente ainda. Pressione [bold]n[/bold] para criar o primeiro.",
+            "No agents yet.\nPress [bold]n[/bold] to create one.",
             id="agents-empty",
-            classes="empty-state",
+            classes="crud-empty",
         )
 
     def on_mount(self) -> None:
@@ -48,7 +87,8 @@ class AgentsView(SecondaryView):
         if self.provider is None:
             self._set_empty_visible(True)
             return
-        for agent in self.provider.get_agents():
+        agents = self.provider.get_agents()
+        for agent in agents:
             table.add_row(
                 agent.get("name", "?"),
                 agent.get("role", "?"),
@@ -61,7 +101,9 @@ class AgentsView(SecondaryView):
         """Show or hide the empty-state message."""
         try:
             empty = self.query_one("#agents-empty", Static)
+            table = self.query_one("#agents-table", DataTable)
             empty.display = visible
+            table.display = not visible
         except Exception:
             pass
 
@@ -104,7 +146,7 @@ class AgentsView(SecondaryView):
         from miniautogen.tui.screens.confirm_dialog import ConfirmDialog
 
         self.app.push_screen(
-            ConfirmDialog(f"Excluir agente '{name}'? Esta ação não pode ser desfeita."),
+            ConfirmDialog(f"Delete agent '{name}'? This action cannot be undone."),
             callback=lambda confirmed: self._do_delete_agent(name) if confirmed else None,
         )
 
@@ -120,10 +162,26 @@ class AgentsView(SecondaryView):
         except (ValueError, KeyError) as exc:
             self.notify(str(exc), severity="error")
 
-    def action_refresh_agents(self) -> None:
+    def action_refresh(self) -> None:
         """Refresh the agents table."""
         self._refresh_table()
         self.notify("Refreshed")
+
+    def action_view_detail(self) -> None:
+        """View details of the selected agent."""
+        name = self._get_selected_name()
+        if not name or self.provider is None:
+            return
+        try:
+            agent_data = self.provider.get_agent(name) if hasattr(
+                self.provider, "get_agent"
+            ) else None
+            if agent_data:
+                from miniautogen.tui.screens.agent_detail import AgentDetailScreen
+
+                self.app.push_screen(AgentDetailScreen(agent_data))
+        except Exception:
+            pass
 
     def _on_form_result(self, result: object) -> None:
         """Callback from form screen."""
