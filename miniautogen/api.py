@@ -120,6 +120,14 @@ from miniautogen.policies.approval_channel import (
     WebhookApprovalChannel,
 )
 from miniautogen.scripting import ScriptBuilder, quick_run
+from miniautogen.testing import MockEngine, RecordReplayEngine
+from miniautogen.policies.semantic_cache import ExactCache, SemanticCache
+from miniautogen.core.runtime.human_agent import (
+    HumanAgent,
+    InputChannel,
+    QueueInputChannel,
+    StdinInputChannel,
+)
 from miniautogen.policies.budget import BudgetExceededError, BudgetPolicy, BudgetTracker
 from miniautogen.policies.chain import PolicyChain, PolicyContext, PolicyEvaluator, PolicyResult
 from miniautogen.policies.effect import EffectPolicy
@@ -226,6 +234,17 @@ __all__ = [
     # Scripting mode
     "ScriptBuilder",
     "quick_run",
+    # Testing (MockEngine, RecordReplay)
+    "MockEngine",
+    "RecordReplayEngine",
+    # Semantic cache
+    "ExactCache",
+    "SemanticCache",
+    # HumanAgent (human-as-first-class participant)
+    "HumanAgent",
+    "InputChannel",
+    "QueueInputChannel",
+    "StdinInputChannel",
     # Effect engine
     "EffectInterceptor",
     "EffectPolicy",
