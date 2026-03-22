@@ -37,7 +37,6 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 import anyio
-from anyio.abc import ObjectReceiveStream, ObjectSendStream
 
 from miniautogen.core.contracts.agentic_loop import RouterDecision
 from miniautogen.core.contracts.deliberation import (
@@ -120,11 +119,11 @@ class QueueInputChannel:
     """
 
     def __init__(self) -> None:
-        self._send: ObjectSendStream[str]
-        self._receive: ObjectReceiveStream[str]
-        self._send, self._receive = anyio.create_memory_object_stream[str](
+        send_stream, receive_stream = anyio.create_memory_object_stream[str](
             max_buffer_size=100,
         )
+        self._send = send_stream
+        self._receive = receive_stream
         self._last_prompt: str | None = None
         self._last_context: dict[str, Any] = {}
 

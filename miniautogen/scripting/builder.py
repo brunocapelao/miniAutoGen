@@ -13,11 +13,10 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
-from miniautogen.core.contracts.agent_spec import AgentSpec
 from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
-from miniautogen.core.events.event_sink import EventSink, InMemoryEventSink, NullEventSink
+from miniautogen.core.events.event_sink import EventSink, NullEventSink
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate
 
@@ -429,9 +428,8 @@ class ScriptBuilder:
         from miniautogen.backends.config import AuthConfig, BackendConfig, DriverType
         from miniautogen.backends.resolver import BackendResolver
         from miniautogen.core.runtime.agent_runtime import AgentRuntime
-        from miniautogen.core.runtime.builtin_tools import BuiltinToolRegistry
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
         from miniautogen.core.runtime.composite_tool_registry import CompositeToolRegistry
+        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
 
         # Provider -> DriverType mapping
         provider_map: dict[str, DriverType] = {
@@ -519,13 +517,13 @@ class ScriptBuilder:
         return runtimes, env_keys
 
     @staticmethod
-    def _register_factories(resolver: BackendResolver) -> None:
+    def _register_factories(resolver: Any) -> None:
         """Register driver factories for all supported provider types."""
-        from miniautogen.backends.config import DriverType
-        from miniautogen.backends.openai_sdk.factory import openai_sdk_factory
-        from miniautogen.backends.anthropic_sdk.factory import anthropic_sdk_factory
-        from miniautogen.backends.google_genai.factory import google_genai_factory
         from miniautogen.backends.agentapi.factory import agentapi_factory
+        from miniautogen.backends.anthropic_sdk.factory import anthropic_sdk_factory
+        from miniautogen.backends.config import DriverType
+        from miniautogen.backends.google_genai.factory import google_genai_factory
+        from miniautogen.backends.openai_sdk.factory import openai_sdk_factory
 
         resolver.register_factory(DriverType.OPENAI_SDK, openai_sdk_factory)
         resolver.register_factory(DriverType.ANTHROPIC_SDK, anthropic_sdk_factory)

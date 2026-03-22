@@ -23,14 +23,13 @@ from __future__ import annotations
 
 import ipaddress
 from datetime import datetime, timezone
-from typing import Any, Callable, Awaitable, Protocol, runtime_checkable
+from typing import Any, Awaitable, Callable, Literal, Protocol, runtime_checkable
 from urllib.parse import urlparse
 
 import anyio
 
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import (
-    ApprovalGate,
     ApprovalRequest,
     ApprovalResponse,
 )
@@ -103,7 +102,7 @@ class ApprovalHandle:
         """The approval response, if resolved."""
         return self._response
 
-    def resolve(self, decision: str, reason: str | None = None) -> None:
+    def resolve(self, decision: Literal["approved", "denied"], reason: str | None = None) -> None:
         """Resolve this approval handle with a decision.
 
         Args:
@@ -239,7 +238,10 @@ class CallbackApprovalChannel:
 
     async def _run_callback(self, handle: ApprovalHandle) -> None:
         try:
-            decision = await self._callback(handle.request)
+            raw_decision = await self._callback(handle.request)
+            decision: Literal["approved", "denied"] = (
+                "approved" if raw_decision == "approved" else "denied"
+            )
             if not handle.is_resolved:
                 handle.resolve(decision)
                 logger.info(

@@ -8,7 +8,7 @@ from uuid import uuid4
 import anyio
 
 from miniautogen.core.contracts.events import ExecutionEvent
-from miniautogen.core.events import EventSink, EventType, NullEventSink
+from miniautogen.core.events import EventSink, EventType
 from miniautogen.core.events.event_bus import EventBus
 from miniautogen.core.events.event_sink import CompositeEventSink
 from miniautogen.observability import get_logger
@@ -452,7 +452,6 @@ class PipelineRunner:
                         unknown.
         """
         from miniautogen.core.contracts.run_context import RunContext
-        from miniautogen.core.contracts.run_result import RunResult
 
         run_id = resume_run_id or str(uuid4())
         correlation_id = run_id

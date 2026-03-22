@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import anyio
 import pytest
 
 from miniautogen.core.contracts.agentic_loop import RouterDecision
@@ -178,9 +177,10 @@ class TestHumanAgent:
     async def test_workflow_integration(self) -> None:
         """Test HumanAgent in a WorkflowRuntime."""
         from datetime import datetime, timezone
+
         from miniautogen.core.contracts.coordination import WorkflowPlan, WorkflowStep
-        from miniautogen.core.contracts.run_context import RunContext
         from miniautogen.core.contracts.enums import RunStatus
+        from miniautogen.core.contracts.run_context import RunContext
         from miniautogen.core.runtime.pipeline_runner import PipelineRunner
         from miniautogen.core.runtime.workflow_runtime import WorkflowRuntime
         from miniautogen.testing.mock_engine import MockEngine

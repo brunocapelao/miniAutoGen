@@ -8,7 +8,6 @@ import pytest
 from miniautogen.policies.approval import (
     ApprovalGate,
     ApprovalRequest,
-    ApprovalResponse,
 )
 from miniautogen.policies.approval_channel import (
     ApprovalChannel,
@@ -17,7 +16,6 @@ from miniautogen.policies.approval_channel import (
     ChannelApprovalGate,
     InMemoryApprovalChannel,
     WebhookApprovalChannel,
-    _validate_webhook_url,
 )
 
 

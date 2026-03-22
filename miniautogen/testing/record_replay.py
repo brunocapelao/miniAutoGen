@@ -24,7 +24,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from miniautogen.testing.mock_engine import MockAgent, _CallRecord
+from miniautogen.testing.mock_engine import MockAgent
 
 
 class _RecordingProxy:
@@ -55,18 +55,30 @@ class _RecordingProxy:
         return await self._record_call("reply", message, self._real.reply(message, context))
 
     async def route(self, conversation_history: list[Any]) -> Any:
-        return await self._record_call("route", conversation_history, self._real.route(conversation_history))
+        return await self._record_call(
+            "route", conversation_history,
+            self._real.route(conversation_history),
+        )
 
     async def contribute(self, topic: str) -> Any:
-        return await self._record_call("contribute", topic, self._real.contribute(topic))
+        return await self._record_call(
+            "contribute", topic, self._real.contribute(topic),
+        )
 
     async def review(self, target_id: str, contribution: Any) -> Any:
-        return await self._record_call("review", target_id, self._real.review(target_id, contribution))
+        return await self._record_call(
+            "review", target_id,
+            self._real.review(target_id, contribution),
+        )
 
     async def consolidate(self, topic: str, contributions: list, reviews: list) -> Any:
+        input_data = {
+            "topic": topic,
+            "contributions_count": len(contributions),
+            "reviews_count": len(reviews),
+        }
         return await self._record_call(
-            "consolidate",
-            {"topic": topic, "contributions_count": len(contributions), "reviews_count": len(reviews)},
+            "consolidate", input_data,
             self._real.consolidate(topic, contributions, reviews),
         )
 

@@ -34,8 +34,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Awaitable
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
 
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.observability import get_logger

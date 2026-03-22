@@ -243,8 +243,8 @@ class TestScriptBuilderDeliberation:
 
         runtimes = {"a": mock_a, "b": mock_b}
 
-        from miniautogen.core.contracts.run_result import RunResult
         from miniautogen.core.contracts.enums import RunStatus
+        from miniautogen.core.contracts.run_result import RunResult
 
         with patch.object(
             builder, "_build_runtimes",
@@ -282,8 +282,8 @@ class TestScriptBuilderLoop:
 
         runtimes = {"router": mock_router, "worker": mock_worker}
 
-        from miniautogen.core.contracts.run_result import RunResult
         from miniautogen.core.contracts.enums import RunStatus
+        from miniautogen.core.contracts.run_result import RunResult
 
         with patch.object(
             builder, "_build_runtimes",
