@@ -111,6 +111,15 @@ from miniautogen.observability.event_logging import LoggingEventSink
 from miniautogen.pipeline.components.pipelinecomponent import PipelineComponent
 from miniautogen.pipeline.pipeline import Pipeline
 from miniautogen.policies.approval import ApprovalGate, AutoApproveGate
+from miniautogen.policies.approval_channel import (
+    ApprovalChannel,
+    ApprovalHandle,
+    CallbackApprovalChannel,
+    ChannelApprovalGate,
+    InMemoryApprovalChannel,
+    WebhookApprovalChannel,
+)
+from miniautogen.scripting import ScriptBuilder, quick_run
 from miniautogen.policies.budget import BudgetExceededError, BudgetPolicy, BudgetTracker
 from miniautogen.policies.chain import PolicyChain, PolicyContext, PolicyEvaluator, PolicyResult
 from miniautogen.policies.effect import EffectPolicy
@@ -207,6 +216,16 @@ __all__ = [
     # Approval
     "ApprovalGate",
     "AutoApproveGate",
+    # Approval channels (decoupled human-in-the-loop)
+    "ApprovalChannel",
+    "ApprovalHandle",
+    "CallbackApprovalChannel",
+    "ChannelApprovalGate",
+    "InMemoryApprovalChannel",
+    "WebhookApprovalChannel",
+    # Scripting mode
+    "ScriptBuilder",
+    "quick_run",
     # Effect engine
     "EffectInterceptor",
     "EffectPolicy",
