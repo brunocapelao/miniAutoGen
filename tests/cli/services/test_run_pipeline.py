@@ -145,8 +145,12 @@ async def test_execute_pipeline_resume_loads_checkpoint(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("anyio_backend", ["asyncio"], indirect=True)
 async def test_execute_pipeline_resume_no_checkpoint_found(tmp_path: Path) -> None:
-    """Resume with a run_id that has no checkpoint should raise ExecutionError."""
+    """Resume with a run_id that has no checkpoint should raise ExecutionError.
+
+    Note: asyncio-only because SQLAlchemy+aiosqlite is incompatible with trio.
+    """
     project = _make_runnable_project(tmp_path)
 
     # Add database config to enable checkpoint store

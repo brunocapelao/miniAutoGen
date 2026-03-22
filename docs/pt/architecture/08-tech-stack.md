@@ -120,7 +120,7 @@ O MiniAutoGen é construído sobre uma stack Python async-first, com ênfase em 
 
 | Pacote | Versão | Papel |
 |---|---|---|
-| **pytest** | ^7.4.0 | Framework de testes. 336+ testes cobrindo unit, integration e E2E. |
+| **pytest** | ^7.4.0 | Framework de testes. 2700+ testes cobrindo unit, integration e E2E. |
 | **pytest-asyncio** | ^0.23.0 | Suporte a testes async. Todos os testes de runtime são async. |
 | **hypothesis** | ^6.130.0 | Property-based testing. Testes de propriedades para contratos Pydantic. |
 
@@ -231,9 +231,9 @@ google = ["google-genai"]  # Google Gemini SDK
 | **Dependências diretas** | 15 (obrigatórias) + 3 (opcionais) |
 | **Dependências totais** (incluindo transitivas) | ~85 pacotes |
 | **Módulos top-level** | 22 (`miniautogen/`) |
-| **Testes** | 336+ (unit + integration + E2E) |
+| **Testes** | 2700+ (unit + integration + E2E) |
 | **Event Types** | 69 em 13 categorias |
-| **Drivers implementados** | 7 (OpenAI, Anthropic, Google, LiteLLM, AgentAPI, CLI, Base) |
+| **Drivers implementados** | 5 drivers concretos (AgentAPIDriver, OpenAISDKDriver, AnthropicSDKDriver, GoogleGenAIDriver, CLIAgentDriver) mais BaseDriver e AgentDriver ABC |
 | **Coordination Modes** | 4 (Workflow, AgenticLoop, Deliberation, Composite) |
 | **CLI Commands** | 12+ |
 | **Python** | >=3.10, <3.12 |

@@ -10,7 +10,7 @@ MiniAutoGen é um microkernel Python para coordenação multi-agente que oferece
 
 | Camada | Nome | Descrição |
 |--------|------|-----------|
-| 4 | API Pública | `miniautogen/api.py` -- ponto de entrada único, exporta 56 tipos |
+| 4 | API Pública | `miniautogen/api.py` -- ponto de entrada único, exporta 101 tipos |
 | 3 | Padrões Canônicos | Reservada para padrões de composição reutilizáveis (não implementada) |
 | 2 | Modos de Coordenação | WorkflowRuntime, DeliberationRuntime, AgenticLoopRuntime, CompositeRuntime -- implementam o protocolo CoordinationMode |
 | 1 | Kernel | PipelineRunner, RunContext, RunResult, stores, eventos, políticas, adapters |
@@ -83,7 +83,7 @@ flowchart TB
 6. [Decisões arquiteturais](06-decisoes.md) -- ADRs com contexto, decisão e consequências
 7. [Anatomia do agente](07-agent-anatomy.md) -- as 5 camadas do Agent Runtime: Identity, Engine, Runtime, Policies, Protocol Adapters
 8. [Stack tecnológica](08-tech-stack.md) -- dependências, justificativas técnicas, diagrama de dependências
-9. [Invariantes do Sistema Operacional](09-invariantes-sistema-operacional.md) -- 6 invariantes invioláveis (imutabilidade, supervisão, checkpoint, idempotência, event sourcing, tipagem)
+9. [Invariantes do Sistema Operacional](09-invariantes-sistema-operacional.md) -- 8 invariantes invioláveis (imutabilidade, supervisão, checkpoint, idempotência, event sourcing, tipagem, separação prompt/runtime, formato no flow)
 
 ---
 

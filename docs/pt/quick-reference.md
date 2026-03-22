@@ -57,7 +57,7 @@ Taxonomia de 69 tipos de evento (`EventType` enum) organizados em grupos: run li
 
 ### `policies/`
 
-Oito policies transversais que operam lateralmente ao fluxo principal:
+Dez policies transversais que operam lateralmente ao fluxo principal:
 
 - `BudgetTracker` / `BudgetExceededError` -- controlo de custos e tokens
 - `ApprovalPolicy` -- aprovação humana no loop
@@ -67,6 +67,8 @@ Oito policies transversais que operam lateralmente ao fluxo principal:
 - `PermissionPolicy` -- controlo de permissões de agentes
 - `ExecutionPolicy` -- regras compostas de execução
 - `PolicyChain` -- encadeamento de múltiplas policies
+- `EffectPolicy` -- controlo de efeitos colaterais
+- `ReactivePolicy` -- policies reativas a eventos
 
 ---
 
@@ -74,13 +76,15 @@ Oito policies transversais que operam lateralmente ao fluxo principal:
 
 ### `stores/`
 
-Três stores especializados por responsabilidade, cada um com duas implementações:
+Cinco stores especializados por responsabilidade, cada um com duas implementações:
 
 | Store | InMemory | SQLAlchemy |
 |-------|----------|------------|
 | `MessageStore` | `in_memory.py` | `sqlalchemy.py` |
 | `RunStore` | `in_memory_run_store.py` | `sqlalchemy_run_store.py` |
 | `CheckpointStore` | `in_memory_checkpoint_store.py` | `sqlalchemy_checkpoint_store.py` |
+| `EffectJournal` | `in_memory_effect_journal.py` | `sqlalchemy_effect_journal.py` |
+| `EventStore` | `in_memory_event_store.py` | `sqlalchemy_event_store.py` |
 
 ---
 
@@ -182,4 +186,4 @@ Módulos mantidos apenas por compatibilidade. Não devem ser utilizados em códi
 - [Arquitetura (C4)](architecture/README.md)
 - [Decisões arquiteturais e roadmap](architecture/06-decisoes.md)
 - [Guia do Gemini CLI Gateway](guides/gemini-cli-gateway.md)
-- [API pública (54 exports)](../../miniautogen/api.py)
+- [API pública (101 exports)](../../miniautogen/api.py)

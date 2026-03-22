@@ -11,7 +11,7 @@
 
 ## 1. Resumo Executivo
 
-A transição do MiniAutoGen para um paradigma de **Sistema Operacional Distribuído** com Modelo de Atores (Microkernel + Erlang/OTP) estabelece alicerces contratuais invioláveis para a orquestração multiagente. A adoção de seis invariantes arquiteturais estritas garante concorrência massiva, execução durável (24/7) e tolerância a falhas extremas.
+A transição do MiniAutoGen para um paradigma de **Sistema Operacional Distribuído** com Modelo de Atores (Microkernel + Erlang/OTP) estabelece alicerces contratuais invioláveis para a orquestração multiagente. A adoção de oito invariantes arquiteturais estritas garante concorrência massiva, execução durável (24/7) e tolerância a falhas extremas.
 
 Este rigor técnico elimina categoricamente o risco de:
 - Corrupção de estado por concorrência
@@ -93,7 +93,7 @@ As invariantes deste documento existem **porque** a dívida técnica abaixo foi 
 
 ---
 
-## 4. As 6 Invariantes Arquiteturais
+## 4. As 8 Invariantes Arquiteturais
 
 ### Invariante 1: Estado Isolado e Imutabilidade Estrita
 

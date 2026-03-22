@@ -2,17 +2,48 @@
 
 These tests validate complete user workflows across multiple
 CLI commands, ensuring the full init -> check -> run chain works.
+
+Note: ``run`` tests use a mock driver to avoid real API calls.
 """
 
 from __future__ import annotations
 
 import shutil
+from unittest.mock import AsyncMock, patch
 
 import yaml
 from click.testing import CliRunner
 
 from miniautogen.cli.config import CONFIG_FILENAME
 from miniautogen.cli.main import cli
+
+
+def _patch_engine_resolver():
+    """Return a context-manager that makes EngineResolver.resolve return a fake driver."""
+    from miniautogen.backends.models import (
+        AgentEvent,
+        BackendCapabilities,
+        StartSessionResponse,
+    )
+
+    caps = BackendCapabilities()
+    fake_driver = AsyncMock()
+    fake_driver.start_session = AsyncMock(
+        return_value=StartSessionResponse(session_id="fake", capabilities=caps),
+    )
+
+    async def _fake_send_turn(*args, **kwargs):
+        yield AgentEvent(type="text_delta", session_id="fake", payload={"text": '{"answer": "mocked"}'})
+        yield AgentEvent(type="turn_complete", session_id="fake")
+
+    fake_driver.send_turn = _fake_send_turn
+    fake_driver.close_session = AsyncMock()
+    fake_driver.capabilities = caps
+
+    return patch(
+        "miniautogen.backends.engine_resolver.EngineResolver.resolve",
+        return_value=fake_driver,
+    )
 
 
 class TestInitCheckRunWorkflow:
@@ -38,8 +69,9 @@ class TestInitCheckRunWorkflow:
         assert result.exit_code == 0, f"check failed: {result.output}"
         assert "passed" in result.output.lower()
 
-        # Step 3: Run
-        result = runner.invoke(cli, ["run"])
+        # Step 3: Run (with mocked driver to avoid real API calls)
+        with _patch_engine_resolver():
+            result = runner.invoke(cli, ["run"])
         assert result.exit_code == 0, f"run failed: {result.output}"
         assert "completed" in result.output.lower()
 
@@ -59,8 +91,9 @@ class TestInitCheckRunWorkflow:
         assert result.exit_code == 0
         assert '"passed": true' in result.output
 
-        # Run with JSON
-        result = runner.invoke(cli, ["run", "--format", "json"])
+        # Run with JSON (mocked driver)
+        with _patch_engine_resolver():
+            result = runner.invoke(cli, ["run", "--format", "json"])
         assert result.exit_code == 0
         assert '"status": "completed"' in result.output
 
@@ -113,8 +146,9 @@ class TestInitCheckRunWorkflow:
         result = runner.invoke(cli, ["check"])
         assert result.exit_code == 0
 
-        # Run should work (pipeline still exists)
-        result = runner.invoke(cli, ["run"])
+        # Run should work (mocked driver)
+        with _patch_engine_resolver():
+            result = runner.invoke(cli, ["run"])
         assert result.exit_code == 0
 
 

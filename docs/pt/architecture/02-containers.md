@@ -9,7 +9,7 @@ Como o MiniAutoGen é uma biblioteca, seus containers são agrupamentos lógicos
 ```mermaid
 flowchart TB
     App["Aplicação Hospedeira"] --> Workspace["Workspace\n(unidade organizacional de topo)"]
-    Workspace --> API["API Pública\nminiautogen/api.py\n54 tipos exportados"]
+    Workspace --> API["API Pública\nminiautogen/api.py\n101 tipos exportados"]
 
     API --> Contracts["Core de Contratos\ncore/contracts/"]
     API --> Kernel["Microkernel de Execução\ncore/runtime/"]
@@ -53,7 +53,7 @@ Não faz parte do pacote. É a aplicação Python que consome o MiniAutoGen como
 
 **Módulo:** `miniautogen/api.py`
 
-Ponto de entrada único para consumidores externos. Exporta 54 tipos organizados em categorias: contratos do core, protocolos de agentes, runtimes, flow, policies, eventos, observabilidade, stores e backend drivers. Toda importação externa deve partir deste módulo.
+Ponto de entrada único para consumidores externos. Exporta 101 tipos organizados em categorias: contratos do core, protocolos de agentes, runtimes, flow, policies, eventos, observabilidade, stores e backend drivers. Toda importação externa deve partir deste módulo.
 
 ---
 
@@ -101,7 +101,7 @@ Quatro runtimes implementam o protocolo CoordinationMode:
 
 **Diretório:** `policies/`
 
-Oito policies operam lateralmente como preocupações transversais:
+Dez policies operam lateralmente como preocupações transversais:
 
 | Policy | Responsabilidade |
 | --- | --- |
@@ -113,6 +113,8 @@ Oito policies operam lateralmente como preocupações transversais:
 | PermissionPolicy | Controle de permissões por agente ou ação |
 | ExecutionPolicy | Orquestração de múltiplas policies em sequência |
 | PolicyChain | Composição de policies com avaliação encadeada |
+| EffectPolicy | Controle de efeitos colaterais com idempotência |
+| ReactivePolicy | Policies reativas baseadas em eventos |
 
 Policies observam eventos e reagem. Não reescrevem a semântica do domínio.
 

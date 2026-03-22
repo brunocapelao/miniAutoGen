@@ -13,18 +13,20 @@ engines:
     provider: gemini-cli
     model: gemini-2.5-pro
     timeout_seconds: 300
-    command: "gemini --yolo"
+    # WARNING: --yolo enables fully autonomous mode (no confirmation prompts).
+    # Remove --yolo for safer operation with human approval for file changes.
+    command: gemini --yolo
 flows:
   build:
     mode: workflow
     participants:
-      - architect
-      - developer
-      - tester
+    - architect
+    - developer
+    - tester
   review:
     mode: deliberation
     participants:
-      - architect
-      - developer
-      - tester
+    - architect
+    - developer
+    - tester
     leader: architect

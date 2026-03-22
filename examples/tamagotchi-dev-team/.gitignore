@@ -1,0 +1,20 @@
+# Python caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Mypy cache
+.mypy_cache/
+
+# Pytest cache
+.pytest_cache/
+
+# Local workspace artifacts
+workspace/.miniautogen/
+workspace/__pycache__/
+
+# Environment files
+.env
+.venv
+env/
+venv/

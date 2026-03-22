@@ -58,32 +58,33 @@ O engine (provider) fornece a inteligência. O runtime adiciona:
 
 ### Requisitos
 
-- Python 3.11 ou superior
+- Python >=3.10
 - pip ou uv
 
 ### Instalação básica
 
+> **Nota:** Instalação local (PyPI em breve).
+
 ```bash
-pip install miniautogen
+pip install -e .
+# ou com todos os extras:
+pip install -e ".[all]"
 ```
 
-### Com providers específicos
+### Extras disponíveis
 
 ```bash
-# Apenas OpenAI
-pip install miniautogen[openai]
+# TUI dashboard
+pip install -e ".[tui]"
 
-# Apenas Anthropic
-pip install miniautogen[anthropic]
+# Anthropic provider
+pip install -e ".[anthropic]"
 
-# Apenas Google
-pip install miniautogen[google]
+# Google provider
+pip install -e ".[google]"
 
-# Todos os providers
-pip install miniautogen[all-providers]
-
-# Tudo (providers + TUI dashboard)
-pip install miniautogen[all]
+# Todos os providers + TUI
+pip install -e ".[all]"
 ```
 
 ### Verificar instalação
@@ -297,9 +298,9 @@ database:
 
 | Provider | `provider` | `kind` | Dependência |
 |----------|-----------|--------|-------------|
-| OpenAI | `openai` | `api` | `pip install miniautogen[openai]` |
-| Anthropic | `anthropic` | `api` | `pip install miniautogen[anthropic]` |
-| Google Gemini | `google` | `api` | `pip install miniautogen[google]` |
+| OpenAI | `openai` | `api` | `pip install -e ".[all]"` |
+| Anthropic | `anthropic` | `api` | `pip install -e ".[anthropic]"` |
+| Google Gemini | `google` | `api` | `pip install -e ".[google]"` |
 | OpenAI-compatível | `openai-compat` | `api` | Nenhuma extra |
 | Claude Code | `claude-code` | `cli` | `claude` CLI instalado |
 | Gemini CLI | `gemini-cli` | `cli` | `gemini` CLI instalado |
@@ -695,7 +696,7 @@ rm .miniautogen/agents/researcher/memory/context.json
 | `miniautogen engine` | `create`, `list`, `show`, `update`, `delete`, `discover` |
 | `miniautogen agent` | `create`, `list`, `show`, `update`, `delete` |
 | `miniautogen flow` | `create`, `list`, `show`, `update`, `delete` |
-| `miniautogen sessions` | `list`, `show`, `delete`, `replay`, `export` |
+| `miniautogen sessions` | `list`, `clean`, `show` [PLANEJADO], `delete` [PLANEJADO], `replay` [PLANEJADO], `export` [PLANEJADO] |
 | `miniautogen server` | `start`, `stop`, `status`, `logs` |
 
 ### miniautogen init
@@ -705,7 +706,7 @@ miniautogen init <nome> [OPTIONS]
 
 Options:
   --model TEXT       Modelo LLM padrão (default: gpt-4o-mini)
-  --provider TEXT    Provider padrão (default: litellm)
+  --provider TEXT    Provider padrão (default: openai)
   --no-examples      Não criar agente/tool de exemplo
   --force            Adicionar ficheiros faltantes a diretório existente
 ```
@@ -1153,7 +1154,7 @@ miniautogen check
 ## Próximos passos
 
 - **MCP integration** — Conectar tools via Model Context Protocol (em desenvolvimento)
-- **LiteLLM driver** — Suporte a proxy multi-provider unificado
+- **LiteLLM** — Disponível como adapter (`adapters/llm/LiteLLMProvider`), não como backend driver
 - **Composite flows** — Encadear sub-flows de modos diferentes
 - **Durable execution** — Persistência de estado para flows de longa duração
 
