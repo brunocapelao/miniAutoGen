@@ -90,12 +90,20 @@ class EventType(str, Enum):
     # Run state machine events
     RUN_STATE_CHANGED = "run_state_changed"
 
+    # Approval channel events (decoupled human-in-the-loop)
+    APPROVAL_CHANNEL_SUBMITTED = "approval_channel_submitted"
+    APPROVAL_CHANNEL_RESOLVED = "approval_channel_resolved"
+    APPROVAL_CHANNEL_TIMED_OUT = "approval_channel_timed_out"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
     EventType.APPROVAL_GRANTED,
     EventType.APPROVAL_DENIED,
     EventType.APPROVAL_TIMEOUT,
+    EventType.APPROVAL_CHANNEL_SUBMITTED,
+    EventType.APPROVAL_CHANNEL_RESOLVED,
+    EventType.APPROVAL_CHANNEL_TIMED_OUT,
 }
 
 AGENTIC_LOOP_EVENT_TYPES: set[EventType] = {

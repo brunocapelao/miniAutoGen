@@ -8,11 +8,12 @@ from uuid import uuid4
 import anyio
 
 from miniautogen.core.contracts.events import ExecutionEvent
-from miniautogen.core.events import EventSink, EventType, NullEventSink
+from miniautogen.core.events import EventSink, EventType
 from miniautogen.core.events.event_bus import EventBus
 from miniautogen.core.events.event_sink import CompositeEventSink
 from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
+from miniautogen.policies.approval_channel import ApprovalChannel, ChannelApprovalGate
 from miniautogen.policies.chain import PolicyChain, PolicyContext
 from miniautogen.policies.execution import ExecutionPolicy
 from miniautogen.policies.retry import RetryPolicy, build_retrying_call
@@ -40,6 +41,7 @@ class PipelineRunner:
         retry_policy: RetryPolicy | None = None,
         policy_chain: PolicyChain | None = None,
         engine_resolver: EngineResolver | None = None,
+        approval_channel: ApprovalChannel | None = None,
     ) -> None:
         self._event_bus = EventBus()
 
@@ -51,7 +53,11 @@ class PipelineRunner:
         self.run_store = run_store
         self.checkpoint_store = checkpoint_store
         self.execution_policy = execution_policy
-        self._approval_gate = approval_gate
+        # If an ApprovalChannel is provided but no gate, bridge it
+        if approval_channel is not None and approval_gate is None:
+            self._approval_gate: ApprovalGate | None = ChannelApprovalGate(approval_channel)
+        else:
+            self._approval_gate = approval_gate
         self._retry_policy = retry_policy
         self._policy_chain = policy_chain
         self._engine_resolver = engine_resolver
@@ -446,7 +452,6 @@ class PipelineRunner:
                         unknown.
         """
         from miniautogen.core.contracts.run_context import RunContext
-        from miniautogen.core.contracts.run_result import RunResult
 
         run_id = resume_run_id or str(uuid4())
         correlation_id = run_id

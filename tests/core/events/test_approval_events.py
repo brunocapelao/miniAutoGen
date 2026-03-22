@@ -10,4 +10,4 @@ def test_approval_events_are_enum_members() -> None:
 
 
 def test_approval_event_count() -> None:
-    assert len(APPROVAL_EVENT_TYPES) == 4
+    assert len(APPROVAL_EVENT_TYPES) == 7
