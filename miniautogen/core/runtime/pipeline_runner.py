@@ -74,6 +74,7 @@ class PipelineRunner:
         workspace: Path,
         config: WorkspaceConfig,
         run_id: str,
+        flow_config: FlowConfig | None = None,
     ) -> dict[str, AgentRuntime]:
         """Build AgentRuntime instances from YAML config.
 
@@ -181,6 +182,8 @@ class PipelineRunner:
                 memory=memory,
                 tool_registry=tool_registry,
                 delegation=delegation_router,
+                flow_prompts=flow_config.prompts if flow_config else {},
+                response_format=flow_config.response_format if flow_config else "json",
             )
             # Store config_dir for later use
             rt._config_dir = config_dir  # noqa: SLF001
@@ -472,6 +475,7 @@ class PipelineRunner:
             workspace=workspace,
             config=config,
             run_id=run_id,
+            flow_config=flow_config,
         )
 
         # 3. Initialize all runtimes

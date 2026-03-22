@@ -114,6 +114,11 @@ class FlowConfig(BaseModel):
     router: str | None = None  # agentic loop
     chain_flows: list[str] = Field(default_factory=list)  # composite
 
+    # AgentRuntime agnostic design fields
+    response_format: str = "json"  # free_text | json | structured
+    prompts: dict[str, str] = Field(default_factory=dict)
+    response_schema: str | None = None  # Python dotted path for structured format
+
     @model_validator(mode="after")
     def validate_flow_config(self) -> "FlowConfig":
         if not self.target and not self.mode:
@@ -127,6 +132,28 @@ class FlowConfig(BaseModel):
                 raise ValueError("Deliberation mode requires 'leader'")
             if self.mode == "loop" and not self.router:
                 raise ValueError("Loop mode requires 'router'")
+        return self
+
+    @model_validator(mode="after")
+    def validate_response_format(self) -> "FlowConfig":
+        valid_formats = {"free_text", "json", "structured"}
+        if self.response_format not in valid_formats:
+            raise ValueError(
+                f"response_format must be one of {valid_formats}, "
+                f"got '{self.response_format}'"
+            )
+        if self.response_format == "structured" and not self.response_schema:
+            raise ValueError(
+                "response_format='structured' requires 'response_schema' "
+                "(Python dotted path to Pydantic model)"
+            )
+        if self.response_schema:
+            allowed_prefixes = ("miniautogen.",)
+            if not any(self.response_schema.startswith(p) for p in allowed_prefixes):
+                raise ValueError(
+                    f"response_schema must start with 'miniautogen.', "
+                    f"got '{self.response_schema}'"
+                )
         return self
 
 

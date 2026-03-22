@@ -41,7 +41,16 @@ from miniautogen.core.contracts.tool_registry import ToolCall, ToolRegistryProto
 from miniautogen.core.contracts.turn_result import TurnResult
 from miniautogen.core.events.event_sink import EventSink, NullEventSink
 from miniautogen.core.events.types import EventType
+from miniautogen.core.contracts.interaction import InteractionStrategy
 from miniautogen.core.runtime.agent_errors import AgentClosedError, AgentSecurityError
+from miniautogen.core.runtime.default_prompts import (
+    build_default_contribute_prompt,
+    build_default_review_prompt,
+    build_default_consolidate_prompt,
+    build_default_final_document_prompt,
+    build_default_route_prompt,
+)
+from miniautogen.core.runtime.prompt_resolver import resolve_prompt
 
 
 class AgentRuntime:
@@ -64,6 +73,9 @@ class AgentRuntime:
         memory: MemoryProvider | None = None,
         tool_registry: ToolRegistryProtocol | None = None,
         delegation: DelegationRouterProtocol | None = None,
+        interaction_strategy: InteractionStrategy | None = None,
+        flow_prompts: dict[str, str] | None = None,
+        response_format: str = "json",
     ) -> None:
         self._agent_id = agent_id
         self._driver = driver
@@ -74,6 +86,12 @@ class AgentRuntime:
         self._memory = memory
         self._tool_registry = tool_registry
         self._delegation = delegation
+        self._interaction_strategy = interaction_strategy
+        self._flow_prompts = flow_prompts or {}
+        # TODO(review): _response_format is stored but not yet used in parsing
+        # logic. Requires broader design discussion on how response_format
+        # should interact with InteractionStrategy and default JSON parsing.
+        self._response_format = response_format
 
         self._session_id: str | None = None
         self._closed = False
@@ -171,6 +189,27 @@ class AgentRuntime:
         result = await self._execute_turn(messages)
         return result.text
 
+    async def execute(self, prompt: str) -> str:
+        """Execute a prompt and return raw response.
+
+        No parsing, no format assumptions. The AgentRuntime enriches the
+        prompt with context (system prompt, memory, tools) and delegates
+        to the backend driver.
+
+        This is the preferred method for Coordination Runtimes that build
+        their own prompts and handle their own response parsing.
+
+        Args:
+            prompt: The complete prompt to send to the agent.
+
+        Returns:
+            Raw text response from the backend driver.
+        """
+        self._check_closed()
+        messages = self._build_messages(prompt)
+        result = await self._execute_turn(messages)
+        return result.text
+
     # ------------------------------------------------------------------
     # ConversationalAgent protocol
     # ------------------------------------------------------------------
@@ -183,14 +222,20 @@ class AgentRuntime:
         return result.text
 
     async def route(self, conversation_history: list[Any]) -> RouterDecision:
-        """Route a conversation to the next agent."""
+        """Route a conversation to the next agent.
+
+        Uses cascade resolution: InteractionStrategy -> YAML -> default.
+        """
         self._check_closed()
-        prompt = (
-            "Based on the conversation history, decide which agent should "
-            "speak next. Respond with JSON: "
-            '{"current_state_summary":"...","missing_information":"...",'
-            '"next_agent":"...","terminate":false,"stagnation_risk":0.0}'
+
+        prompt = await resolve_prompt(
+            action="route",
+            context={"conversation_history": conversation_history},
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_route_prompt(),
         )
+
         messages: list[dict[str, Any]] = []
         for item in conversation_history:
             if isinstance(item, dict):
@@ -208,23 +253,39 @@ class AgentRuntime:
     # ------------------------------------------------------------------
 
     async def contribute(self, topic: str) -> Contribution:
-        """Produce a contribution for a deliberation topic."""
+        """Produce a contribution for a deliberation topic.
+
+        Uses cascade resolution: InteractionStrategy -> YAML -> default.
+        """
         self._check_closed()
-        prompt = (
-            f"Contribute to the topic: {topic}. "
-            "Respond with JSON: "
-            '{"title":"...","content":{...}}'
+
+        prompt = await resolve_prompt(
+            action="contribute",
+            context={"topic": topic},
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_contribute_prompt(topic=topic),
         )
-        messages = self._build_messages(prompt)
-        result = await self._execute_turn(messages)
+        result_text = await self.execute(prompt)
+
+        # Use InteractionStrategy.parse_response() when available
+        if self._interaction_strategy is not None:
+            parsed = await self._interaction_strategy.parse_response("contribute", result_text)
+            return Contribution(
+                participant_id=self._agent_id,
+                title=parsed.get("title", topic),
+                content=parsed.get("content", {}),
+            )
+
+        # Default JSON parsing fallback
         try:
-            data = json.loads(result.text)
+            data = json.loads(result_text)
         except (json.JSONDecodeError, TypeError, ValueError):
             # Backend returned free text — wrap it as a contribution
             return Contribution(
                 participant_id=self._agent_id,
                 title=topic,
-                content={"text": result.text},
+                content={"text": result_text},
             )
         return Contribution(
             participant_id=self._agent_id,
@@ -235,23 +296,45 @@ class AgentRuntime:
     async def review(
         self, target_id: str, contribution: Contribution
     ) -> Review:
-        """Review another agent's contribution."""
+        """Review another agent's contribution.
+
+        Uses cascade resolution: InteractionStrategy -> YAML -> default.
+        """
         self._check_closed()
-        prompt = (
-            f"Review contribution from {target_id}: "
-            f"title='{contribution.title}', content={contribution.content}. "
-            "Respond with JSON: "
-            '{"strengths":[...],"concerns":[...],"questions":[...]}'
+
+        prompt = await resolve_prompt(
+            action="review",
+            context={
+                "target_id": target_id,
+                "target": target_id,
+                "contribution": contribution,
+                "content": str(contribution.content),
+                "role": self._agent_id,
+            },
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_review_prompt(
+                target_id=target_id, contribution=contribution
+            ),
         )
-        messages = self._build_messages(prompt)
-        result = await self._execute_turn(messages)
-        try:
-            text = result.text or ""
-            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-            raw = fence_match.group(1).strip() if fence_match else text
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError, ValueError):
-            text = result.text or ""
+        result_text = await self.execute(prompt)
+
+        # Use InteractionStrategy.parse_response() when available
+        if self._interaction_strategy is not None:
+            parsed = await self._interaction_strategy.parse_response("review", result_text)
+            return Review(
+                reviewer_id=self._agent_id,
+                target_id=target_id,
+                target_title=contribution.title,
+                strengths=parsed.get("strengths", []),
+                concerns=parsed.get("concerns", []),
+                questions=parsed.get("questions", []),
+            )
+
+        # Default JSON parsing fallback (with fence extraction)
+        data = self._extract_json(result_text)
+        if data is None:
+            text = result_text or ""
             data = {
                 "strengths": [],
                 "concerns": [text] if text else [],
@@ -272,8 +355,12 @@ class AgentRuntime:
         contributions: list[Contribution],
         reviews: list[Review],
     ) -> DeliberationState:
-        """Leader consolidates contributions and reviews into a state."""
+        """Leader consolidates contributions and reviews into a state.
+
+        Uses cascade resolution: InteractionStrategy -> YAML -> default.
+        """
         self._check_closed()
+
         contrib_summary = "\n".join(
             f"- {c.participant_id}: {c.title}" for c in contributions
         )
@@ -281,27 +368,45 @@ class AgentRuntime:
             f"- {r.reviewer_id} on {r.target_id}: strengths={r.strengths}, concerns={r.concerns}"
             for r in reviews
         )
-        prompt = (
-            f"As leader, consolidate the deliberation on: {topic}\n\n"
-            f"Contributions:\n{contrib_summary}\n\n"
-            f"Reviews:\n{review_summary}\n\n"
-            "Respond with JSON:\n"
-            '{"accepted_facts":["..."],"open_conflicts":["..."],'
-            '"pending_gaps":["..."],"leader_decision":"...",'
-            '"is_sufficient":true/false,"rejection_reasons":["..."]}'
+
+        prompt = await resolve_prompt(
+            action="consolidate",
+            context={
+                "topic": topic,
+                "contributions": contributions,
+                "reviews": reviews,
+                "contributions_summary": contrib_summary,
+                "reviews_summary": review_summary,
+                "role": self._agent_id,
+            },
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_consolidate_prompt(
+                topic=topic, contributions=contributions, reviews=reviews
+            ),
         )
-        messages = self._build_messages(prompt)
-        result = await self._execute_turn(messages)
-        try:
-            text = result.text or ""
-            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-            raw = fence_match.group(1).strip() if fence_match else text
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError, ValueError):
+        result_text = await self.execute(prompt)
+
+        # Use InteractionStrategy.parse_response() when available
+        if self._interaction_strategy is not None:
+            parsed = await self._interaction_strategy.parse_response("consolidate", result_text)
+            return DeliberationState(
+                review_cycle=1,
+                accepted_facts=parsed.get("accepted_facts", []),
+                open_conflicts=parsed.get("open_conflicts", []),
+                pending_gaps=parsed.get("pending_gaps", []),
+                leader_decision=parsed.get("leader_decision"),
+                is_sufficient=parsed.get("is_sufficient", True),
+                rejection_reasons=parsed.get("rejection_reasons", []),
+            )
+
+        # Default JSON parsing fallback (with fence extraction)
+        data = self._extract_json(result_text)
+        if data is None:
             return DeliberationState(
                 review_cycle=1,
                 is_sufficient=True,
-                leader_decision=result.text or "Approved",
+                leader_decision=result_text or "Approved",
             )
         return DeliberationState(
             review_cycle=1,
@@ -318,36 +423,55 @@ class AgentRuntime:
         state: DeliberationState,
         contributions: list[Contribution],
     ) -> FinalDocument:
-        """Leader produces the final consolidated document."""
+        """Leader produces the final consolidated document.
+
+        Uses cascade resolution: InteractionStrategy -> YAML -> default.
+        """
         self._check_closed()
+
         contrib_text = "\n".join(
             f"- {c.participant_id}: {json.dumps(c.content)[:500]}"
             for c in contributions
         )
-        prompt = (
-            "Produce a final document summarizing the deliberation.\n\n"
-            f"State: decision={state.leader_decision}, "
-            f"accepted_facts={state.accepted_facts}, "
-            f"open_conflicts={state.open_conflicts}\n\n"
-            f"Contributions:\n{contrib_text}\n\n"
-            "Respond with JSON:\n"
-            '{"executive_summary":"...","accepted_facts":["..."],'
-            '"open_conflicts":["..."],"pending_decisions":["..."],'
-            '"recommendations":["..."],"decision_summary":"...",'
-            '"body_markdown":"..."}'
+
+        prompt = await resolve_prompt(
+            action="produce_final_document",
+            context={
+                "state": state,
+                "contributions": contributions,
+                "contributions_summary": contrib_text,
+                "role": self._agent_id,
+            },
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_final_document_prompt(
+                state=state, contributions=contributions
+            ),
         )
-        messages = self._build_messages(prompt)
-        result = await self._execute_turn(messages)
-        try:
-            text = result.text or ""
-            fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
-            raw = fence_match.group(1).strip() if fence_match else text
-            data = json.loads(raw)
-        except (json.JSONDecodeError, TypeError, ValueError):
+        result_text = await self.execute(prompt)
+
+        # Use InteractionStrategy.parse_response() when available
+        if self._interaction_strategy is not None:
+            parsed = await self._interaction_strategy.parse_response(
+                "produce_final_document", result_text
+            )
             return FinalDocument(
-                executive_summary=result.text or "Deliberation complete.",
+                executive_summary=parsed.get("executive_summary", ""),
+                accepted_facts=parsed.get("accepted_facts", []),
+                open_conflicts=parsed.get("open_conflicts", []),
+                pending_decisions=parsed.get("pending_decisions", []),
+                recommendations=parsed.get("recommendations", []),
+                decision_summary=parsed.get("decision_summary", ""),
+                body_markdown=parsed.get("body_markdown", ""),
+            )
+
+        # Default JSON parsing fallback (with fence extraction)
+        data = self._extract_json(result_text)
+        if data is None:
+            return FinalDocument(
+                executive_summary=result_text or "Deliberation complete.",
                 decision_summary=state.leader_decision or "Approved",
-                body_markdown=result.text or "",
+                body_markdown=result_text or "",
             )
         return FinalDocument(
             executive_summary=data.get("executive_summary", ""),
@@ -516,6 +640,20 @@ class AgentRuntime:
             raise AgentClosedError(
                 f"Agent '{self._agent_id}' has been closed"
             )
+
+    def _extract_json(self, text: str) -> dict[str, Any] | None:
+        """Extract JSON from text, handling markdown code fences.
+
+        Tries to parse JSON from within ```json ... ``` fences first,
+        then falls back to parsing the raw text. Returns None if parsing fails.
+        """
+        text = text or ""
+        fence_match = re.search(r"```(?:json)?\s*\n?(.*?)\n?```", text, re.DOTALL)
+        raw = fence_match.group(1).strip() if fence_match else text
+        try:
+            return json.loads(raw)
+        except (json.JSONDecodeError, TypeError, ValueError):
+            return None
 
     def _build_messages(self, user_content: str) -> list[dict[str, Any]]:
         """Build a simple message list from user content."""

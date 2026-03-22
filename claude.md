@@ -49,6 +49,7 @@ O seu Pull Request ou sequência de Commits será imediatamente **REJEITADO** se
 2.  Criar uma classe de erro customizada que não pertença à Taxonomia Canônica do sistema (`transient`, `permanent`, `validation`, `timeout`, `cancellation`, `adapter`, `configuration`, `state_consistency`).
 3.  Sair do seu *loop* de execução autônoma prematuramente (declarar que terminou a tarefa sem que os testes do `skills/run_anyio_tests.sh` estejam a passar a 100%).
 4.  Omitir a submissão de um `ExecutionEvent` após adicionar um novo componente ao ciclo de vida de execução.
+5.  Adicionar prompts hardcoded ou lógica de parsing de resposta no `AgentRuntime`. Prompts de coordenação pertencem ao Coordination Runtime ou ao Flow config. O AgentRuntime é compositor, não instrutor.
 
 ---
 

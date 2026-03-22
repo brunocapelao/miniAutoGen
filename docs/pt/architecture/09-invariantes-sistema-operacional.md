@@ -1,11 +1,11 @@
 # Definição Arquitetural: Invariantes do Sistema Operacional MiniAutoGen
 
-**Versão:** 1.0.0
+**Versão:** 1.1.0
 **Data:** 2025-06-18
 **Tipo:** Auditoria Arquitetural + Definição de Invariantes
 **Classificação:** Constituição da Engenharia
 
-> Este documento estabelece as 6 invariantes invioláveis que governam o MiniAutoGen como Sistema Operacional de Agentes. Não é um guia — é uma **constituição**. Qualquer commit que viole estas invariantes deve ser rejeitado em code review.
+> Este documento estabelece as 8 invariantes invioláveis que governam o MiniAutoGen como Sistema Operacional de Agentes. Não é um guia — é uma **constituição**. Qualquer commit que viole estas invariantes deve ser rejeitado em code review.
 
 ---
 
@@ -316,17 +316,78 @@ def process(self, **kwargs) -> Any:  # PROIBIDO
 
 ---
 
+### Invariante 7: Separação Prompt↔Runtime
+
+> **O AgentRuntime é compositor, não instrutor**
+
+**A Regra:** O AgentRuntime NUNCA dita ao agente o formato de resposta ou constrói prompts de coordenação. Prompts de coordenação (contribute, review, consolidate) são responsabilidade do Coordination Runtime. O AgentRuntime enriquece com contexto local (memória, tools, system prompt) e delega ao backend.
+
+**Justificativa Técnica:** O AgentRuntime deve ser agnóstico ao tipo de coordenação. O mesmo AgentRuntime pode participar em deliberações, workflows ou loops agentic sem modificação. A separação prompt/runtime permite que diferentes estratégias de interação coexistam sem alterar o compositor.
+
+**Implementação:**
+```python
+# ANTES (violação)
+class AgentRuntime:
+    async def contribute(self, topic: str) -> Contribution:
+        prompt = f"Contribute to: {topic}. Respond with JSON: ..."  # PROIBIDO
+
+# DEPOIS (invariante)
+class AgentRuntime:
+    async def contribute(self, topic: str) -> Contribution:
+        prompt = await resolve_prompt(  # Cascade: Strategy -> YAML -> default
+            action="contribute",
+            context={"topic": topic},
+            strategy=self._interaction_strategy,
+            flow_prompts=self._flow_prompts,
+            default_prompt=build_default_contribute_prompt(topic=topic),
+        )
+        return await self.execute(prompt)  # compositor puro
+```
+
+**Validação CI/CD:**
+- Grep: `AgentRuntime` não contém strings de prompt hardcoded (exceto em `default_prompts.py`)
+- Test: AgentRuntime com `InteractionStrategy` customizada funciona sem alteração do core
+
+---
+
+### Invariante 8: Formato pertence ao Flow
+
+> **response_format é propriedade do Flow config**
+
+**A Regra:** O `response_format` é propriedade do Flow config, não do Agent. O mesmo agente pode participar em flows que esperam JSON e flows que esperam texto livre. O Coordination Runtime adapta o parsing conforme o `response_format` do flow.
+
+**Justificativa Técnica:** Acoplar o formato de resposta ao agente limita a reutilização. Um agente que funciona com JSON num flow de deliberação pode precisar de free text num flow de brainstorming. A separação permite máxima composabilidade.
+
+**Implementação:**
+```yaml
+# YAML — formato definido no Flow, não no Agent
+flows:
+  review:
+    mode: deliberation
+    response_format: free_text  # propriedade do flow
+    prompts:
+      contribute: "Review {topic} from your perspective."
+```
+
+**Validação CI/CD:**
+- Test: mesmo agente participa em flow JSON e flow free_text sem configuração adicional
+- Lint: `response_format` não existe em nenhum AgentSpec ou contrato de agente
+
+---
+
 ## 5. Veredito de Eficácia
 
 **Nota de Resiliência Arquitetural: 9.5 / 10**
 
-A adoção formal destas 6 invariantes elimina as classes mais complexas e destrutivas de bugs em sistemas distribuídos:
+A adoção formal destas 8 invariantes elimina as classes mais complexas e destrutivas de bugs em sistemas distribuídos:
 - Race conditions → Invariante 1 (imutabilidade)
 - Processos zumbis → Invariante 2 (supervisão)
 - Estados corrompidos → Invariante 3 (checkpoint atômico)
 - Side-effects duplicados → Invariante 4 (idempotência)
 - Estado inconsistente → Invariante 5 (event sourcing)
 - Erros de contrato em runtime → Invariante 6 (tipagem estrita)
+- Prompt leaking no compositor → Invariante 7 (separação prompt/runtime)
+- Formato acoplado ao agente → Invariante 8 (formato no flow)
 
 A arquitetura deixa de ser uma "biblioteca de orquestração de LLMs" para se tornar uma **infraestrutura de computação autônoma, confiável e previsível**.
 
@@ -380,6 +441,8 @@ Substituir tratamento de erros linear no `PipelineRunner` por hierarquia de `Sup
 | 4. Idempotência | #11 EffectPolicy | [competitive-landscape.md](../../competitive-landscape.md) §Fase 3 |
 | 5. Event Sourcing | Existente (expandir) | [05-invariantes.md](05-invariantes.md) §Taxonomia |
 | 6. Tipagem Estrita | Existente (manter) | [CLAUDE.md](../../../CLAUDE.md) §Invariantes |
+| 7. Separação Prompt↔Runtime | AgentRuntime Agnostic | [spec agnostic](../../superpowers/specs/2026-03-21-agentruntime-agnostic-design.md) |
+| 8. Formato no Flow | AgentRuntime Agnostic | [spec agnostic](../../superpowers/specs/2026-03-21-agentruntime-agnostic-design.md) |
 
 ---
 
