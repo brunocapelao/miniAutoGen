@@ -14,6 +14,7 @@ from miniautogen.server.routes.workspace import workspace_router
 from miniautogen.server.routes.agents import agents_router
 from miniautogen.server.routes.flows import flows_router
 from miniautogen.server.routes.runs import runs_router
+from miniautogen.server.ws import WebSocketEventSink, ws_router
 
 
 def create_app(
@@ -41,6 +42,15 @@ def create_app(
     app.include_router(agents_router(provider))
     app.include_router(flows_router(provider))
     app.include_router(runs_router(provider))
+
+    # WebSocket (embedded mode only — live event streaming)
+    event_sink = None
+    if mode == "embedded":
+        event_sink = WebSocketEventSink()
+        app.include_router(ws_router(event_sink))
+
+    # Store event_sink on app for CLI integration
+    app.state.event_sink = event_sink
 
     # CORS: only for development
     if os.getenv("MINIAUTOGEN_DEV"):
