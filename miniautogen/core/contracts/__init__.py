@@ -34,6 +34,7 @@ from .effect import (
     EffectStatus,
 )
 from .engine_profile import EngineProfile
+from .interaction import InteractionStrategy
 from .enums import ErrorCategory, LoopStopReason, RunStatus, SupervisionStrategy
 from .events import ExecutionEvent
 from .mcp_binding import McpServerBinding
@@ -78,6 +79,7 @@ __all__ = [
     "FinalDocument",
     "FrozenState",
     "InMemoryMemoryProvider",
+    "InteractionStrategy",
     "LoopStopReason",
     "McpServerBinding",
     "MemoryProfile",

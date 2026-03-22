@@ -88,9 +88,6 @@ class AgentRuntime:
         self._delegation = delegation
         self._interaction_strategy = interaction_strategy
         self._flow_prompts = flow_prompts or {}
-        # TODO(review): _response_format is stored but not yet used in parsing
-        # logic. Requires broader design discussion on how response_format
-        # should interact with InteractionStrategy and default JSON parsing.
         self._response_format = response_format
 
         self._session_id: str | None = None
@@ -277,11 +274,18 @@ class AgentRuntime:
                 content=parsed.get("content", {}),
             )
 
+        # Free text mode: skip JSON parsing entirely
+        if self._response_format == "free_text":
+            return Contribution(
+                participant_id=self._agent_id,
+                title=topic,
+                content={"text": result_text},
+            )
+
         # Default JSON parsing fallback
         try:
             data = json.loads(result_text)
         except (json.JSONDecodeError, TypeError, ValueError):
-            # Backend returned free text — wrap it as a contribution
             return Contribution(
                 participant_id=self._agent_id,
                 title=topic,
@@ -329,6 +333,18 @@ class AgentRuntime:
                 strengths=parsed.get("strengths", []),
                 concerns=parsed.get("concerns", []),
                 questions=parsed.get("questions", []),
+            )
+
+        # Free text mode: wrap raw text as review concern
+        if self._response_format == "free_text":
+            text = result_text or ""
+            return Review(
+                reviewer_id=self._agent_id,
+                target_id=target_id,
+                target_title=contribution.title,
+                strengths=[],
+                concerns=[text] if text else [],
+                questions=[],
             )
 
         # Default JSON parsing fallback (with fence extraction)
@@ -400,6 +416,14 @@ class AgentRuntime:
                 rejection_reasons=parsed.get("rejection_reasons", []),
             )
 
+        # Free text mode: treat raw text as leader decision
+        if self._response_format == "free_text":
+            return DeliberationState(
+                review_cycle=1,
+                is_sufficient=True,
+                leader_decision=result_text or "Approved",
+            )
+
         # Default JSON parsing fallback (with fence extraction)
         data = self._extract_json(result_text)
         if data is None:
@@ -463,6 +487,14 @@ class AgentRuntime:
                 recommendations=parsed.get("recommendations", []),
                 decision_summary=parsed.get("decision_summary", ""),
                 body_markdown=parsed.get("body_markdown", ""),
+            )
+
+        # Free text mode: wrap raw text as final document
+        if self._response_format == "free_text":
+            return FinalDocument(
+                executive_summary=result_text or "Deliberation complete.",
+                decision_summary=state.leader_decision or "Approved",
+                body_markdown=result_text or "",
             )
 
         # Default JSON parsing fallback (with fence extraction)

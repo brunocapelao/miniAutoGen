@@ -172,3 +172,67 @@ class TestCascadeResolutionIntegration:
         assert rt._response_format == "free_text"
         await rt.initialize()
         await rt.close()
+
+    @pytest.mark.anyio()
+    async def test_contribute_free_text_skips_json_parsing(self) -> None:
+        """When response_format='free_text', JSON parsing is skipped entirely."""
+        # Even valid JSON should be treated as free text
+        rt = AgentRuntime(
+            agent_id="test",
+            driver=EchoDriver(),
+            run_context=_make_run_context(),
+            response_format="free_text",
+        )
+        await rt.initialize()
+        contrib = await rt.contribute("AI safety")
+        # EchoDriver echoes prompt back — treated as free text, not parsed
+        assert "text" in contrib.content
+        assert isinstance(contrib.content["text"], str)
+        await rt.close()
+
+    @pytest.mark.anyio()
+    async def test_review_free_text_skips_json_parsing(self) -> None:
+        """When response_format='free_text', review wraps as concerns."""
+        c = Contribution(participant_id="other", title="Title", content={"x": 1})
+        rt = AgentRuntime(
+            agent_id="test",
+            driver=EchoDriver(),
+            run_context=_make_run_context(),
+            response_format="free_text",
+        )
+        await rt.initialize()
+        review = await rt.review("other", c)
+        assert review.reviewer_id == "test"
+        assert len(review.concerns) == 1  # raw text wrapped as single concern
+        assert review.strengths == []
+        await rt.close()
+
+    @pytest.mark.anyio()
+    async def test_same_agent_json_and_free_text_flows(self) -> None:
+        """Same agent config works in both JSON and free_text flows (INV-8)."""
+        # JSON flow
+        rt_json = AgentRuntime(
+            agent_id="test",
+            driver=EchoDriver(),
+            run_context=_make_run_context(),
+            response_format="json",
+        )
+        await rt_json.initialize()
+        contrib_json = await rt_json.contribute("topic")
+        await rt_json.close()
+
+        # Free text flow
+        rt_text = AgentRuntime(
+            agent_id="test",
+            driver=EchoDriver(),
+            run_context=_make_run_context(),
+            response_format="free_text",
+        )
+        await rt_text.initialize()
+        contrib_text = await rt_text.contribute("topic")
+        await rt_text.close()
+
+        # Both return valid Contributions but with different content structure
+        assert contrib_json.participant_id == "test"
+        assert contrib_text.participant_id == "test"
+        assert "text" in contrib_text.content  # free text wraps in {"text": ...}
