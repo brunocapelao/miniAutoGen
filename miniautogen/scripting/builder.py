@@ -1,4 +1,4 @@
-"""ScriptBuilder — imperative builder for multi-agent flows without YAML.
+"""ScriptBuilder -- imperative builder for multi-agent flows without YAML.
 
 Provides a fluent API for defining agents, tools, and coordination flows
 purely in Python code. Internally constructs the same runtime objects
@@ -7,6 +7,7 @@ purely in Python code. Internally constructs the same runtime objects
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
@@ -17,7 +18,10 @@ from miniautogen.core.contracts.enums import RunStatus
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.event_sink import EventSink, InMemoryEventSink, NullEventSink
+from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -144,6 +148,46 @@ class ScriptBuilder:
     # Execution methods
     # ------------------------------------------------------------------
 
+    async def _execute(
+        self,
+        run_id: str,
+        run_fn: Any,
+    ) -> RunResult:
+        """Common execution wrapper handling runtime lifecycle and cleanup.
+
+        Args:
+            run_id: Unique run identifier.
+            run_fn: Async callable(runtimes) -> RunResult.
+
+        Returns:
+            RunResult from the run function.
+        """
+        runtimes, env_keys = await self._build_runtimes(run_id)
+        logger.info("execution_started", run_id=run_id)
+
+        try:
+            for rt in runtimes.values():
+                await rt.initialize()
+
+            result = await run_fn(runtimes)
+            logger.info("execution_finished", run_id=run_id)
+            return result
+        except Exception as exc:
+            logger.error("execution_failed", run_id=run_id, error=str(exc))
+            return RunResult(
+                run_id=run_id,
+                status=RunStatus.FAILED,
+                error=str(exc),
+            )
+        finally:
+            for rt in runtimes.values():
+                try:
+                    await rt.close()
+                except Exception:
+                    pass
+            for key in env_keys:
+                os.environ.pop(key, None)
+
     async def single_run(
         self,
         agent_name: str,
@@ -163,29 +207,17 @@ class ScriptBuilder:
             raise KeyError(f"Agent '{agent_name}' not found")
 
         run_id = str(uuid4())
-        runtimes = await self._build_runtimes(run_id)
 
-        try:
+        async def _run(runtimes: dict[str, Any]) -> RunResult:
             rt = runtimes[agent_name]
-            await rt.initialize()
             output = await rt.process(input)
             return RunResult(
                 run_id=run_id,
                 status=RunStatus.FINISHED,
                 output=output,
             )
-        except Exception as exc:
-            return RunResult(
-                run_id=run_id,
-                status=RunStatus.FAILED,
-                error=str(exc),
-            )
-        finally:
-            for rt in runtimes.values():
-                try:
-                    await rt.close()
-                except Exception:
-                    pass
+
+        return await self._execute(run_id, _run)
 
     async def workflow(
         self,
@@ -220,12 +252,8 @@ class ScriptBuilder:
         from miniautogen.core.runtime.workflow_runtime import WorkflowRuntime
 
         run_id = str(uuid4())
-        runtimes = await self._build_runtimes(run_id)
 
-        try:
-            for rt in runtimes.values():
-                await rt.initialize()
-
+        async def _run(runtimes: dict[str, Any]) -> RunResult:
             runner = PipelineRunner(
                 event_sink=self._event_sink,
                 approval_gate=self._approval_gate,
@@ -255,18 +283,8 @@ class ScriptBuilder:
             return await wf_runtime.run(
                 list(runtimes.values()), context, plan,
             )
-        except Exception as exc:
-            return RunResult(
-                run_id=run_id,
-                status=RunStatus.FAILED,
-                error=str(exc),
-            )
-        finally:
-            for rt in runtimes.values():
-                try:
-                    await rt.close()
-                except Exception:
-                    pass
+
+        return await self._execute(run_id, _run)
 
     async def deliberation(
         self,
@@ -300,12 +318,8 @@ class ScriptBuilder:
         from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 
         run_id = str(uuid4())
-        runtimes = await self._build_runtimes(run_id)
 
-        try:
-            for rt in runtimes.values():
-                await rt.initialize()
-
+        async def _run(runtimes: dict[str, Any]) -> RunResult:
             runner = PipelineRunner(
                 event_sink=self._event_sink,
                 approval_gate=self._approval_gate,
@@ -331,18 +345,8 @@ class ScriptBuilder:
             return await delib_runtime.run(
                 list(runtimes.values()), context, plan,
             )
-        except Exception as exc:
-            return RunResult(
-                run_id=run_id,
-                status=RunStatus.FAILED,
-                error=str(exc),
-            )
-        finally:
-            for rt in runtimes.values():
-                try:
-                    await rt.close()
-                except Exception:
-                    pass
+
+        return await self._execute(run_id, _run)
 
     async def loop(
         self,
@@ -376,12 +380,8 @@ class ScriptBuilder:
         from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 
         run_id = str(uuid4())
-        runtimes = await self._build_runtimes(run_id)
 
-        try:
-            for rt in runtimes.values():
-                await rt.initialize()
-
+        async def _run(runtimes: dict[str, Any]) -> RunResult:
             runner = PipelineRunner(
                 event_sink=self._event_sink,
                 approval_gate=self._approval_gate,
@@ -407,18 +407,8 @@ class ScriptBuilder:
             return await loop_runtime.run(
                 list(runtimes.values()), context, plan,
             )
-        except Exception as exc:
-            return RunResult(
-                run_id=run_id,
-                status=RunStatus.FAILED,
-                error=str(exc),
-            )
-        finally:
-            for rt in runtimes.values():
-                try:
-                    await rt.close()
-                except Exception:
-                    pass
+
+        return await self._execute(run_id, _run)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -427,11 +417,14 @@ class ScriptBuilder:
     async def _build_runtimes(
         self,
         run_id: str,
-    ) -> dict[str, Any]:
+    ) -> tuple[dict[str, Any], list[str]]:
         """Build AgentRuntime instances from builder definitions.
 
         Creates the minimal infrastructure (driver, tools, memory) needed
         to run agents without a full workspace/YAML setup.
+
+        Returns:
+            Tuple of (runtimes dict, list of env keys to clean up).
         """
         from miniautogen.backends.config import AuthConfig, BackendConfig, DriverType
         from miniautogen.backends.resolver import BackendResolver
@@ -445,7 +438,6 @@ class ScriptBuilder:
             "openai": DriverType.OPENAI_SDK,
             "anthropic": DriverType.ANTHROPIC_SDK,
             "google": DriverType.GOOGLE_GENAI,
-            "litellm": DriverType.LITELLM,
         }
 
         resolver = BackendResolver()
@@ -458,6 +450,7 @@ class ScriptBuilder:
         )
 
         runtimes: dict[str, Any] = {}
+        env_keys: list[str] = []
 
         for name, agent_def in self._agents.items():
             driver_type = provider_map.get(agent_def.provider)
@@ -468,19 +461,17 @@ class ScriptBuilder:
                 )
 
             # Build backend config
-            import os
-
             auth: AuthConfig | None = None
             if agent_def.api_key:
-                env_key = f"_MINIAUTOGEN_SCRIPT_{name.upper()}_KEY"
+                env_key = f"_MINIAUTOGEN_SCRIPT_{uuid4().hex[:8]}_KEY"
                 os.environ[env_key] = agent_def.api_key
+                env_keys.append(env_key)
                 auth = AuthConfig(type="bearer", token_env=env_key)
 
             metadata: dict[str, Any] = {"model": agent_def.model}
             metadata["temperature"] = agent_def.temperature
             if agent_def.max_tokens is not None:
                 metadata["max_tokens"] = agent_def.max_tokens
-            metadata.setdefault("health_endpoint", None)
 
             backend_config = BackendConfig(
                 backend_id=f"script_{name}_{uuid4().hex[:8]}",
@@ -525,7 +516,7 @@ class ScriptBuilder:
             )
             runtimes[name] = rt
 
-        return runtimes
+        return runtimes, env_keys
 
     @staticmethod
     def _register_factories(resolver: BackendResolver) -> None:

@@ -1,4 +1,4 @@
-"""Semantic Cache — reduces LLM costs by caching semantically similar requests.
+"""Semantic Cache -- reduces LLM costs by caching semantically similar requests.
 
 Implements a RuntimeInterceptor that checks for cached responses before
 allowing a step to execute. When a cache hit is found (exact or semantic
@@ -32,11 +32,15 @@ Usage::
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Awaitable
 
 from miniautogen.core.contracts.run_context import RunContext
+from miniautogen.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,7 +51,6 @@ class CacheEntry:
     input_hash: str
     result: Any
     created_at: float
-    hit_count: int = 0
 
 
 class CacheStats:
@@ -102,7 +105,7 @@ class ExactCache:
         self._namespace = namespace
         self._cache: dict[str, CacheEntry] = {}
         self._stats = CacheStats()
-        self._last_input_hash: str | None = None
+        self._pending_hashes: dict[str, str] = {}
 
     @property
     def stats(self) -> CacheStats:
@@ -123,13 +126,19 @@ class ExactCache:
         metadata so should_execute can bail and after_step can return it.
         """
         input_hash = self._compute_hash(input)
-        self._last_input_hash = input_hash
+        self._pending_hashes[context.run_id] = input_hash
 
         entry = self._cache.get(input_hash)
         if entry is not None:
             # Check TTL
             if time.monotonic() - entry.created_at <= self._ttl_seconds:
                 self._stats.hits += 1
+                logger.info(
+                    "cache_hit",
+                    cache_type="exact",
+                    run_id=context.run_id,
+                    input_hash=input_hash[:12],
+                )
                 # Store cache hit in context for retrieval
                 return _CacheHitSentinel(entry.result)
             else:
@@ -138,6 +147,12 @@ class ExactCache:
                 self._stats.evictions += 1
 
         self._stats.misses += 1
+        logger.debug(
+            "cache_miss",
+            cache_type="exact",
+            run_id=context.run_id,
+            input_hash=input_hash[:12],
+        )
         return input
 
     async def should_execute(
@@ -158,15 +173,15 @@ class ExactCache:
             return result.value
 
         # Store new result in cache
-        if self._last_input_hash is not None:
+        input_hash = self._pending_hashes.pop(context.run_id, None)
+        if input_hash is not None:
             self._evict_if_full()
-            self._cache[self._last_input_hash] = CacheEntry(
-                key=self._last_input_hash,
-                input_hash=self._last_input_hash,
+            self._cache[input_hash] = CacheEntry(
+                key=input_hash,
+                input_hash=input_hash,
                 result=result,
                 created_at=time.monotonic(),
             )
-            self._last_input_hash = None
 
         return result
 
@@ -176,7 +191,7 @@ class ExactCache:
         context: RunContext,
     ) -> Any:
         """Do not recover from errors (pass through)."""
-        self._last_input_hash = None
+        self._pending_hashes.pop(context.run_id, None)
         return None
 
     def invalidate(self, input: Any) -> bool:
@@ -196,7 +211,7 @@ class ExactCache:
 
     def _compute_hash(self, input: Any) -> str:
         """Compute a deterministic hash of the input."""
-        serialized = str(input)
+        serialized = json.dumps(input, sort_keys=True, default=str)
         return hashlib.sha256(
             f"{self._namespace}:{serialized}".encode()
         ).hexdigest()
@@ -251,8 +266,7 @@ class SemanticCache:
         self._namespace = namespace
         self._entries: list[_SemanticEntry] = []
         self._stats = CacheStats()
-        self._last_input_text: str | None = None
-        self._last_embedding: list[float] | None = None
+        self._pending: dict[str, tuple[str, list[float]]] = {}
 
     @property
     def stats(self) -> CacheStats:
@@ -269,17 +283,15 @@ class SemanticCache:
     ) -> Any:
         """Check semantic cache for similar inputs."""
         input_text = str(input)
-        self._last_input_text = input_text
 
         try:
             embedding = await self._embedding_fn(input_text)
         except Exception:
             # If embedding fails, skip cache
             self._stats.misses += 1
-            self._last_embedding = None
             return input
 
-        self._last_embedding = embedding
+        self._pending[context.run_id] = (input_text, embedding)
 
         # Remove expired entries
         now = time.monotonic()
@@ -300,6 +312,12 @@ class SemanticCache:
 
         if best_entry is not None and best_score >= self._threshold:
             self._stats.hits += 1
+            logger.info(
+                "cache_hit",
+                cache_type="semantic",
+                run_id=context.run_id,
+                similarity=round(best_score, 4),
+            )
             return _CacheHitSentinel(best_entry.result)
 
         self._stats.misses += 1
@@ -313,24 +331,23 @@ class SemanticCache:
             return result.value
 
         # Store new entry
-        if self._last_embedding is not None:
+        pending = self._pending.pop(context.run_id, None)
+        if pending is not None:
+            input_text, embedding = pending
             self._evict_if_full()
             self._entries.append(
                 _SemanticEntry(
-                    input_text=self._last_input_text or "",
-                    embedding=self._last_embedding,
+                    input_text=input_text,
+                    embedding=embedding,
                     result=result,
                     created_at=time.monotonic(),
                 )
             )
-            self._last_embedding = None
-            self._last_input_text = None
 
         return result
 
     async def on_error(self, error: Exception, context: RunContext) -> Any:
-        self._last_embedding = None
-        self._last_input_text = None
+        self._pending.pop(context.run_id, None)
         return None
 
     def clear(self) -> None:

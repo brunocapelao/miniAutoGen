@@ -58,7 +58,6 @@ class PipelineRunner:
             self._approval_gate: ApprovalGate | None = ChannelApprovalGate(approval_channel)
         else:
             self._approval_gate = approval_gate
-        self._approval_channel = approval_channel
         self._retry_policy = retry_policy
         self._policy_chain = policy_chain
         self._engine_resolver = engine_resolver

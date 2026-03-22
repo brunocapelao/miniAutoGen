@@ -134,3 +134,90 @@ class TestRecordReplayEngine:
         path = tmp_path / "sub" / "dir" / "recording.json"
         engine.save(path)
         assert path.exists()
+
+    # -- Schema validation tests --
+
+    def test_invalid_schema_not_dict(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps([1, 2, 3]))
+        with pytest.raises(ValueError, match="expected a JSON object"):
+            RecordReplayEngine.from_recording(path)
+
+    def test_unsupported_version(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps({"version": "2.0", "agents": {}}))
+        with pytest.raises(ValueError, match="Unsupported recording version"):
+            RecordReplayEngine.from_recording(path)
+
+    def test_missing_version(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps({"agents": {}}))
+        with pytest.raises(ValueError, match="Unsupported recording version"):
+            RecordReplayEngine.from_recording(path)
+
+    def test_agents_not_dict(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps({"version": "1.0", "agents": "bad"}))
+        with pytest.raises(ValueError, match="'agents' must be a dict"):
+            RecordReplayEngine.from_recording(path)
+
+    def test_records_not_list(self, tmp_path: Path) -> None:
+        path = tmp_path / "bad.json"
+        path.write_text(json.dumps({
+            "version": "1.0",
+            "agents": {"a": "not_a_list"},
+        }))
+        with pytest.raises(ValueError, match="records for 'a' must be a list"):
+            RecordReplayEngine.from_recording(path)
+
+    # -- Record full inputs tests --
+
+    @pytest.mark.anyio
+    async def test_consolidate_records_full_input(self) -> None:
+        real_agent = AsyncMock()
+        from miniautogen.core.contracts.deliberation import (
+            Contribution,
+            DeliberationState,
+        )
+        real_agent.consolidate = AsyncMock(
+            return_value=DeliberationState(is_sufficient=True),
+        )
+
+        engine = RecordReplayEngine()
+        proxy = engine.wrap("test", real_agent)
+        contribs = [
+            Contribution(participant_id="a", title="t", content={}),
+        ]
+        await proxy.consolidate("topic", contribs, [])
+
+        record = proxy._records[0]
+        assert record["action"] == "consolidate"
+        assert isinstance(record["input"], dict)
+        assert record["input"]["topic"] == "topic"
+        assert record["input"]["contributions_count"] == 1
+        assert record["input"]["reviews_count"] == 0
+
+    @pytest.mark.anyio
+    async def test_produce_final_document_records_full_input(self) -> None:
+        real_agent = AsyncMock()
+        from miniautogen.core.contracts.deliberation import (
+            DeliberationState,
+            FinalDocument,
+        )
+        real_agent.produce_final_document = AsyncMock(
+            return_value=FinalDocument(
+                executive_summary="sum",
+                decision_summary="dec",
+                body_markdown="body",
+            ),
+        )
+
+        engine = RecordReplayEngine()
+        proxy = engine.wrap("test", real_agent)
+        state = DeliberationState(is_sufficient=True)
+        await proxy.produce_final_document(state, [])
+
+        record = proxy._records[0]
+        assert record["action"] == "produce_final_document"
+        assert isinstance(record["input"], dict)
+        assert record["input"]["contributions_count"] == 0

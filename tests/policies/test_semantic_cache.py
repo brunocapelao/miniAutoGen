@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -11,17 +12,16 @@ from miniautogen.policies.semantic_cache import (
     CacheStats,
     ExactCache,
     SemanticCache,
-    _CacheHitSentinel,
     _cosine_similarity,
 )
 
 
-def _make_context() -> RunContext:
+def _make_context(run_id: str = "test-1") -> RunContext:
     from datetime import datetime, timezone
     return RunContext(
-        run_id="test-1",
+        run_id=run_id,
         started_at=datetime.now(timezone.utc),
-        correlation_id="test-1",
+        correlation_id=run_id,
     )
 
 
@@ -55,14 +55,14 @@ class TestExactCache:
 
         # First call: miss
         result1 = await cache.before_step("input_a", ctx)
-        assert not isinstance(result1, _CacheHitSentinel)
+        assert result1 == "input_a"  # Not a sentinel
         # Simulate step execution
         result1 = await cache.after_step("output_a", ctx)
         assert result1 == "output_a"
 
         # Second call with same input: hit
         result2 = await cache.before_step("input_a", ctx)
-        assert isinstance(result2, _CacheHitSentinel)
+        # Should be a sentinel (unwrapped through after_step)
         result2 = await cache.after_step(result2, ctx)
         assert result2 == "output_a"
 
@@ -78,7 +78,7 @@ class TestExactCache:
         await cache.after_step("output_a", ctx)
 
         result = await cache.before_step("input_b", ctx)
-        assert not isinstance(result, _CacheHitSentinel)
+        assert result == "input_b"
         assert cache.stats.misses == 2
 
     @pytest.mark.anyio
@@ -93,15 +93,15 @@ class TestExactCache:
         time.sleep(0.02)
 
         result = await cache.before_step("input", ctx)
-        assert not isinstance(result, _CacheHitSentinel)
+        assert result == "input"
         assert cache.stats.evictions == 1
 
     @pytest.mark.anyio
     async def test_max_size_eviction(self) -> None:
         cache = ExactCache(max_size=2)
-        ctx = _make_context()
 
         for i in range(3):
+            ctx = _make_context(f"run-{i}")
             await cache.before_step(f"input_{i}", ctx)
             await cache.after_step(f"output_{i}", ctx)
 
@@ -110,9 +110,10 @@ class TestExactCache:
 
     def test_invalidate(self) -> None:
         cache = ExactCache()
-        # Manually populate
+        # Manually populate using json.dumps-based hash
         import hashlib
-        key = hashlib.sha256("default:test_input".encode()).hexdigest()
+        serialized = json.dumps("test_input", sort_keys=True, default=str)
+        key = hashlib.sha256(f"default:{serialized}".encode()).hexdigest()
         from miniautogen.policies.semantic_cache import CacheEntry
         cache._cache[key] = CacheEntry(
             key=key, input_hash=key, result="val", created_at=time.monotonic(),
@@ -141,6 +142,34 @@ class TestExactCache:
         result = await cache.on_error(RuntimeError("oops"), _make_context())
         assert result is None
 
+    @pytest.mark.anyio
+    async def test_concurrent_runs_isolated(self) -> None:
+        """Concurrent runs with different run_ids don't interfere."""
+        cache = ExactCache(max_size=100)
+        ctx_a = _make_context("run-a")
+        ctx_b = _make_context("run-b")
+
+        # Start two runs simultaneously
+        await cache.before_step("input_a", ctx_a)
+        await cache.before_step("input_b", ctx_b)
+
+        # Complete them in reverse order
+        await cache.after_step("output_b", ctx_b)
+        await cache.after_step("output_a", ctx_a)
+
+        # Verify both stored correctly
+        assert cache.size == 2
+
+        # Verify run-a cached correctly
+        result = await cache.before_step("input_a", ctx_a)
+        result = await cache.after_step(result, ctx_a)
+        assert result == "output_a"
+
+        # Verify run-b cached correctly
+        result = await cache.before_step("input_b", ctx_b)
+        result = await cache.after_step(result, ctx_b)
+        assert result == "output_b"
+
 
 class TestSemanticCache:
     @staticmethod
@@ -163,7 +192,9 @@ class TestSemanticCache:
 
         # Same input should hit
         result = await cache.before_step("hello world", ctx)
-        assert isinstance(result, _CacheHitSentinel)
+        # Unwrap through after_step
+        result = await cache.after_step(result, ctx)
+        assert result == "response"
         assert cache.stats.hits == 1
 
     @pytest.mark.anyio
@@ -178,7 +209,7 @@ class TestSemanticCache:
         await cache.after_step("r1", ctx)
 
         result = await cache.before_step("completely different", ctx)
-        assert not isinstance(result, _CacheHitSentinel)
+        assert result == "completely different"
 
     @pytest.mark.anyio
     async def test_embedding_failure_skips_cache(self) -> None:
@@ -192,7 +223,7 @@ class TestSemanticCache:
         ctx = _make_context()
 
         result = await cache.before_step("input", ctx)
-        assert not isinstance(result, _CacheHitSentinel)
+        assert result == "input"
         assert cache.stats.misses == 1
 
     def test_invalid_threshold_raises(self) -> None:
@@ -217,7 +248,7 @@ class TestSemanticCache:
         time.sleep(0.02)
 
         result = await cache.before_step("input", ctx)
-        assert not isinstance(result, _CacheHitSentinel)
+        assert result == "input"
 
     def test_clear(self) -> None:
         async def embed(t: str) -> list[float]:
@@ -227,6 +258,27 @@ class TestSemanticCache:
         cache._entries.append(None)  # type: ignore
         cache.clear()
         assert cache.size == 0
+
+    @pytest.mark.anyio
+    async def test_concurrent_runs_isolated(self) -> None:
+        """Concurrent runs with different run_ids don't interfere."""
+        cache = SemanticCache(
+            embedding_fn=self._simple_embed,
+            similarity_threshold=0.99,
+        )
+        ctx_a = _make_context("run-a")
+        ctx_b = _make_context("run-b")
+
+        # Start two runs simultaneously
+        await cache.before_step("input_a", ctx_a)
+        await cache.before_step("input_b", ctx_b)
+
+        # Complete them in reverse order
+        await cache.after_step("output_b", ctx_b)
+        await cache.after_step("output_a", ctx_a)
+
+        # Verify both stored correctly
+        assert cache.size == 2
 
 
 class TestCosineSimilarity:

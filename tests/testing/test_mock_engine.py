@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from miniautogen.core.contracts.agentic_loop import RouterDecision
-from miniautogen.core.contracts.deliberation import Contribution, Review
+from miniautogen.core.contracts.deliberation import (
+    Contribution,
+    DeliberationState,
+    FinalDocument,
+    Review,
+)
 from miniautogen.testing.mock_engine import MockAgent, MockEngine
 
 
@@ -47,6 +52,17 @@ class TestMockAgent:
         review = await agent.review("other", contrib)
         assert isinstance(review, Review)
         assert review.strengths == ["good"]
+        assert review.reviewer_id == "test"
+
+    @pytest.mark.anyio
+    async def test_review_string_fallback(self) -> None:
+        contrib = Contribution(participant_id="other", title="Test", content={})
+        agent = MockAgent("test", responses=[
+            {"response": "needs work"},
+        ])
+        review = await agent.review("other", contrib)
+        assert isinstance(review, Review)
+        assert review.concerns == ["needs work"]
         assert review.reviewer_id == "test"
 
     @pytest.mark.anyio
@@ -96,6 +112,57 @@ class TestMockAgent:
         agent = MockAgent("test")
         await agent.initialize()
         await agent.close()
+
+    @pytest.mark.anyio
+    async def test_consolidate_dict(self) -> None:
+        agent = MockAgent("test", responses=[
+            {"response": {"review_cycle": 2, "is_sufficient": True}},
+        ])
+        result = await agent.consolidate("topic", [], [])
+        assert isinstance(result, DeliberationState)
+        assert result.is_sufficient is True
+        assert result.review_cycle == 2
+
+    @pytest.mark.anyio
+    async def test_consolidate_default(self) -> None:
+        agent = MockAgent("test", responses=[
+            {"response": "anything"},
+        ])
+        result = await agent.consolidate("topic", [], [])
+        assert isinstance(result, DeliberationState)
+        assert result.is_sufficient is True
+
+    @pytest.mark.anyio
+    async def test_produce_final_document_dict(self) -> None:
+        agent = MockAgent("test", responses=[
+            {"response": {
+                "executive_summary": "sum",
+                "decision_summary": "dec",
+                "body_markdown": "body",
+            }},
+        ])
+        state = DeliberationState(is_sufficient=True)
+        result = await agent.produce_final_document(state, [])
+        assert isinstance(result, FinalDocument)
+        assert result.executive_summary == "sum"
+
+    @pytest.mark.anyio
+    async def test_produce_final_document_default(self) -> None:
+        agent = MockAgent("test", responses=[
+            {"response": "custom summary"},
+        ])
+        state = DeliberationState(is_sufficient=True)
+        result = await agent.produce_final_document(state, [])
+        assert isinstance(result, FinalDocument)
+        assert result.executive_summary == "custom summary"
+
+    @pytest.mark.anyio
+    async def test_execute(self) -> None:
+        agent = MockAgent("test", responses=[
+            {"response": "executed result"},
+        ])
+        result = await agent.execute("do this")
+        assert result == "executed result"
 
 
 class TestMockEngine:

@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
+import anyio
 import pytest
 
 from miniautogen.core.contracts.agentic_loop import RouterDecision
@@ -33,7 +32,7 @@ class TestQueueInputChannel:
     @pytest.mark.anyio
     async def test_receive_timeout(self) -> None:
         channel = QueueInputChannel()
-        with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+        with pytest.raises(TimeoutError):
             await channel.receive(timeout_seconds=0.01)
 
     @pytest.mark.anyio
@@ -86,6 +85,18 @@ class TestHumanAgent:
             channel.push_response(word)
             decision = await agent.route([])
             assert decision.terminate is True, f"'{word}' should terminate"
+
+    @pytest.mark.anyio
+    async def test_route_empty_input(self) -> None:
+        """Empty or whitespace-only input produces termination."""
+        for empty_input in ("", "   ", "\n", "\t"):
+            agent, channel = self._make_agent()
+            channel.push_response(empty_input)
+            decision = await agent.route([])
+            assert decision.terminate is True, (
+                f"Empty input {empty_input!r} should terminate"
+            )
+            assert "empty input" in decision.current_state_summary.lower()
 
     @pytest.mark.anyio
     async def test_contribute(self) -> None:
@@ -160,7 +171,7 @@ class TestHumanAgent:
         agent = HumanAgent(
             agent_id="human", channel=channel, timeout_seconds=0.01,
         )
-        with pytest.raises((asyncio.TimeoutError, TimeoutError)):
+        with pytest.raises(TimeoutError):
             await agent.process("test")
 
     @pytest.mark.anyio

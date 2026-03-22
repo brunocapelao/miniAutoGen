@@ -1,4 +1,4 @@
-"""HumanAgent — human as a first-class participant in coordination flows.
+"""HumanAgent -- human as a first-class participant in coordination flows.
 
 Implements the same agent protocols (WorkflowAgent, ConversationalAgent,
 DeliberationAgent) but directs interactions to a human via a pluggable
@@ -12,7 +12,7 @@ coordination modes.
 Architecture:
     HumanAgent wraps an InputChannel (stdin, websocket, HTTP queue, etc.)
     and satisfies the same protocols as AgentRuntime. The coordination
-    runtimes dispatch to it identically — they don't know (or care)
+    runtimes dispatch to it identically -- they don't know (or care)
     whether the agent is human or AI.
 
 Usage::
@@ -34,8 +34,10 @@ Usage::
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any, Protocol, runtime_checkable
+
+import anyio
+from anyio.abc import ObjectReceiveStream, ObjectSendStream
 
 from miniautogen.core.contracts.agentic_loop import RouterDecision
 from miniautogen.core.contracts.deliberation import (
@@ -44,6 +46,9 @@ from miniautogen.core.contracts.deliberation import (
     FinalDocument,
     Review,
 )
+from miniautogen.observability import get_logger
+
+logger = get_logger(__name__)
 
 
 @runtime_checkable
@@ -79,6 +84,7 @@ class InputChannel(Protocol):
         ...
 
 
+# NOTE: This concrete adapter should eventually move to miniautogen/adapters/
 class StdinInputChannel:
     """InputChannel that reads from stdin (terminal).
 
@@ -91,17 +97,14 @@ class StdinInputChannel:
         print(f"\n[{agent_id}] ({action}) {prompt}")
 
     async def receive(self, timeout_seconds: float | None = None) -> str:
-        loop = asyncio.get_running_loop()
         if timeout_seconds is not None:
-            return await asyncio.wait_for(
-                loop.run_in_executor(None, input, "> "),
-                timeout=timeout_seconds,
-            )
-        return await loop.run_in_executor(None, input, "> ")
+            with anyio.fail_after(timeout_seconds):
+                return await anyio.to_thread.run_sync(lambda: input("> "))
+        return await anyio.to_thread.run_sync(lambda: input("> "))
 
 
 class QueueInputChannel:
-    """InputChannel backed by an asyncio.Queue.
+    """InputChannel backed by an anyio memory object stream.
 
     Ideal for web UIs, Slack bots, and other async integrations.
     The external system pushes responses into the queue; the HumanAgent
@@ -117,7 +120,11 @@ class QueueInputChannel:
     """
 
     def __init__(self) -> None:
-        self._queue: asyncio.Queue[str] = asyncio.Queue()
+        self._send: ObjectSendStream[str]
+        self._receive: ObjectReceiveStream[str]
+        self._send, self._receive = anyio.create_memory_object_stream[str](
+            max_buffer_size=100,
+        )
         self._last_prompt: str | None = None
         self._last_context: dict[str, Any] = {}
 
@@ -137,14 +144,13 @@ class QueueInputChannel:
 
     async def receive(self, timeout_seconds: float | None = None) -> str:
         if timeout_seconds is not None:
-            return await asyncio.wait_for(
-                self._queue.get(), timeout=timeout_seconds,
-            )
-        return await self._queue.get()
+            with anyio.fail_after(timeout_seconds):
+                return await self._receive.receive()
+        return await self._receive.receive()
 
     def push_response(self, response: str) -> None:
         """Push a response into the queue (called by external system)."""
-        self._queue.put_nowait(response)
+        self._send.send_nowait(response)
 
 
 class HumanAgent:
@@ -175,6 +181,7 @@ class HumanAgent:
 
     async def process(self, input: Any) -> Any:
         """Present the input to the human and return their response."""
+        logger.info("human_process", agent_id=self._agent_id)
         await self._channel.send_prompt(
             f"Please process the following:\n\n{input}",
             {"agent_id": self._agent_id, "action": "process"},
@@ -198,17 +205,25 @@ class HumanAgent:
             {"agent_id": self._agent_id, "action": "route"},
         )
         response = await self._channel.receive(self._timeout)
+        agent_name = response.strip()
 
-        if response.strip().lower() in ("done", "finish", "end", "terminate"):
+        if agent_name.lower() in ("done", "finish", "end", "terminate"):
             return RouterDecision(
                 current_state_summary="Human terminated",
                 missing_information="none",
                 terminate=True,
             )
+        if not agent_name:
+            logger.warning("human_route_empty_input", agent_id=self._agent_id)
+            return RouterDecision(
+                current_state_summary="Human provided empty input",
+                missing_information="valid agent name required",
+                terminate=True,
+            )
         return RouterDecision(
             current_state_summary="Human routed",
             missing_information="pending",
-            next_agent=response.strip(),
+            next_agent=agent_name,
         )
 
     # -- DeliberationAgent protocol --
@@ -288,7 +303,7 @@ class HumanAgent:
     # -- Lifecycle --
 
     async def initialize(self) -> None:
-        """No-op — humans don't need initialization."""
+        """No-op -- humans don't need initialization."""
 
     async def close(self) -> None:
-        """No-op — humans don't need cleanup."""
+        """No-op -- humans don't need cleanup."""

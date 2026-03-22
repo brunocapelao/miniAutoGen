@@ -21,17 +21,58 @@ Architecture:
 
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass, field
+import ipaddress
 from datetime import datetime, timezone
 from typing import Any, Callable, Awaitable, Protocol, runtime_checkable
-from uuid import uuid4
+from urllib.parse import urlparse
 
+import anyio
+
+from miniautogen.observability import get_logger
 from miniautogen.policies.approval import (
     ApprovalGate,
     ApprovalRequest,
     ApprovalResponse,
 )
+
+logger = get_logger(__name__)
+
+
+def _validate_webhook_url(url: str) -> None:
+    """Validate a webhook URL for SSRF protection.
+
+    Only allows http and https schemes. Requires https for non-localhost
+    destinations. Blocks private/internal IP ranges.
+
+    Raises:
+        ValueError: If the URL is not safe.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(
+            f"Webhook URL must use http or https scheme, got '{parsed.scheme}'"
+        )
+    hostname = parsed.hostname or ""
+
+    # Allow http only for localhost
+    is_localhost = hostname in ("localhost", "127.0.0.1", "::1")
+    if parsed.scheme == "http" and not is_localhost:
+        raise ValueError(
+            "Webhook URL must use https for non-localhost destinations"
+        )
+
+    # Block private/internal IP ranges
+    if not is_localhost:
+        try:
+            addr = ipaddress.ip_address(hostname)
+            if addr.is_private or addr.is_loopback or addr.is_link_local:
+                raise ValueError(
+                    f"Webhook URL must not target private/internal IPs: {hostname}"
+                )
+        except ValueError as exc:
+            if "must not target" in str(exc):
+                raise
+            # hostname is not an IP address (it's a domain name), which is fine
 
 
 class ApprovalHandle:
@@ -48,7 +89,7 @@ class ApprovalHandle:
     ) -> None:
         self.request = request
         self.timeout_seconds = timeout_seconds
-        self._event = asyncio.Event()
+        self._event = anyio.Event()
         self._response: ApprovalResponse | None = None
         self.created_at: datetime = datetime.now(timezone.utc)
 
@@ -100,19 +141,24 @@ class ApprovalHandle:
             return self._response
 
         if self.timeout_seconds is not None:
-            try:
-                await asyncio.wait_for(
-                    self._event.wait(), timeout=self.timeout_seconds,
-                )
-            except asyncio.TimeoutError:
-                # Auto-deny on timeout
-                self._response = ApprovalResponse(
-                    request_id=self.request.request_id,
-                    decision="denied",
-                    reason=f"Approval timed out after {self.timeout_seconds}s",
-                )
-                self._event.set()
+            with anyio.move_on_after(self.timeout_seconds):
+                await self._event.wait()
+            # After scope exits, check if resolved or timed out
+            if self._response is not None:
                 return self._response
+            # Auto-deny on timeout
+            logger.warning(
+                "approval_timeout",
+                request_id=self.request.request_id,
+                timeout_seconds=self.timeout_seconds,
+            )
+            self._response = ApprovalResponse(
+                request_id=self.request.request_id,
+                decision="denied",
+                reason=f"Approval timed out after {self.timeout_seconds}s",
+            )
+            self._event.set()
+            return self._response
         else:
             await self._event.wait()
 
@@ -147,7 +193,7 @@ class ApprovalChannel(Protocol):
 class CallbackApprovalChannel:
     """Approval channel that delegates to an async callback.
 
-    Useful for custom integrations — pass any async function that
+    Useful for custom integrations -- pass any async function that
     receives an ApprovalRequest and returns a decision string.
 
     Example::
@@ -173,9 +219,14 @@ class CallbackApprovalChannel:
         timeout = request.timeout_seconds or self._default_timeout
         handle = ApprovalHandle(request, timeout_seconds=timeout)
         self._pending[request.request_id] = handle
+        logger.info(
+            "approval_submitted",
+            channel="callback",
+            request_id=request.request_id,
+        )
 
-        # Fire-and-forget the callback in a background task
-        asyncio.create_task(self._run_callback(handle))
+        # Await callback inline (not fire-and-forget)
+        await self._run_callback(handle)
 
         return handle
 
@@ -191,9 +242,19 @@ class CallbackApprovalChannel:
             decision = await self._callback(handle.request)
             if not handle.is_resolved:
                 handle.resolve(decision)
-        except Exception as exc:
+                logger.info(
+                    "approval_resolved",
+                    channel="callback",
+                    request_id=handle.request.request_id,
+                    decision=decision,
+                )
+        except Exception:
+            logger.error(
+                "approval_callback_failed",
+                request_id=handle.request.request_id,
+            )
             if not handle.is_resolved:
-                handle.resolve("denied", reason=f"Callback error: {exc}")
+                handle.resolve("denied", reason="Approval callback failed")
 
 
 class InMemoryApprovalChannel:
@@ -273,6 +334,7 @@ class WebhookApprovalChannel:
         default_timeout: float | None = 3600.0,
         headers: dict[str, str] | None = None,
     ) -> None:
+        _validate_webhook_url(webhook_url)
         self._webhook_url = webhook_url
         self._callback_base_url = callback_base_url
         self._default_timeout = default_timeout
@@ -283,9 +345,15 @@ class WebhookApprovalChannel:
         timeout = request.timeout_seconds or self._default_timeout
         handle = ApprovalHandle(request, timeout_seconds=timeout)
         self._pending[request.request_id] = handle
+        logger.info(
+            "approval_submitted",
+            channel="webhook",
+            request_id=request.request_id,
+        )
 
-        # Send notification to webhook (fire-and-forget)
-        asyncio.create_task(self._notify_webhook(request))
+        # Notify webhook inline with timeout
+        with anyio.move_on_after(10):
+            await self._notify_webhook(request)
 
         return handle
 
@@ -325,11 +393,14 @@ class WebhookApprovalChannel:
                 method="POST",
             )
             # Run in thread to avoid blocking the event loop
-            loop = asyncio.get_running_loop()
-            await loop.run_in_executor(None, urlopen, req)
+            await anyio.to_thread.run_sync(lambda: urlopen(req, timeout=10))
         except Exception:
             # Webhook notification is best-effort; the handle remains pending
-            pass
+            logger.warning(
+                "webhook_notification_failed",
+                request_id=request.request_id,
+                webhook_url=self._webhook_url,
+            )
 
 
 class ChannelApprovalGate:

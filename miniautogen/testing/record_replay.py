@@ -1,6 +1,6 @@
-"""RecordReplayEngine — record real agent interactions and replay deterministically.
+"""RecordReplayEngine -- record real agent interactions and replay deterministically.
 
-Records the *semantic behavior* (input → decision/output) of agents during
+Records the *semantic behavior* (input -> decision/output) of agents during
 a real run, then replays those exact decisions in subsequent test runs.
 Unlike VCR-style HTTP recording, this is robust to prompt changes.
 
@@ -65,13 +65,15 @@ class _RecordingProxy:
 
     async def consolidate(self, topic: str, contributions: list, reviews: list) -> Any:
         return await self._record_call(
-            "consolidate", topic,
+            "consolidate",
+            {"topic": topic, "contributions_count": len(contributions), "reviews_count": len(reviews)},
             self._real.consolidate(topic, contributions, reviews),
         )
 
     async def produce_final_document(self, state: Any, contributions: list) -> Any:
         return await self._record_call(
-            "produce_final_document", None,
+            "produce_final_document",
+            {"contributions_count": len(contributions)},
             self._real.produce_final_document(state, contributions),
         )
 
@@ -161,11 +163,30 @@ class RecordReplayEngine:
 
         Returns:
             A RecordReplayEngine in replay mode.
+
+        Raises:
+            ValueError: If the recording format is invalid.
         """
         path = Path(path)
         data = json.loads(path.read_text())
+
+        if not isinstance(data, dict):
+            raise ValueError("Invalid recording: expected a JSON object")
+        if data.get("version") not in ("1.0",):
+            raise ValueError(
+                f"Unsupported recording version: {data.get('version')}"
+            )
+        agents = data.get("agents", {})
+        if not isinstance(agents, dict):
+            raise ValueError("Invalid recording: 'agents' must be a dict")
+        for agent_id, records in agents.items():
+            if not isinstance(records, list):
+                raise ValueError(
+                    f"Invalid recording: records for '{agent_id}' must be a list"
+                )
+
         engine = cls()
-        engine._recordings = data.get("agents", {})
+        engine._recordings = agents
 
         for agent_id, records in engine._recordings.items():
             engine._mock_agents[agent_id] = MockAgent(

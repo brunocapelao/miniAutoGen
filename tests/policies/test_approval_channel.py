@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
-
+import anyio
 import pytest
 
 from miniautogen.policies.approval import (
@@ -18,6 +17,7 @@ from miniautogen.policies.approval_channel import (
     ChannelApprovalGate,
     InMemoryApprovalChannel,
     WebhookApprovalChannel,
+    _validate_webhook_url,
 )
 
 
@@ -73,12 +73,13 @@ class TestApprovalHandle:
         handle = ApprovalHandle(_make_request())
 
         async def resolve_later() -> None:
-            await asyncio.sleep(0.01)
+            await anyio.sleep(0.01)
             handle.resolve("approved")
 
-        asyncio.create_task(resolve_later())
-        response = await handle.wait()
-        assert response.decision == "approved"
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(resolve_later)
+            response = await handle.wait()
+            assert response.decision == "approved"
 
     @pytest.mark.anyio
     async def test_wait_timeout_auto_denies(self) -> None:
@@ -177,23 +178,33 @@ class TestCallbackApprovalChannel:
         handle = await channel.submit(_make_request())
         response = await handle.wait()
         assert response.decision == "denied"
-        assert "Callback error" in (response.reason or "")
+        assert "Approval callback failed" in (response.reason or "")
 
     @pytest.mark.anyio
     async def test_list_pending(self) -> None:
-        resolved = asyncio.Event()
+        resolved = anyio.Event()
 
         async def slow_approve(req: ApprovalRequest) -> str:
             await resolved.wait()
             return "approved"
 
         channel = CallbackApprovalChannel(callback=slow_approve)
-        await channel.submit(_make_request("req-1"))
-        # Give callback task a moment to start
-        await asyncio.sleep(0.01)
+        # Since callback is now awaited inline, it will block until resolved.
+        # We need to run submit and resolve concurrently.
+        async with anyio.create_task_group() as tg:
+            async def submit_and_check() -> None:
+                await channel.submit(_make_request("req-1"))
+
+            async def resolve_soon() -> None:
+                await anyio.sleep(0.01)
+                resolved.set()
+
+            tg.start_soon(submit_and_check)
+            tg.start_soon(resolve_soon)
+
+        # After callback completes, handle is resolved; pending should be empty
         pending = await channel.list_pending()
-        assert len(pending) == 1
-        resolved.set()
+        assert len(pending) == 0
 
     @pytest.mark.anyio
     async def test_satisfies_protocol(self) -> None:
@@ -277,3 +288,27 @@ class TestWebhookApprovalChannel:
         assert handle.is_resolved
         response = await handle.wait()
         assert response.decision == "approved"
+
+    def test_webhook_rejects_internal_urls(self) -> None:
+        for url in (
+            "https://10.0.0.1/hook",
+            "https://172.16.0.1/hook",
+            "https://192.168.1.1/hook",
+            "https://169.254.0.1/hook",
+        ):
+            with pytest.raises(ValueError, match="private/internal"):
+                WebhookApprovalChannel(webhook_url=url)
+
+    def test_webhook_rejects_file_scheme(self) -> None:
+        with pytest.raises(ValueError, match="http or https"):
+            WebhookApprovalChannel(webhook_url="file:///etc/passwd")
+
+    def test_webhook_rejects_http_non_localhost(self) -> None:
+        with pytest.raises(ValueError, match="https for non-localhost"):
+            WebhookApprovalChannel(webhook_url="http://example.com/hook")
+
+    def test_webhook_allows_http_localhost(self) -> None:
+        channel = WebhookApprovalChannel(
+            webhook_url="http://localhost:8080/hook",
+        )
+        assert channel._webhook_url == "http://localhost:8080/hook"
