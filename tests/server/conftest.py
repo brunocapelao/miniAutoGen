@@ -41,6 +41,18 @@ def mock_provider() -> MagicMock:
     }
     provider.get_runs.return_value = []
     provider.get_events.return_value = []
+
+    # Public methods for run management (avoid direct _run_history access)
+    _run_history: list[dict] = []
+    provider.record_run = MagicMock(side_effect=lambda data: _run_history.append(data))
+
+    def _update_run(run_id: str, updates: dict) -> None:
+        for run in _run_history:
+            if run.get("run_id") == run_id:
+                run.update(updates)
+                return
+
+    provider.update_run = MagicMock(side_effect=_update_run)
     return provider
 
 

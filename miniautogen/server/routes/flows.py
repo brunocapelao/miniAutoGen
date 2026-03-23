@@ -11,9 +11,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from miniautogen.server.models import ErrorResponse
+from miniautogen.server.provider_protocol import ConsoleDataProvider
 
 
-def flows_router(provider: Any) -> APIRouter:
+def flows_router(provider: ConsoleDataProvider) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["flows"])
 
     @router.get("/flows")

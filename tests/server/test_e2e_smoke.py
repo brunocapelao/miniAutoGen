@@ -45,7 +45,18 @@ def _mock_provider() -> MagicMock:
     provider.get_agent.side_effect = _get_agent
     provider.get_pipeline.side_effect = _get_pipeline
     provider.run_pipeline = AsyncMock(return_value={"status": "completed", "events": 3})
-    provider._run_history = []
+
+    # Public methods for run management (avoid direct _run_history access)
+    _run_history: list[dict] = []
+    provider.record_run = MagicMock(side_effect=lambda data: _run_history.append(data))
+
+    def _update_run(run_id: str, updates: dict) -> None:
+        for run in _run_history:
+            if run.get("run_id") == run_id:
+                run.update(updates)
+                return
+
+    provider.update_run = MagicMock(side_effect=_update_run)
     return provider
 
 
@@ -86,7 +97,9 @@ def test_smoke_all_endpoints():
 
     r = client.get("/api/v1/runs/r1/events")
     assert r.status_code == 200
-    assert r.json()["total"] == 3
+    # In embedded mode, events come from WebSocketEventSink (not provider.get_events).
+    # Since no pipeline actually ran, the event_sink has 0 events.
+    assert r.json()["total"] == 0
 
     # Trigger run
     r = client.post("/api/v1/runs", json={"flow_name": "main"})

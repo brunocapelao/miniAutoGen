@@ -7,9 +7,10 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 
 from miniautogen.server.models import ErrorResponse
+from miniautogen.server.provider_protocol import ConsoleDataProvider
 
 
-def agents_router(provider: Any) -> APIRouter:
+def agents_router(provider: ConsoleDataProvider) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["agents"])
 
     @router.get("/agents")

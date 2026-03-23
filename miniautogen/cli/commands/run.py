@@ -159,6 +159,7 @@ def run_command(
     # Console mode: start web server in background
     console_server = None
     console_provider = None
+    console_event_sink = None
     if console:
         import webbrowser
 
@@ -167,6 +168,7 @@ def run_command(
 
         console_provider = DashDataProvider(root)
         console_app = create_app(provider=console_provider, mode="embedded")
+        console_event_sink = getattr(console_app.state, "event_sink", None)
 
         import threading
 
@@ -235,6 +237,7 @@ def run_command(
             verbose=verbose,
             pipeline_input=pipeline_input,
             resume_run_id=resume,
+            event_sink=console_event_sink,
         )
     finally:
         if spinner:

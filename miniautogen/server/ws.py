@@ -14,6 +14,9 @@ from miniautogen.core.events.event_sink import EventSink
 
 logger = logging.getLogger(__name__)
 
+MAX_EVENTS_PER_RUN = 10_000
+MAX_CONNECTIONS_PER_RUN = 10
+
 
 class WebSocketEventSink(EventSink):
     """EventSink implementation that stores events and broadcasts to WebSocket clients.
@@ -34,7 +37,10 @@ class WebSocketEventSink(EventSink):
         if event.run_id is None:
             return
 
-        self._events[event.run_id].append(event)
+        events = self._events[event.run_id]
+        if len(events) >= MAX_EVENTS_PER_RUN:
+            events.pop(0)
+        events.append(event)
 
         message = event.model_dump_json()
         dead_connections = []
@@ -59,6 +65,9 @@ class WebSocketEventSink(EventSink):
         return [json.loads(e.model_dump_json()) for e in self._events.get(run_id, [])]
 
     async def connect(self, run_id: str, websocket: WebSocket) -> None:
+        if len(self._connections[run_id]) >= MAX_CONNECTIONS_PER_RUN:
+            await websocket.close(code=1013, reason="Too many connections")
+            return
         await websocket.accept()
         self._connections[run_id].append(websocket)
         await websocket.send_json({"type": "connected", "run_id": run_id})
@@ -75,6 +84,12 @@ def ws_router(event_sink: WebSocketEventSink) -> APIRouter:
 
     @router.websocket("/ws/runs/{run_id}")
     async def ws_run_events(websocket: WebSocket, run_id: str) -> None:
+        try:
+            from uuid import UUID
+            UUID(run_id)
+        except ValueError:
+            await websocket.close(code=1008, reason="Invalid run_id format")
+            return
         await event_sink.connect(run_id, websocket)
         try:
             while True:
@@ -83,7 +98,8 @@ def ws_router(event_sink: WebSocketEventSink) -> APIRouter:
                     await websocket.send_json({"type": "pong"})
         except WebSocketDisconnect:
             event_sink.disconnect(run_id, websocket)
-        except Exception:
+        except Exception as exc:
+            logger.warning("WebSocket error for run %s: %s", run_id, exc)
             event_sink.disconnect(run_id, websocket)
 
     return router

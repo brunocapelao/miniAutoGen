@@ -29,7 +29,7 @@ export const api = {
   getRunEvents: (id: string, offset = 0) =>
     apiFetch<{ items: Record<string, unknown>[]; total: number }>(`/runs/${id}/events?offset=${offset}`),
   triggerRun: (flowName: string, input?: string) =>
-    apiFetch<{ status: string; flow_name: string }>('/runs', {
+    apiFetch<{ run_id: string }>('/runs', {
       method: 'POST',
       body: JSON.stringify({ flow_name: flowName, input }),
     }),

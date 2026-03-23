@@ -179,6 +179,17 @@ class DashDataProvider:
         """
         return list(self._run_history)
 
+    def record_run(self, run_data: dict[str, Any]) -> None:
+        """Record an externally-managed run entry."""
+        self._run_history.append(run_data)
+
+    def update_run(self, run_id: str, updates: dict[str, Any]) -> None:
+        """Update an existing run record by run_id."""
+        for run in self._run_history:
+            if run.get("run_id") == run_id:
+                run.update(updates)
+                return
+
     def get_events(self) -> list[dict[str, Any]]:
         """Get recent events recorded during pipeline executions.
 
@@ -313,6 +324,7 @@ class DashDataProvider:
         event_sink: Any | None = None,
         timeout: float | None = None,
         pipeline_input: str | None = None,
+        run_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute a named pipeline, optionally streaming events to a sink.
 
@@ -322,6 +334,8 @@ class DashDataProvider:
                 Falls back to the sink set via set_event_sink() if not provided.
             timeout: Optional timeout in seconds.
             pipeline_input: Optional input text for the pipeline.
+            run_id: Optional caller-managed run ID. When provided, the caller
+                is responsible for recording the run (skips self-managed recording).
 
         Returns:
             Result dict with status, output, events count.
@@ -339,18 +353,19 @@ class DashDataProvider:
                 pipeline_input=pipeline_input,
                 event_sink=effective_sink,
             )
-            # Record run in session history
-            from datetime import datetime, timezone
-            from uuid import uuid4
+            if run_id is None:
+                # Self-managed recording (CLI/TUI usage)
+                from datetime import datetime, timezone
+                from uuid import uuid4
 
-            run_record: dict[str, Any] = {
-                "run_id": str(uuid4()),
-                "pipeline": pipeline_name,
-                "status": result.get("status", "unknown"),
-                "started": datetime.now(timezone.utc).isoformat(),
-                "events": result.get("events", 0),
-            }
-            self._run_history.append(run_record)
+                run_record: dict[str, Any] = {
+                    "run_id": str(uuid4()),
+                    "pipeline": pipeline_name,
+                    "status": result.get("status", "unknown"),
+                    "started": datetime.now(timezone.utc).isoformat(),
+                    "events": result.get("events", 0),
+                }
+                self._run_history.append(run_record)
             return result
         except Exception as exc:
             return {

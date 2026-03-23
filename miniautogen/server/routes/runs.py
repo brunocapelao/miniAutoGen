@@ -14,9 +14,10 @@ from miniautogen.server.models import (
     Page,
     RunRequest,
 )
+from miniautogen.server.provider_protocol import ConsoleDataProvider
 
 
-def runs_router(provider: Any) -> APIRouter:
+def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["runs"])
 
     # Shared state for approval channels per run
@@ -58,8 +59,12 @@ def runs_router(provider: Any) -> APIRouter:
                 status_code=404,
                 detail=ErrorResponse(error=f"Run '{run_id}' not found", code="run_not_found").model_dump(),
             )
-        all_events = provider.get_events()
-        run_events = [e for e in all_events if e.get("run_id") == run_id]
+        # Prefer event_sink (WebSocket store) over provider (which is disconnected)
+        if event_sink is not None:
+            run_events = event_sink.get_events_as_dicts(run_id)
+        else:
+            all_events = provider.get_events()
+            run_events = [e for e in all_events if e.get("run_id") == run_id]
         return Page(
             items=run_events[offset : offset + limit],
             total=len(run_events),
@@ -83,13 +88,13 @@ def runs_router(provider: Any) -> APIRouter:
             )
 
         # Get event_sink from app state (wired in create_app for embedded mode)
-        event_sink = getattr(request.app.state, "event_sink", None)
+        sink = getattr(request.app.state, "event_sink", None)
 
         # Generate run_id upfront so we can return it immediately
         run_id = str(uuid4())
 
         # Pre-record the run as "running" before background task starts
-        provider._run_history.append({
+        provider.record_run({
             "run_id": run_id,
             "pipeline": req.flow_name,
             "status": "running",
@@ -101,15 +106,16 @@ def runs_router(provider: Any) -> APIRouter:
         async def _run():
             result = await provider.run_pipeline(
                 req.flow_name,
-                event_sink=event_sink,
+                event_sink=sink,
                 pipeline_input=req.input,
                 timeout=req.timeout,
+                run_id=run_id,
             )
-            for run in provider._run_history:
-                if run["run_id"] == run_id:
-                    run["status"] = result.get("status", "unknown") if isinstance(result, dict) else "completed"
-                    run["events"] = result.get("events", 0) if isinstance(result, dict) else 0
-                    break
+            updates = {
+                "status": result.get("status", "unknown") if isinstance(result, dict) else "completed",
+                "events": result.get("events", 0) if isinstance(result, dict) else 0,
+            }
+            provider.update_run(run_id, updates)
 
         background_tasks.add_task(_run)
         return {"run_id": run_id}
