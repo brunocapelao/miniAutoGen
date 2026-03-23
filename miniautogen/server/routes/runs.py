@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
 
@@ -44,12 +46,18 @@ def runs_router(provider: Any) -> APIRouter:
             detail=ErrorResponse(error=f"Run '{run_id}' not found", code="run_not_found").model_dump(),
         )
 
-    @router.get("/runs/{run_id}/events")
+    @router.get("/runs/{run_id}/events", responses={404: {"model": ErrorResponse}})
     async def get_run_events(
         run_id: str,
         offset: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=500),
     ) -> Page:
+        runs = provider.get_runs()
+        if not any(r.get("run_id") == run_id for r in runs):
+            raise HTTPException(
+                status_code=404,
+                detail=ErrorResponse(error=f"Run '{run_id}' not found", code="run_not_found").model_dump(),
+            )
         all_events = provider.get_events()
         run_events = [e for e in all_events if e.get("run_id") == run_id]
         return Page(
@@ -77,17 +85,34 @@ def runs_router(provider: Any) -> APIRouter:
         # Get event_sink from app state (wired in create_app for embedded mode)
         event_sink = getattr(request.app.state, "event_sink", None)
 
-        # Run pipeline in background
+        # Generate run_id upfront so we can return it immediately
+        run_id = str(uuid4())
+
+        # Pre-record the run as "running" before background task starts
+        provider._run_history.append({
+            "run_id": run_id,
+            "pipeline": req.flow_name,
+            "status": "running",
+            "started": datetime.now(timezone.utc).isoformat(),
+            "events": 0,
+        })
+
+        # Run pipeline in background; update the pre-recorded entry on completion
         async def _run():
-            await provider.run_pipeline(
+            result = await provider.run_pipeline(
                 req.flow_name,
                 event_sink=event_sink,
                 pipeline_input=req.input,
                 timeout=req.timeout,
             )
+            for run in provider._run_history:
+                if run["run_id"] == run_id:
+                    run["status"] = result.get("status", "unknown") if isinstance(result, dict) else "completed"
+                    run["events"] = result.get("events", 0) if isinstance(result, dict) else 0
+                    break
 
         background_tasks.add_task(_run)
-        return {"status": "triggered", "flow_name": req.flow_name}
+        return {"run_id": run_id}
 
     # ── Approval endpoints ──────────────────────────────────
 
@@ -132,8 +157,8 @@ def runs_router(provider: Any) -> APIRouter:
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponse(
-                    error=f"Approval '{request_id}' not found or already resolved",
-                    code="approval_already_resolved",
+                    error=f"Approval '{request_id}' not found",
+                    code="approval_not_found",
                 ).model_dump(),
             )
         try:

@@ -10,12 +10,16 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from miniautogen.core.contracts.events import ExecutionEvent
+from miniautogen.core.events.event_sink import EventSink
 
 logger = logging.getLogger(__name__)
 
 
-class WebSocketEventSink:
-    """EventSink that stores events and broadcasts to WebSocket clients.
+class WebSocketEventSink(EventSink):
+    """EventSink implementation that stores events and broadcasts to WebSocket clients.
+
+    Explicitly conforms to the EventSink protocol
+    (miniautogen.core.events.event_sink.EventSink).
 
     Events with run_id=None are silently dropped from WebSocket broadcast.
     This is an explicit design decision — system-level events are persisted

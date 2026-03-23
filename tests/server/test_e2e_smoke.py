@@ -45,6 +45,7 @@ def _mock_provider() -> MagicMock:
     provider.get_agent.side_effect = _get_agent
     provider.get_pipeline.side_effect = _get_pipeline
     provider.run_pipeline = AsyncMock(return_value={"status": "completed", "events": 3})
+    provider._run_history = []
     return provider
 
 
@@ -90,7 +91,7 @@ def test_smoke_all_endpoints():
     # Trigger run
     r = client.post("/api/v1/runs", json={"flow_name": "main"})
     assert r.status_code == 200
-    assert r.json()["status"] == "triggered"
+    assert "run_id" in r.json()
 
     # 404s
     r = client.get("/api/v1/agents/nonexistent")

@@ -53,6 +53,9 @@ def test_get_run_not_found(client):
 
 
 def test_get_run_events(client, mock_provider):
+    mock_provider.get_runs.return_value = [
+        {"run_id": "r1", "pipeline": "main", "status": "completed", "started": "2026-01-01T00:00:00Z", "events": 2},
+    ]
     mock_provider.get_events.return_value = [
         {"type": "run_started", "run_id": "r1", "timestamp": "2026-01-01T00:00:00Z"},
         {"type": "component_started", "run_id": "r1", "timestamp": "2026-01-01T00:00:01Z"},
@@ -65,11 +68,18 @@ def test_get_run_events(client, mock_provider):
 
 def test_trigger_run(client, mock_provider):
     mock_provider.run_pipeline = AsyncMock(return_value={"status": "completed", "events": 3})
+    mock_provider._run_history = []
     resp = client.post("/api/v1/runs", json={"flow_name": "main"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "triggered"
-    assert data["flow_name"] == "main"
+    assert "run_id" in data
+
+
+def test_get_run_events_not_found(client, mock_provider):
+    mock_provider.get_runs.return_value = []
+    resp = client.get("/api/v1/runs/nonexistent/events")
+    assert resp.status_code == 404
+    assert resp.json()["code"] == "run_not_found"
 
 
 def test_trigger_run_not_found(client, mock_provider):
