@@ -61,4 +61,10 @@ def create_app(
             allow_headers=["Content-Type"],
         )
 
+    # Serve frontend static files (Next.js build output)
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.is_dir():
+        from starlette.staticfiles import StaticFiles
+        app.mount("/", StaticFiles(directory=str(static_dir), html=True))
+
     return app
