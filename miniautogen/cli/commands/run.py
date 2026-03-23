@@ -114,6 +114,19 @@ class _Spinner:
     default=False,
     help="Show execution plan and decision logic before running.",
 )
+@click.option(
+    "--console",
+    is_flag=True,
+    default=False,
+    help="Open web console dashboard during execution.",
+)
+@click.option(
+    "--port",
+    "console_port",
+    type=int,
+    default=8080,
+    help="Port for the web console (default: 8080).",
+)
 def run_command(
     pipeline_name: str,
     timeout: float | None,
@@ -122,6 +135,8 @@ def run_command(
     input_value: str | None,
     resume: str | None,
     explain: bool,
+    console: bool,
+    console_port: int,
 ) -> None:
     """Execute a pipeline headlessly."""
     from miniautogen.cli.services.run_pipeline import execute_pipeline
@@ -140,6 +155,35 @@ def run_command(
     except click.BadParameter as exc:
         echo_error(str(exc))
         raise SystemExit(1)
+
+    # Console mode: start web server in background
+    console_server = None
+    console_provider = None
+    console_event_sink = None
+    if console:
+        import webbrowser
+
+        from miniautogen.server.app import create_app
+        from miniautogen.tui.data_provider import DashDataProvider
+
+        console_provider = DashDataProvider(root)
+        console_app = create_app(provider=console_provider, mode="embedded")
+        console_event_sink = getattr(console_app.state, "event_sink", None)
+
+        import threading
+
+        import uvicorn
+
+        server_config = uvicorn.Config(
+            console_app, host="127.0.0.1", port=console_port, log_level="warning"
+        )
+        console_server = uvicorn.Server(server_config)
+        server_thread = threading.Thread(target=console_server.run, daemon=True)
+        server_thread.start()
+
+        url = f"http://localhost:{console_port}"
+        echo_info(f"Console running at {url}")
+        webbrowser.open(url)
 
     # --explain mode: show execution plan then proceed
     if explain:
@@ -193,6 +237,7 @@ def run_command(
             verbose=verbose,
             pipeline_input=pipeline_input,
             resume_run_id=resume,
+            event_sink=console_event_sink,
         )
     finally:
         if spinner:
@@ -220,4 +265,21 @@ def run_command(
                 f"Flow '{pipeline_name}' failed: "
                 f"{result.get('error', 'unknown')}"
             )
+            # In console mode, keep server running for post-run inspection
+            if console and console_server:
+                echo_info("Console still running. Press Ctrl+C to exit.")
+                try:
+                    while True:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    echo_info("Shutting down console...")
             raise SystemExit(1)
+
+    # In console mode, keep server running for post-run inspection
+    if console and console_server:
+        echo_info("Console still running. Press Ctrl+C to exit.")
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            echo_info("Shutting down console...")

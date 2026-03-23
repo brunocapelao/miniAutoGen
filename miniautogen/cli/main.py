@@ -81,3 +81,7 @@ cli.add_command(completions_command)
 from miniautogen.cli.commands.dash import dash_command  # noqa: E402
 
 cli.add_command(dash_command)
+
+from miniautogen.cli.commands.console import console_command  # noqa: E402
+
+cli.add_command(console_command)
