@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 T = TypeVar("T")
 
@@ -53,14 +53,14 @@ class RunSummary(BaseModel):
 
 
 class RunRequest(BaseModel):
-    flow_name: str
-    input: str | None = None
-    timeout: float | None = None
+    flow_name: str = Field(..., max_length=256)
+    input: str | None = Field(None, max_length=100_000)
+    timeout: float | None = Field(None, gt=0, le=3600)
 
 
 class ApprovalDecision(BaseModel):
     decision: Literal["approved", "denied"]
-    reason: str | None = None
+    reason: str | None = Field(None, max_length=1000)
 
 
 class PendingApproval(BaseModel):

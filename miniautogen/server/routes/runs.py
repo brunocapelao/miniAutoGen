@@ -104,18 +104,21 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
 
         # Run pipeline in background; update the pre-recorded entry on completion
         async def _run():
-            result = await provider.run_pipeline(
-                req.flow_name,
-                event_sink=sink,
-                pipeline_input=req.input,
-                timeout=req.timeout,
-                run_id=run_id,
-            )
-            is_dict = isinstance(result, dict)
-            updates = {
-                "status": result.get("status", "unknown") if is_dict else "completed",
-                "events": result.get("events", 0) if is_dict else 0,
-            }
+            try:
+                result = await provider.run_pipeline(
+                    req.flow_name,
+                    event_sink=sink,
+                    pipeline_input=req.input,
+                    timeout=req.timeout,
+                    run_id=run_id,
+                )
+                is_dict = isinstance(result, dict)
+                updates = {
+                    "status": result.get("status", "unknown") if is_dict else "completed",
+                    "events": result.get("events", 0) if is_dict else 0,
+                }
+            except Exception as exc:
+                updates = {"status": "failed", "error": str(exc)}
             provider.update_run(run_id, updates)
 
         background_tasks.add_task(_run)

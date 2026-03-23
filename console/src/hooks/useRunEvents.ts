@@ -11,6 +11,7 @@ export function useRunEvents(runId: string) {
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (!runId) return;
     const stream = new RunEventStream(runId);
     streamRef.current = stream;
 

@@ -20,23 +20,23 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 export const api = {
   getWorkspace: () => apiFetch<Record<string, unknown>>('/workspace'),
   getAgents: () => apiFetch<Record<string, unknown>[]>('/agents'),
-  getAgent: (name: string) => apiFetch<Record<string, unknown>>(`/agents/${name}`),
+  getAgent: (name: string) => apiFetch<Record<string, unknown>>(`/agents/${encodeURIComponent(name)}`),
   getFlows: () => apiFetch<Record<string, unknown>[]>('/flows'),
-  getFlow: (name: string) => apiFetch<Record<string, unknown>>(`/flows/${name}`),
+  getFlow: (name: string) => apiFetch<Record<string, unknown>>(`/flows/${encodeURIComponent(name)}`),
   getRuns: (offset = 0, limit = 20) =>
     apiFetch<{ items: Record<string, unknown>[]; total: number }>(`/runs?offset=${offset}&limit=${limit}`),
-  getRun: (id: string) => apiFetch<Record<string, unknown>>(`/runs/${id}`),
+  getRun: (id: string) => apiFetch<Record<string, unknown>>(`/runs/${encodeURIComponent(id)}`),
   getRunEvents: (id: string, offset = 0) =>
-    apiFetch<{ items: Record<string, unknown>[]; total: number }>(`/runs/${id}/events?offset=${offset}`),
+    apiFetch<{ items: Record<string, unknown>[]; total: number }>(`/runs/${encodeURIComponent(id)}/events?offset=${offset}`),
   triggerRun: (flowName: string, input?: string) =>
     apiFetch<{ run_id: string }>('/runs', {
       method: 'POST',
       body: JSON.stringify({ flow_name: flowName, input }),
     }),
   getApprovals: (runId: string) =>
-    apiFetch<Record<string, unknown>[]>(`/runs/${runId}/approvals`),
+    apiFetch<Record<string, unknown>[]>(`/runs/${encodeURIComponent(runId)}/approvals`),
   resolveApproval: (runId: string, requestId: string, decision: 'approved' | 'denied', reason?: string) =>
-    apiFetch<Record<string, unknown>>(`/runs/${runId}/approvals/${requestId}`, {
+    apiFetch<Record<string, unknown>>(`/runs/${encodeURIComponent(runId)}/approvals/${encodeURIComponent(requestId)}`, {
       method: 'POST',
       body: JSON.stringify({ decision, reason }),
     }),

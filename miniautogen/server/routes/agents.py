@@ -15,7 +15,7 @@ def agents_router(provider: ConsoleDataProvider) -> APIRouter:
 
     @router.get("/agents")
     async def list_agents() -> list[dict[str, Any]]:
-        agents = provider.get_agents()
+        agents = [dict(a) for a in provider.get_agents()]
         for a in agents:
             a.setdefault("engine_type", a.get("engine_profile", "unknown"))
         return agents
@@ -23,7 +23,7 @@ def agents_router(provider: ConsoleDataProvider) -> APIRouter:
     @router.get("/agents/{name}", responses={404: {"model": ErrorResponse}})
     async def get_agent(name: str) -> dict[str, Any]:
         try:
-            agent = provider.get_agent(name)
+            agent = dict(provider.get_agent(name))
             agent.setdefault("engine_type", agent.get("engine_profile", "unknown"))
             return agent
         except KeyError:

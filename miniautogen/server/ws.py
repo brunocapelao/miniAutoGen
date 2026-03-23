@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections import defaultdict
+from collections import defaultdict, deque
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -30,17 +30,16 @@ class WebSocketEventSink(EventSink):
     """
 
     def __init__(self) -> None:
-        self._events: dict[str, list[ExecutionEvent]] = defaultdict(list)
+        self._events: dict[str, deque[ExecutionEvent]] = defaultdict(
+            lambda: deque(maxlen=MAX_EVENTS_PER_RUN)
+        )
         self._connections: dict[str, list[WebSocket]] = defaultdict(list)
 
     async def publish(self, event: ExecutionEvent) -> None:
         if event.run_id is None:
             return
 
-        events = self._events[event.run_id]
-        if len(events) >= MAX_EVENTS_PER_RUN:
-            events.pop(0)
-        events.append(event)
+        self._events[event.run_id].append(event)
 
         message = event.model_dump_json()
         dead_connections = []
@@ -59,7 +58,7 @@ class WebSocketEventSink(EventSink):
     def get_events(self, run_id: str | None) -> list[ExecutionEvent]:
         if run_id is None:
             return []
-        return list(self._events.get(run_id, []))
+        return list(self._events.get(run_id, deque()))
 
     def get_events_as_dicts(self, run_id: str) -> list[dict[str, Any]]:
         return [json.loads(e.model_dump_json()) for e in self._events.get(run_id, [])]
@@ -70,7 +69,10 @@ class WebSocketEventSink(EventSink):
             return
         await websocket.accept()
         self._connections[run_id].append(websocket)
-        await websocket.send_json({"type": "connected", "run_id": run_id})
+        try:
+            await websocket.send_json({"type": "connected", "run_id": run_id})
+        except Exception:
+            self._connections[run_id].remove(websocket)
 
     def disconnect(self, run_id: str, websocket: WebSocket) -> None:
         try:
@@ -101,5 +103,9 @@ def ws_router(event_sink: WebSocketEventSink) -> APIRouter:
         except Exception as exc:
             logger.warning("WebSocket error for run %s: %s", run_id, exc)
             event_sink.disconnect(run_id, websocket)
+            try:
+                await websocket.close(code=1011, reason="Internal error")
+            except Exception:
+                pass
 
     return router
