@@ -16,7 +16,7 @@ export default function FlowsPage() {
         {(flows ?? []).map((flow: any) => (
           <Link
             key={flow.name}
-            href={`/flows/${flow.name}`}
+            href={`/flows/detail?name=${flow.name}`}
             className="border border-gray-800 rounded-lg p-4 bg-gray-900 hover:bg-gray-800 transition-colors block"
           >
             <h3 className="font-mono font-bold">{flow.name}</h3>
