@@ -111,9 +111,10 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
                 timeout=req.timeout,
                 run_id=run_id,
             )
+            is_dict = isinstance(result, dict)
             updates = {
-                "status": result.get("status", "unknown") if isinstance(result, dict) else "completed",
-                "events": result.get("events", 0) if isinstance(result, dict) else 0,
+                "status": result.get("status", "unknown") if is_dict else "completed",
+                "events": result.get("events", 0) if is_dict else 0,
             }
             provider.update_run(run_id, updates)
 

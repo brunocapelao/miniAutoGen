@@ -11,10 +11,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from miniautogen.server.provider_protocol import ConsoleDataProvider
-from miniautogen.server.routes.workspace import workspace_router
 from miniautogen.server.routes.agents import agents_router
 from miniautogen.server.routes.flows import flows_router
 from miniautogen.server.routes.runs import runs_router
+from miniautogen.server.routes.workspace import workspace_router
 from miniautogen.server.ws import WebSocketEventSink, ws_router
 
 
