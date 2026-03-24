@@ -77,7 +77,7 @@ describe('Dashboard', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Trigger Run')).toBeInTheDocument();
-      expect(screen.getByLabelText('Flow')).toBeInTheDocument();
+      expect(screen.getByLabelText('Select Flow')).toBeInTheDocument();
     });
   });
 
@@ -85,8 +85,9 @@ describe('Dashboard', () => {
     render(<Dashboard />, { wrapper: createWrapper() });
 
     await waitFor(() => {
-      expect(screen.getByText('flow-alpha')).toBeInTheDocument();
-      expect(screen.getByText('flow-beta')).toBeInTheDocument();
+      // Option text is "{name} ({mode})"
+      expect(screen.getByText('flow-alpha (workflow)')).toBeInTheDocument();
+      expect(screen.getByText('flow-beta (group_chat)')).toBeInTheDocument();
     });
   });
 
@@ -104,10 +105,10 @@ describe('Dashboard', () => {
 
     // Wait for flows to load so select options are present
     await waitFor(() => {
-      expect(screen.getByText('flow-alpha')).toBeInTheDocument();
+      expect(screen.getByText('flow-alpha (workflow)')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('Flow'), { target: { value: 'flow-alpha' } });
+    fireEvent.change(screen.getByLabelText('Select Flow'), { target: { value: 'flow-alpha' } });
 
     await waitFor(() => {
       const runButton = screen.getByRole('button', { name: 'Run' });
@@ -123,10 +124,10 @@ describe('Dashboard', () => {
 
     // Wait for flows to load so select options are present
     await waitFor(() => {
-      expect(screen.getByText('flow-alpha')).toBeInTheDocument();
+      expect(screen.getByText('flow-alpha (workflow)')).toBeInTheDocument();
     });
 
-    fireEvent.change(screen.getByLabelText('Flow'), { target: { value: 'flow-alpha' } });
+    fireEvent.change(screen.getByLabelText('Select Flow'), { target: { value: 'flow-alpha' } });
 
     // Wait for button to be enabled before clicking
     await waitFor(() => {
