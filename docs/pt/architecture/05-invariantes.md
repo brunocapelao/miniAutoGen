@@ -44,7 +44,7 @@ Modelo: `miniautogen/core/contracts/run_result.py`
 
 Modelo: `miniautogen/core/contracts/events.py`
 
-- `type` é obrigatório. Deve corresponder a um dos 69 valores do enum `EventType`.
+- `type` é obrigatório. Deve corresponder a um dos 72 valores do enum `EventType`.
 - `timestamp` possui valor padrão em UTC. Todos os eventos possuem marca temporal.
 - `run_id` pode ser inferido do `payload` via `model_validator`. Se o payload contém `run_id`, este é promovido para o campo de topo.
 - `correlation_id` permite agrupar eventos de uma mesma execução ou sub-execução.
@@ -116,7 +116,7 @@ Notas:
 
 ## Taxonomia canônica de eventos
 
-O enum `EventType` em `core/events/types.py` define 69 tipos de evento organizados em 13 categorias.
+O enum `EventType` em `core/events/types.py` define 72 tipos de evento organizados em 13 categorias.
 
 ### Ciclo de vida do run (5)
 

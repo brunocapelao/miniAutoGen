@@ -25,9 +25,9 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 - Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
 - 5 stores especializados (messages, runs, checkpoints, effects, events) com backends InMemory e SQLAlchemy
 - 10 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
-- 69 tipos de evento em 13 categorias para observabilidade via structlog
+- 72 tipos de evento em 13 categorias para observabilidade via structlog
 - Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
-- CLI com comandos `init`, `check`, `run` e `sessions`
+- CLI com comandos `init`, `check`, `run`, `sessions` e `console`
 - Taxonomia canónica de erros com 8 categorias e `classify_error()` extensível
 - Effect Engine com idempotência via `EffectInterceptor` e `EffectJournal`
 - Supervisão hierárquica (StepSupervisor + FlowSupervisor) em todos os 3 runtimes
@@ -59,6 +59,44 @@ Camada unificada de drivers para agentes externos:
 - `BackendResolver` -- resolução config-driven com factory registry
 
 Documentação: [Arquitetura](docs/pt/architecture/README.md)
+
+---
+
+## Web Console
+
+Dashboard web para observação e controle de flows em tempo real.
+
+```bash
+# Modo produção (single port)
+miniautogen console --port 8080
+
+# Modo dev (API + frontend com hot reload)
+miniautogen console --dev
+
+# Com persistência
+miniautogen console --db sqlite:///runs.db
+```
+
+Funcionalidades:
+- Dashboard com contadores de agents, flows e runs
+- Visualização de flows com React Flow (workflow e deliberation graphs)
+- Trigger de runs via interface web
+- Event feed em tempo real (WebSocket com fallback para polling)
+- Human-in-the-loop (approval list e modal)
+- Standalone mode com store-backed data (SQLAlchemy ou in-memory)
+
+---
+
+## CLI reference
+
+| Comando | Descrição |
+|---------|-----------|
+| `miniautogen init` | Criar novo workspace |
+| `miniautogen check` | Validar configuração |
+| `miniautogen run` | Executar um flow |
+| `miniautogen sessions` | Gerenciar sessões de execução |
+| `miniautogen dash` | Lançar TUI dashboard |
+| `miniautogen console` | Lançar web dashboard |
 
 ---
 

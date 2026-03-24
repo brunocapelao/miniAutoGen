@@ -36,7 +36,7 @@ Helpers deliberativos: `summarize_peer_reviews`, `build_follow_up_tasks`, `apply
 
 ### `core/events/`
 
-Taxonomia de 69 tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
+Taxonomia de 72 tipos de evento (`EventType` enum) organizados em grupos: run lifecycle, component lifecycle, tool execution, checkpoint, policy, agentic loop, deliberation, backend driver e approval. Sinks disponíveis: `CompositeEventSink`, `FilteredEventSink`, `InMemoryEventSink`. Filtros: `EventFilter`, `TypeFilter`, `RunFilter`, `CompositeFilter`.
 
 ---
 

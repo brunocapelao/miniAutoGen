@@ -186,7 +186,7 @@ architecture:
    capabilities, and supervision. The runtime resolves the engine driver for
    each agent and manages turn-by-turn execution.
 
-3. **Events** -- the system emits 69 typed events across 13 categories
+3. **Events** -- the system emits 72 typed events across 13 categories
    (run lifecycle, agent turns, tool calls, errors, etc.) for full
    observability via structlog.
 

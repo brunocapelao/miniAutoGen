@@ -43,7 +43,7 @@ O estado da aplicação ser derivado da dobra temporal (left-fold) de eventos ca
 - Auditoria criptográfica perfeita (cada evento tem `correlation_id` + `timestamp`)
 - Time-travel para simulações e dry-runs
 - Schema Evolution facilitada
-- Observabilidade completa (69 event types em 13 categorias)
+- Observabilidade completa (72 event types em 13 categorias)
 
 **Evidência no codebase:**
 - `ExecutionEvent` com type, timestamp, run_id, correlation_id, scope, payload
@@ -278,7 +278,7 @@ class EventSourcedState:
 - Test: `fold(events_from_store) == current_state` para qualquer flow
 - Test: fork de checkpoint N + novos eventos produz estado diferente do original
 
-> **Status de implementação (2026-03):** O sistema emite 69 event types canónicos via EventStore (InMemory + SQLAlchemy). `EventSourcedState.fold()` e `fork()` estão implementados. O event sourcing é operacional com replay determinístico e bifurcação de estado.
+> **Status de implementação (2026-03):** O sistema emite 72 event types canónicos via EventStore (InMemory + SQLAlchemy). `EventSourcedState.fold()` e `fork()` estão implementados. O event sourcing é operacional com replay determinístico e bifurcação de estado.
 
 ---
 

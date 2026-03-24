@@ -49,7 +49,7 @@ O engine (provider) fornece a inteligência. O runtime adiciona:
 - **Memória persistente** — contexto entre execuções
 - **Sandbox** — isolamento de filesystem por agente
 - **Delegação** — agentes podem delegar tarefas entre si
-- **Observabilidade** — 69 tipos de eventos tipados
+- **Observabilidade** — 72 tipos de eventos tipados
 - **Policies** — retry, budget, timeout, approval
 
 ---
@@ -687,6 +687,7 @@ rm .miniautogen/agents/researcher/memory/context.json
 | `miniautogen run <flow>` | Executar um flow |
 | `miniautogen doctor` | Verificar ambiente |
 | `miniautogen dash` | Lançar TUI dashboard |
+| `miniautogen console` | Lançar dashboard web |
 | `miniautogen completions <shell>` | Gerar auto-complete |
 
 ### Gestão de recursos
@@ -990,6 +991,16 @@ miniautogen dash
 └─────────────┴──────────────────────────────────────┘
   [q]uit  [r]efresh  [n]ew agent  [:]command palette
 ```
+
+### Web Console (alternativa ao TUI)
+
+Para quem prefere interface web:
+
+```bash
+miniautogen console --dev
+```
+
+O web console oferece as mesmas funcionalidades do TUI Dash, mais visualização de flows com React Flow e trigger de runs via browser.
 
 ---
 
