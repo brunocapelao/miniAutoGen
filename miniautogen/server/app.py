@@ -47,7 +47,7 @@ def create_app(
     app.include_router(workspace_router(provider))
     app.include_router(agents_router(provider))
     app.include_router(flows_router(provider))
-    app.include_router(runs_router(provider, event_sink=event_sink))
+    app.include_router(runs_router(provider, event_sink=event_sink, mode=mode))
 
     if event_sink is not None:
         app.include_router(ws_router(event_sink))
@@ -55,13 +55,22 @@ def create_app(
     # Store event_sink on app for CLI integration
     app.state.event_sink = event_sink
 
-    # CORS: only for development
+    # CORS: only for development (console --dev mode)
     if os.getenv("MINIAUTOGEN_DEV"):
+        dev_origins = [
+            f"http://localhost:{p}" for p in range(3000, 3010)
+        ] + [
+            f"http://127.0.0.1:{p}" for p in range(3000, 3010)
+        ] + [
+            f"http://localhost:{p}" for p in range(8080, 8090)
+        ] + [
+            f"http://127.0.0.1:{p}" for p in range(8080, 8090)
+        ]
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
-            allow_methods=["GET", "POST"],
-            allow_headers=["Content-Type"],
+            allow_origins=dev_origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
         )
 
     # Serve frontend static files (Next.js build output)

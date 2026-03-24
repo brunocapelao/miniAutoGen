@@ -2,11 +2,15 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import type { Agent } from '@/types/api';
+import { SkeletonTable } from '@/components/Skeleton';
+import { QueryError } from '@/components/QueryError';
 
 export default function AgentsPage() {
-  const { data: agents, isLoading } = useQuery({ queryKey: ['agents'], queryFn: api.getAgents });
+  const { data: agents, isLoading, error, refetch } = useQuery({ queryKey: ['agents'], queryFn: api.getAgents });
 
-  if (isLoading) return <p className="text-gray-400">Loading...</p>;
+  if (isLoading) return <SkeletonTable rows={5} cols={3} />;
+  if (error) return <QueryError error={error as Error} message="Failed to load agents" onRetry={refetch} />;
 
   return (
     <div>
@@ -21,7 +25,7 @@ export default function AgentsPage() {
             </tr>
           </thead>
           <tbody>
-            {(agents ?? []).map((agent: any) => (
+            {(agents ?? []).map((agent: Agent) => (
               <tr key={agent.name} className="border-b border-gray-800 last:border-0">
                 <td className="p-3 font-mono text-sm">{agent.name}</td>
                 <td className="p-3 text-sm">{agent.role}</td>

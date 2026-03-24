@@ -1,13 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-
-type Approval = {
-  request_id: string;
-  agent_name: string;
-  action: string;
-  requested_at: string;
-};
+import type { Approval } from '@/types/api';
 
 type ApprovalModalProps = {
   approval: Approval;

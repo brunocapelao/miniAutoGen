@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
@@ -17,8 +17,13 @@ from miniautogen.server.models import (
 from miniautogen.server.provider_protocol import ConsoleDataProvider
 
 
-def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) -> APIRouter:
+def runs_router(
+    provider: ConsoleDataProvider,
+    event_sink: Any | None = None,
+    mode: Literal["embedded", "standalone"] = "embedded",
+) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["runs"])
+    _standalone = mode == "standalone"
 
     # Shared state for approval channels per run
     _approval_channels: dict[str, Any] = {}
@@ -27,7 +32,11 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
     async def list_runs(
         offset: int = Query(0, ge=0),
         limit: int = Query(20, ge=1, le=100),
+        status: str | None = Query(None),
     ) -> Page:
+        if _standalone:
+            items, total = await provider.query_runs(status=status, offset=offset, limit=limit)
+            return Page(items=items, total=total, offset=offset, limit=limit)
         all_runs = provider.get_runs()
         return Page(
             items=all_runs[offset : offset + limit],
@@ -38,6 +47,14 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
 
     @router.get("/runs/{run_id}", responses={404: {"model": ErrorResponse}})
     async def get_run(run_id: str) -> dict[str, Any]:
+        if _standalone:
+            run = await provider.query_run(run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=ErrorResponse(error=f"Run '{run_id}' not found", code="run_not_found").model_dump(),
+                )
+            return run
         runs = provider.get_runs()
         for run in runs:
             if run.get("run_id") == run_id:
@@ -53,6 +70,15 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
         offset: int = Query(0, ge=0),
         limit: int = Query(100, ge=1, le=500),
     ) -> Page:
+        if _standalone:
+            run = await provider.query_run(run_id)
+            if run is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=ErrorResponse(error=f"Run '{run_id}' not found", code="run_not_found").model_dump(),
+                )
+            items, total = await provider.query_run_events(run_id, offset=offset, limit=limit)
+            return Page(items=items, total=total, offset=offset, limit=limit)
         runs = provider.get_runs()
         if not any(r.get("run_id") == run_id for r in runs):
             raise HTTPException(
@@ -72,12 +98,20 @@ def runs_router(provider: ConsoleDataProvider, event_sink: Any | None = None) ->
             limit=limit,
         )
 
-    @router.post("/runs", responses={404: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
+    @router.post("/runs", responses={404: {"model": ErrorResponse}, 501: {"model": ErrorResponse}, 503: {"model": ErrorResponse}})
     async def trigger_run(
         req: RunRequest,
         request: Request,
         background_tasks: BackgroundTasks,
     ) -> dict[str, str]:
+        if _standalone:
+            raise HTTPException(
+                status_code=501,
+                detail=ErrorResponse(
+                    error="Cannot trigger runs in standalone mode",
+                    code="not_implemented",
+                ).model_dump(),
+            )
         # Verify flow exists
         pipelines = provider.get_pipelines()
         pipeline_names = [p.get("name") for p in pipelines]

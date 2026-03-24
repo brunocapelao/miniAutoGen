@@ -30,3 +30,27 @@ class ConsoleDataProvider(Protocol):
         pipeline_input: str | None = None,
         run_id: str | None = None,
     ) -> dict[str, Any]: ...
+
+    async def query_runs(
+        self,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 20,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Query runs from persistent store. Returns (items, total)."""
+        ...
+
+    async def query_run(self, run_id: str) -> dict[str, Any] | None:
+        """Query a single run from persistent store."""
+        ...
+
+    async def query_run_events(
+        self,
+        run_id: str,
+        *,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Query events for a run from persistent store. Returns (items, total)."""
+        ...

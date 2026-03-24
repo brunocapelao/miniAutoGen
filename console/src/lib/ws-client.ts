@@ -1,6 +1,8 @@
+import type { RunEvent } from '@/types/api';
+
 export class RunEventStream {
   private ws: WebSocket | null = null;
-  private listeners: ((event: Record<string, unknown>) => void)[] = [];
+  private listeners: ((event: RunEvent) => void)[] = [];
 
   constructor(
     private runId: string,
@@ -12,13 +14,13 @@ export class RunEventStream {
   connect(): void {
     this.ws = new WebSocket(`${this.baseUrl}/ws/runs/${this.runId}`);
     this.ws.onmessage = (msg) => {
-      const event = JSON.parse(msg.data);
+      const event = JSON.parse(msg.data) as RunEvent;
       this.listeners.forEach((fn) => fn(event));
     };
     this.ws.onclose = () => { this.ws = null; };
   }
 
-  onEvent(listener: (event: Record<string, unknown>) => void): () => void {
+  onEvent(listener: (event: RunEvent) => void): () => void {
     this.listeners.push(listener);
     return () => { this.listeners = this.listeners.filter((fn) => fn !== listener); };
   }

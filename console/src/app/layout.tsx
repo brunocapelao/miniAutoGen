@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const NAV_ITEMS = [
   { href: '/', label: 'Dashboard' },
@@ -38,7 +39,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 </Link>
               ))}
             </nav>
-            <main className="flex-1 overflow-auto p-6">{children}</main>
+            <main className="flex-1 overflow-auto p-6">
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </main>
           </div>
         </QueryClientProvider>
       </body>

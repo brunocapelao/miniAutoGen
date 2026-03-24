@@ -1,15 +1,15 @@
 import { create } from 'zustand';
 
 type ConnectionState = {
-  status: 'disconnected' | 'connecting' | 'connected';
-  activeRunId: string | null;
+  status: 'disconnected' | 'connecting' | 'connected' | 'polling';
+  runId: string | null;
   setStatus: (status: ConnectionState['status']) => void;
-  setActiveRunId: (runId: string | null) => void;
+  setRunId: (runId: string | null) => void;
 };
 
 export const useConnectionStore = create<ConnectionState>((set) => ({
   status: 'disconnected',
-  activeRunId: null,
+  runId: null,
   setStatus: (status) => set({ status }),
-  setActiveRunId: (activeRunId) => set({ activeRunId }),
+  setRunId: (runId) => set({ runId }),
 }));

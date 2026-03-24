@@ -169,7 +169,7 @@ async def execute_pipeline(
         # Config-driven path — flow has mode + participants, no target callable
         if not flow.target and flow.mode:
             from miniautogen.cli.services.agent_ops import load_agent_specs
-            agent_specs = load_agent_specs(root=project_root)
+            agent_specs = load_agent_specs(project_root)
             result = await runner.run_from_config(
                 flow_config=flow,
                 agent_specs=agent_specs,

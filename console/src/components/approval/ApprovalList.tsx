@@ -2,13 +2,7 @@
 
 import { useState } from 'react';
 import { ApprovalModal } from './ApprovalModal';
-
-type Approval = {
-  request_id: string;
-  agent_name: string;
-  action: string;
-  requested_at: string;
-};
+import type { Approval } from '@/types/api';
 
 type ApprovalListProps = {
   approvals: Approval[];

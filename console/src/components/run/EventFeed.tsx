@@ -1,6 +1,8 @@
 'use client';
 
-export function EventFeed({ events }: { events: Record<string, unknown>[] }) {
+import type { RunEvent } from '@/types/api';
+
+export function EventFeed({ events }: { events: RunEvent[] }) {
   return (
     <div className="border border-gray-800 rounded-lg overflow-auto max-h-96 bg-gray-900">
       <table className="w-full text-xs font-mono">
@@ -15,10 +17,10 @@ export function EventFeed({ events }: { events: Record<string, unknown>[] }) {
           {events.map((event, i) => (
             <tr key={i} className="border-b border-gray-800 last:border-0 hover:bg-gray-800/50">
               <td className="p-2 text-gray-500 whitespace-nowrap">
-                {event.timestamp ? new Date(event.timestamp as string).toLocaleTimeString() : '-'}
+                {event.timestamp ? new Date(event.timestamp).toLocaleTimeString() : '-'}
               </td>
-              <td className="p-2">{event.type as string}</td>
-              <td className="p-2 text-gray-500 truncate max-w-xs">{event.scope as string || ''}</td>
+              <td className="p-2">{event.type}</td>
+              <td className="p-2 text-gray-500 truncate max-w-xs">{event.scope || ''}</td>
             </tr>
           ))}
         </tbody>
