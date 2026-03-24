@@ -29,7 +29,18 @@ export default function RunsPage() {
     <div>
       <h2 className="text-2xl font-bold mb-6">Runs</h2>
       {(data?.items ?? []).length === 0 ? (
-        <p className="text-gray-400">No runs yet. Trigger a run from the Dashboard.</p>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="w-16 h-16 rounded-full bg-gray-800 flex items-center justify-center mb-4">
+            <svg className="w-8 h-8 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+              <polygon points="5,3 19,12 5,21" />
+            </svg>
+          </div>
+          <p className="text-gray-400 mb-1">No runs yet</p>
+          <p className="text-sm text-gray-600 mb-4">Execute a flow to see run history here</p>
+          <Link href="/" className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+            Go to Dashboard
+          </Link>
+        </div>
       ) : (
         <>
           <div className="border border-gray-800 rounded-lg bg-gray-900">

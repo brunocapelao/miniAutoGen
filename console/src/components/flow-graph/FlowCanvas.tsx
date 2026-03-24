@@ -35,7 +35,7 @@ export function FlowCanvas({ participants, leader, mode }: FlowCanvasProps) {
           animated: true,
         });
       }
-    } else if (mode === 'group_chat' || mode === 'debate') {
+    } else if (mode === 'group_chat' || mode === 'debate' || mode === 'deliberation') {
       const hub = leader || participants[0];
       for (const p of participants) {
         if (p !== hub) {
@@ -44,6 +44,8 @@ export function FlowCanvas({ participants, leader, mode }: FlowCanvasProps) {
             source: hub,
             target: p,
             animated: true,
+            style: { stroke: '#8b5cf6' },
+            type: 'default',
           });
         }
       }
@@ -53,7 +55,7 @@ export function FlowCanvas({ participants, leader, mode }: FlowCanvasProps) {
   }, [participants, leader, mode]);
 
   return (
-    <div className="h-[400px] border border-gray-700 rounded-lg bg-gray-950">
+    <div className="h-[400px] border border-gray-700 rounded-lg bg-gray-950 overflow-hidden">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -62,7 +64,12 @@ export function FlowCanvas({ participants, leader, mode }: FlowCanvasProps) {
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#374151" gap={20} />
-        <Controls className="!bg-gray-800 !border-gray-700" />
+        <Controls
+          className="!bg-gray-800/80 !border-gray-700 !rounded-lg !shadow-lg"
+          showZoom={true}
+          showFitView={true}
+          showInteractive={false}
+        />
       </ReactFlow>
     </div>
   );

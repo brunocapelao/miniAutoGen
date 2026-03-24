@@ -34,17 +34,39 @@ function FlowDetailContent() {
 
   return (
     <div>
-      <div className="mb-6">
-        <Link href="/flows" className="text-sm text-gray-400 hover:text-white">
-          &larr; Back to Flows
+      <div className="mb-4">
+        <Link href="/flows" className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
+          Flows
         </Link>
+        <span className="text-xs text-gray-700 mx-1.5">/</span>
+        <span className="text-xs text-gray-400">{name}</span>
       </div>
-      <h2 className="text-2xl font-bold mb-2 font-mono">{name}</h2>
-      <div className="flex gap-4 text-sm text-gray-400 mb-6">
-        <span>Mode: {mode}</span>
-        {flow?.target != null && <span>Target: {flow.target}</span>}
-        {leader && <span>Leader: {leader}</span>}
-        {flow?.max_rounds != null && <span>Max rounds: {Number(flow.max_rounds)}</span>}
+
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-2xl font-bold font-mono">{name}</h2>
+        <span className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+          mode === 'workflow' ? 'bg-blue-500/10 text-blue-400' :
+          mode === 'deliberation' ? 'bg-purple-500/10 text-purple-400' :
+          mode === 'loop' ? 'bg-green-500/10 text-green-400' :
+          'bg-gray-500/10 text-gray-400'
+        }`}>
+          {mode}
+        </span>
+      </div>
+
+      <div className="flex gap-4 text-sm text-gray-500 mb-6">
+        {leader && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600">Leader:</span>
+            <span className="text-gray-300 font-mono">{leader}</span>
+          </div>
+        )}
+        {flow?.max_rounds != null && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-600">Max rounds:</span>
+            <span className="text-gray-300">{Number(flow.max_rounds)}</span>
+          </div>
+        )}
       </div>
 
       {participants.length > 0 ? (

@@ -78,19 +78,22 @@ export default function Dashboard() {
           <h3 className="font-semibold text-sm">Trigger Run</h3>
         </div>
         <div className="flex gap-3 items-end">
-          <div className="flex-1">
+          <div className="flex-1 relative">
             <label htmlFor="flow-select" className="block text-xs text-gray-500 mb-1.5">Select Flow</label>
             <select
               id="flow-select"
               value={selectedFlow}
               onChange={(e) => setSelectedFlow(e.target.value)}
-              className="w-full bg-gray-800/80 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full bg-gray-800/80 border border-gray-700 rounded-lg px-3 py-2 pr-8 text-sm text-white appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
             >
               <option value="">Choose a flow...</option>
               {(flows ?? []).map((f: Flow) => (
                 <option key={f.name} value={f.name}>{f.name} ({f.mode})</option>
               ))}
             </select>
+            <svg className="absolute right-2.5 top-[calc(50%+4px)] w-4 h-4 text-gray-500 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
           </div>
           <button
             type="button"
