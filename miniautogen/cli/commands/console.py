@@ -193,6 +193,20 @@ def _run_dev_mode(
         echo_error(f"Console source not found at {_CONSOLE_SRC}")
         raise SystemExit(1)
 
+    # Auto-install dependencies if needed
+    if not (_CONSOLE_SRC / "node_modules").is_dir():
+        echo_info("Installing frontend dependencies...")
+        result = subprocess.run(
+            ["npm", "install"],
+            cwd=str(_CONSOLE_SRC),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            echo_error(f"npm install failed: {result.stderr}")
+            raise SystemExit(1)
+        echo_success("Dependencies installed.")
+
     path = Path(workspace).resolve()
     base_provider = DashDataProvider(path)
     run_store, event_store = _create_stores(db)
