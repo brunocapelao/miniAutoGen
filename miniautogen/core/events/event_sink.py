@@ -44,7 +44,17 @@ class CompositeEventSink:
 
     async def publish(self, event: ExecutionEvent) -> None:
         for sink in self._sinks:
-            await sink.publish(event)
+            try:
+                await sink.publish(event)
+            except Exception:
+                import logging
+
+                logging.getLogger(__name__).warning(
+                    "Event sink %s failed to publish event %s",
+                    type(sink).__name__,
+                    event.type,
+                    exc_info=True,
+                )
 
     async def __aenter__(self) -> CompositeEventSink:
         return self

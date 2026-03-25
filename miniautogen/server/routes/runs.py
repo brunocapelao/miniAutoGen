@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request
+
+logger = logging.getLogger(__name__)
 
 from miniautogen.server.models import (
     ApprovalDecision,
@@ -152,7 +155,8 @@ def runs_router(
                     "events": result.get("events", 0) if is_dict else 0,
                 }
             except Exception as exc:
-                updates = {"status": "failed", "error": str(exc)}
+                logger.error("run_failed", extra={"run_id": run_id, "error": str(exc)})
+                updates = {"status": "failed", "error": "Internal execution error"}
             provider.update_run(run_id, updates)
 
         background_tasks.add_task(_run)

@@ -2,20 +2,27 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
+from miniautogen.gateway.security import verify_api_key
 from miniautogen.server.provider_protocol import ConsoleDataProvider
+from miniautogen.server.rate_limit import create_console_limiter
 from miniautogen.server.routes.agents import agents_router
 from miniautogen.server.routes.flows import flows_router
 from miniautogen.server.routes.runs import runs_router
 from miniautogen.server.routes.workspace import workspace_router
 from miniautogen.server.ws import WebSocketEventSink, ws_router
+
+logger = logging.getLogger(__name__)
 
 
 def create_app(
@@ -23,6 +30,7 @@ def create_app(
     provider: ConsoleDataProvider | None = None,
     workspace_path: str | Path | None = None,
     mode: Literal["embedded", "standalone"] = "embedded",
+    api_key: str | None = None,
 ) -> FastAPI:
     """Create the Console Server FastAPI application."""
     if provider is None:
@@ -31,7 +39,23 @@ def create_app(
         path = Path(workspace_path or ".").resolve()
         provider = DashDataProvider(path)
 
+    # Resolve API key: explicit parameter > env var > None (open access)
+    resolved_key = api_key or os.getenv("MINIAUTOGEN_API_KEY")
+    if resolved_key is None:
+        logger.warning(
+            "Console Server running WITHOUT authentication. "
+            "Set MINIAUTOGEN_API_KEY or pass api_key to enable auth."
+        )
+
     app = FastAPI(title="MiniAutoGen Console", version="0.1.0")
+
+    # Store API key for verify_api_key dependency
+    app.state.api_key = resolved_key
+
+    # Rate limiting (fresh instance per app to avoid shared state in tests)
+    limiter = create_console_limiter()
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # Custom error handler: return ErrorResponse at top level, not nested in "detail"
     @app.exception_handler(HTTPException)
@@ -43,11 +67,14 @@ def create_app(
     if mode == "embedded":
         event_sink = WebSocketEventSink()
 
+    # Auth dependency applied to all API routes
+    auth_deps = [Depends(verify_api_key)]
+
     # Routes (event_sink must be created before runs_router)
-    app.include_router(workspace_router(provider))
-    app.include_router(agents_router(provider))
-    app.include_router(flows_router(provider))
-    app.include_router(runs_router(provider, event_sink=event_sink, mode=mode))
+    app.include_router(workspace_router(provider), dependencies=auth_deps)
+    app.include_router(agents_router(provider), dependencies=auth_deps)
+    app.include_router(flows_router(provider), dependencies=auth_deps)
+    app.include_router(runs_router(provider, event_sink=event_sink, mode=mode), dependencies=auth_deps)
 
     if event_sink is not None:
         app.include_router(ws_router(event_sink))

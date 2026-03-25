@@ -69,6 +69,7 @@ def _is_frontend_built() -> bool:
 
 
 @click.command("console")
+@click.option("--host", type=str, default="127.0.0.1", help="Host to bind to (default: 127.0.0.1).")
 @click.option("--port", type=int, default=8080, help="Server port (default: 8080).")
 @click.option(
     "--workspace",
@@ -102,6 +103,7 @@ def _is_frontend_built() -> bool:
     help="Don't open the browser automatically.",
 )
 def console_command(
+    host: str,
     port: int,
     workspace: str,
     db: str | None,
@@ -123,13 +125,20 @@ def console_command(
       Starts FastAPI API on --port and Next.js dev server on port+1.
       miniautogen console --dev --port 8080
     """
+    if host not in ("127.0.0.1", "localhost"):
+        echo_warning(
+            f"Binding to '{host}' exposes the server to the network. "
+            "Set MINIAUTOGEN_API_KEY to enable authentication."
+        )
+
     if dev:
-        _run_dev_mode(port, workspace, db, no_open)
+        _run_dev_mode(host, port, workspace, db, no_open)
     else:
-        _run_production_mode(port, workspace, db, no_build, no_open)
+        _run_production_mode(host, port, workspace, db, no_build, no_open)
 
 
 def _run_production_mode(
+    host: str,
     port: int,
     workspace: str,
     db: str | None,
@@ -163,16 +172,17 @@ def _run_production_mode(
     )
     app = create_app(provider=provider, mode="standalone")
 
-    url = f"http://localhost:{port}"
+    url = f"http://{host}:{port}"
     echo_success(f"Console running at {url}")
     echo_info("Press Ctrl+C to stop.")
     if not no_open:
         webbrowser.open(url)
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    uvicorn.run(app, host=host, port=port, log_level="info")
 
 
 def _run_dev_mode(
+    host: str,
     port: int,
     workspace: str,
     db: str | None,
@@ -234,7 +244,7 @@ def _run_dev_mode(
         },
     )
 
-    echo_success(f"API server:  http://localhost:{port}")
+    echo_success(f"API server:  http://{host}:{port}")
     echo_success(f"Frontend:    {frontend_url}")
     echo_info("Press Ctrl+C to stop both.")
 
@@ -250,7 +260,7 @@ def _run_dev_mode(
         threading.Thread(target=_open_browser, daemon=True).start()
 
     try:
-        uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+        uvicorn.run(app, host=host, port=port, log_level="info")
     finally:
         echo_info("Stopping frontend dev server...")
         next_proc.terminate()

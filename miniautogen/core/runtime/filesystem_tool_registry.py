@@ -79,7 +79,11 @@ class FileSystemToolRegistry:
 
                 jsonschema.validate(call.params, defn.parameters)
             except ImportError:
-                pass  # jsonschema not installed, skip validation
+                return ToolResult(
+                    success=False,
+                    error="jsonschema package required for tool parameter validation. "
+                    "Install with: pip install jsonschema",
+                )
             except jsonschema.ValidationError as e:
                 return ToolResult(
                     success=False, error=f"Invalid params: {e.message}"

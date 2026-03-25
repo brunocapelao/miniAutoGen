@@ -110,8 +110,18 @@ class CLIAgentDriver(AgentDriver):
             # Build command with prompt flag for CLI tools that support it
             cmd = list(self._command)
             if prompt_text and self._supports_prompt_flag():
-                cmd.extend(["-p", prompt_text])
-                stdin_data = None
+                if prompt_text.startswith("-"):
+                    # Prompt starts with dash — fall back to stdin to avoid
+                    # the CLI tool interpreting it as a flag/option
+                    logger.debug("prompt_starts_with_dash_using_stdin")
+                    stdin_data = (dumps({
+                        "session_id": request.session_id,
+                        "messages": request.messages,
+                        "metadata": request.metadata,
+                    }) + "\n").encode()
+                else:
+                    cmd.extend(["-p", prompt_text])
+                    stdin_data = None
             else:
                 # Fallback: send JSON on stdin for tools that expect it
                 stdin_data = (dumps({

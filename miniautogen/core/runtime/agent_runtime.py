@@ -16,8 +16,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from typing import Any, AsyncIterator
+
+logger = logging.getLogger(__name__)
 
 import anyio
 
@@ -242,8 +245,16 @@ class AgentRuntime:
         messages.append({"role": "user", "content": prompt})
 
         result = await self._execute_turn(messages)
-        data = json.loads(result.text)
-        return RouterDecision(**data)
+        try:
+            data = json.loads(result.text)
+            return RouterDecision(**data)
+        except (json.JSONDecodeError, TypeError, KeyError) as exc:
+            logger.warning(
+                "route() failed to parse JSON from LLM response for agent '%s': %s",
+                self._agent_id,
+                exc,
+            )
+            return RouterDecision(terminate=True)
 
     # ------------------------------------------------------------------
     # DeliberationAgent protocol
@@ -534,7 +545,11 @@ class AgentRuntime:
         8. Emit AGENT_TURN_COMPLETED
         """
         self._check_closed()
-        assert self._session_id is not None, "Must call initialize() first"
+        if self._session_id is None:
+            raise AgentClosedError(
+                f"Agent '{self._agent_id}' must be initialized before executing turns. "
+                "Call initialize() first."
+            )
 
         # 0. Verify prompt integrity (Fix 6)
         if self._prompt_hash and self._system_prompt:
@@ -550,117 +565,125 @@ class AgentRuntime:
             {"agent_id": self._agent_id, "session_id": self._session_id},
         )
 
-        # 2. Run before_turn hooks (waterfall)
-        for hook in self._hooks:
-            messages = await hook.before_turn(messages, self._run_context)
+        try:
+            # 2. Run before_turn hooks (waterfall)
+            for hook in self._hooks:
+                messages = await hook.before_turn(messages, self._run_context)
 
-        # 3. Enrich with memory context
-        if self._memory is not None:
-            memory_msgs = await self._memory.get_context(
-                self._agent_id,
-                self._run_context,
-            )
-            messages = memory_msgs + messages
-
-        # 4. Enrich with tool definitions
-        if self._tool_registry is not None:
-            tool_defs = self._tool_registry.list_tools()
-            if tool_defs:
-                tools_desc = "\n".join(
-                    f"- {t.name}: {t.description}" for t in tool_defs
+            # 3. Enrich with memory context
+            if self._memory is not None:
+                memory_msgs = await self._memory.get_context(
+                    self._agent_id,
+                    self._run_context,
                 )
-                messages.insert(
-                    0,
-                    {
-                        "role": "system",
-                        "content": f"Available tools:\n{tools_desc}",
-                    },
-                )
+                messages = memory_msgs + messages
 
-        # 5. Send turn to driver and collect events
-        request = SendTurnRequest(
-            session_id=self._session_id,
-            messages=messages,
-        )
+            # 4. Enrich with tool definitions
+            if self._tool_registry is not None:
+                tool_defs = self._tool_registry.list_tools()
+                if tool_defs:
+                    tools_desc = "\n".join(
+                        f"- {t.name}: {t.description}" for t in tool_defs
+                    )
+                    messages.insert(
+                        0,
+                        {
+                            "role": "system",
+                            "content": f"Available tools:\n{tools_desc}",
+                        },
+                    )
 
-        collected_text_parts: list[str] = []
-        driver_events: list[AgentEvent] = []
-
-        async for event in self._driver.send_turn(request):
-            driver_events.append(event)
-            # Extract text from message_completed events
-            if event.type == "message_completed":
-                text = event.payload.get("text", "")
-                if text:
-                    collected_text_parts.append(text)
-            elif event.type == "message_delta":
-                text = event.payload.get("text", "")
-                if text:
-                    collected_text_parts.append(text)
-
-        full_text = "".join(collected_text_parts)
-
-        # 5b. Process tool call requests from driver events (Fix 1)
-        executed_tool_calls: list[ToolCall] = []
-        if self._tool_registry is not None:
-            for event in driver_events:
-                if event.type == "tool_call_requested":
-                    tool_name = event.payload.get("tool_name", "")
-                    call_id = event.payload.get("call_id", "")
-                    params = event.payload.get("params", {})
-                    if tool_name and self._tool_registry.has_tool(tool_name):
-                        call = ToolCall(
-                            tool_name=tool_name,
-                            call_id=call_id,
-                            params=params,
-                        )
-                        tool_result = await self._tool_registry.execute_tool(
-                            call
-                        )
-                        executed_tool_calls.append(call)
-                        await self._emit(
-                            EventType.AGENT_TOOL_INVOKED,
-                            {
-                                "agent_id": self._agent_id,
-                                "tool_name": tool_name,
-                                "call_id": call_id,
-                                "success": tool_result.success,
-                            },
-                        )
-
-        result = TurnResult(
-            output=full_text,
-            text=full_text,
-            messages=messages,
-            tool_calls=executed_tool_calls,
-        )
-
-        # 6. Save turn to memory (Fix 9: no AGENT_MEMORY_SAVED here)
-        if self._memory is not None:
-            turn_messages = messages + [
-                {"role": "assistant", "content": full_text}
-            ]
-            await self._memory.save_turn(turn_messages, self._run_context)
-
-        # 7. Run after_event hooks
-        completed_event = ExecutionEvent(
-            type=EventType.AGENT_TURN_COMPLETED.value,
-            run_id=self._run_context.run_id,
-            correlation_id=self._run_context.correlation_id,
-            payload={
-                "agent_id": self._agent_id,
-                "text": full_text,
-            },
-        )
-        for hook in self._hooks:
-            completed_event = await hook.after_event(
-                completed_event, self._run_context
+            # 5. Send turn to driver and collect events
+            request = SendTurnRequest(
+                session_id=self._session_id,
+                messages=messages,
             )
 
-        # 8. Emit turn completed
-        await self._event_sink.publish(completed_event)
+            collected_text_parts: list[str] = []
+            driver_events: list[AgentEvent] = []
 
-        return result
+            async for event in self._driver.send_turn(request):
+                driver_events.append(event)
+                # Extract text from message_completed events
+                if event.type == "message_completed":
+                    text = event.payload.get("text", "")
+                    if text:
+                        collected_text_parts.append(text)
+                elif event.type == "message_delta":
+                    text = event.payload.get("text", "")
+                    if text:
+                        collected_text_parts.append(text)
+
+            full_text = "".join(collected_text_parts)
+
+            # 5b. Process tool call requests from driver events (Fix 1)
+            executed_tool_calls: list[ToolCall] = []
+            if self._tool_registry is not None:
+                for event in driver_events:
+                    if event.type == "tool_call_requested":
+                        tool_name = event.payload.get("tool_name", "")
+                        call_id = event.payload.get("call_id", "")
+                        params = event.payload.get("params", {})
+                        if tool_name and self._tool_registry.has_tool(tool_name):
+                            call = ToolCall(
+                                tool_name=tool_name,
+                                call_id=call_id,
+                                params=params,
+                            )
+                            tool_result = await self._tool_registry.execute_tool(
+                                call
+                            )
+                            executed_tool_calls.append(call)
+                            await self._emit(
+                                EventType.AGENT_TOOL_INVOKED,
+                                {
+                                    "agent_id": self._agent_id,
+                                    "tool_name": tool_name,
+                                    "call_id": call_id,
+                                    "success": tool_result.success,
+                                },
+                            )
+
+            result = TurnResult(
+                output=full_text,
+                text=full_text,
+                messages=messages,
+                tool_calls=executed_tool_calls,
+            )
+
+            # 6. Save turn to memory (Fix 9: no AGENT_MEMORY_SAVED here)
+            if self._memory is not None:
+                turn_messages = messages + [
+                    {"role": "assistant", "content": full_text}
+                ]
+                await self._memory.save_turn(turn_messages, self._run_context)
+
+            # 7. Run after_event hooks
+            completed_event = ExecutionEvent(
+                type=EventType.AGENT_TURN_COMPLETED.value,
+                run_id=self._run_context.run_id,
+                correlation_id=self._run_context.correlation_id,
+                payload={
+                    "agent_id": self._agent_id,
+                    "text": full_text,
+                },
+            )
+            for hook in self._hooks:
+                completed_event = await hook.after_event(
+                    completed_event, self._run_context
+                )
+
+            # 8. Emit turn completed
+            await self._event_sink.publish(completed_event)
+
+            return result
+        except BaseException:
+            # Guarantee AGENT_TURN_COMPLETED on all paths (including errors)
+            await self._emit(
+                EventType.AGENT_TURN_COMPLETED,
+                {"agent_id": self._agent_id, "error": True},
+            )
+            raise
 
     # ------------------------------------------------------------------
     # Helpers

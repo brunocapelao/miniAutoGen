@@ -14,6 +14,7 @@ class ConfigDelegationRouter:
     def __init__(self, configs: dict[str, dict[str, Any]]) -> None:
         self._configs = configs
         self._agents: dict[str, Any] = {}
+        self._active_chains: set[tuple[str, str]] = set()
 
     def register_agent(self, agent_id: str, agent: Any) -> None:
         self._agents[agent_id] = agent
@@ -41,9 +42,18 @@ class ConfigDelegationRouter:
             msg = f"Agent '{from_agent}' exceeded max delegation depth {max_depth}"
             raise DelegationDepthExceededError(msg)
 
+        chain = (from_agent, to_agent)
+        if chain in self._active_chains:
+            msg = f"Circular delegation detected: {from_agent} -> {to_agent}"
+            raise DelegationDepthExceededError(msg)
+
         target = self._agents.get(to_agent)
         if target is None:
             msg = f"Delegation target '{to_agent}' not found"
             raise AgentSecurityError(msg)
 
-        return await target.process(input_data)
+        self._active_chains.add(chain)
+        try:
+            return await target.process(input_data)
+        finally:
+            self._active_chains.discard(chain)
