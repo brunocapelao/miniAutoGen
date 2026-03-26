@@ -64,8 +64,21 @@ def _build_frontend() -> bool:
 
 
 def _is_frontend_built() -> bool:
-    """Check if static dir has content (index.html)."""
-    return (_STATIC_DIR / "index.html").is_file()
+    """Check if static dir has up-to-date content.
+
+    Returns True only if the static dir exists with index.html AND
+    is not stale (i.e., newer than the console/out/ build output).
+    """
+    index = _STATIC_DIR / "index.html"
+    if not index.is_file():
+        return False
+    # Check if console/out/ exists and is newer (stale detection)
+    out_dir = _CONSOLE_SRC / "out"
+    if out_dir.is_dir():
+        out_index = out_dir / "index.html"
+        if out_index.is_file() and out_index.stat().st_mtime > index.stat().st_mtime:
+            return False  # out/ is newer, need to re-copy
+    return True
 
 
 @click.command("console")

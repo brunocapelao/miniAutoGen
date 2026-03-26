@@ -68,14 +68,24 @@ def init_command(
         )
         echo_success(f"Workspace created: {project_dir}\n")
 
-        # Next steps guidance
+        # Context-aware next steps
+        has_engines = any((project_dir / "miniautogen.yaml").read_text().find("engines:") >= 0 for _ in [1]) if (project_dir / "miniautogen.yaml").exists() else False
+        has_agents = (project_dir / "agents").is_dir() and any((project_dir / "agents").iterdir())
+        has_flows = any("flows:" in (project_dir / "miniautogen.yaml").read_text() for _ in [1]) if (project_dir / "miniautogen.yaml").exists() else False
+
         echo_info("Next steps:")
         echo_info(f"  cd {name}")
-        echo_info(f"  miniautogen engine create default --provider openai --model gpt-4o")
-        echo_info(f"  miniautogen agent create researcher --engine default --role \"Researcher\"")
-        echo_info(f"  miniautogen flow create main --mode workflow")
-        echo_info(f"  miniautogen check")
-        echo_info(f"  miniautogen run main")
+        if not has_engines:
+            echo_info("  miniautogen engine create default --provider openai --model gpt-4o")
+        if not has_agents:
+            echo_info('  miniautogen agent create assistant --engine default --role "Assistant"')
+        if not has_flows:
+            echo_info("  miniautogen flow create main --mode workflow")
+        echo_info("  miniautogen check")
+        if has_agents and has_flows:
+            echo_info("  miniautogen send \"Hello!\"")
+        else:
+            echo_info("  miniautogen run main")
     except FileExistsError:
         echo_error(
             f"Directory '{name}' already exists and is not empty. "

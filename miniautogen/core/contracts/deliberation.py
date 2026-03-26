@@ -1,11 +1,22 @@
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
 
 # --- General deliberation contracts ---
+
+# Suppress Pydantic warning about ResearchOutput.role_name shadowing
+# the property on Contribution. This is intentional: ResearchOutput
+# promotes role_name from a read-only alias to a real field that
+# syncs to participant_id via a model_validator.
+warnings.filterwarnings(
+    "ignore",
+    message='Field name "role_name".*shadows an attribute in parent',
+    category=UserWarning,
+)
 
 
 class Contribution(BaseModel):
