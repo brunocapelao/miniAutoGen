@@ -114,10 +114,41 @@ def create_app(
             allow_headers=["*"],
         )
 
-    # Serve frontend static files (Next.js build output)
-    static_dir = Path(__file__).parent / "static"
+    # Serve frontend static files (Next.js static export)
+    # The console command copies build output to cli/server/static/
+    cli_static_dir = Path(__file__).resolve().parent.parent / "cli" / "server" / "static"
+    server_static_dir = Path(__file__).parent / "static"
+    # Prefer cli/server/static (where console --build copies to), fall back to server/static
+    static_dir = cli_static_dir if cli_static_dir.is_dir() else server_static_dir
     if static_dir.is_dir():
+        from starlette.responses import FileResponse, Response
         from starlette.staticfiles import StaticFiles
-        app.mount("/", StaticFiles(directory=str(static_dir), html=True))
+
+        # Next.js static export generates {page}.html files (not {page}/index.html).
+        # Starlette's StaticFiles(html=True) only looks for index.html in directories.
+        # This catch-all tries {path}.html before falling back to 404.
+        @app.get("/{path:path}")
+        async def serve_frontend(path: str) -> Response:
+            # Try exact file first (e.g., _next/static/...)
+            exact = static_dir / path
+            if exact.is_file():
+                return FileResponse(exact)
+            # Try {path}.html (e.g., /agents -> agents.html)
+            html_file = static_dir / f"{path}.html"
+            if html_file.is_file():
+                return FileResponse(html_file)
+            # Try {path}/index.html (e.g., / -> index.html)
+            index_file = static_dir / path / "index.html"
+            if index_file.is_file():
+                return FileResponse(index_file)
+            # Root index
+            root_index = static_dir / "index.html"
+            if not path and root_index.is_file():
+                return FileResponse(root_index)
+            # 404
+            not_found = static_dir / "404.html"
+            if not_found.is_file():
+                return FileResponse(not_found, status_code=404)
+            return Response("Not Found", status_code=404)
 
     return app
