@@ -23,7 +23,8 @@ Este manual cobre tudo o que você precisa para instalar, configurar e executar 
 13. [Server e gateway](#13-server-e-gateway)
 14. [TUI — dashboard interativo](#14-tui--dashboard-interativo)
 15. [SDK — uso programático](#15-sdk--uso-programático)
-16. [Troubleshooting](#16-troubleshooting)
+16. [Docker — deployment](#16-docker--deployment)
+17. [Troubleshooting](#17-troubleshooting)
 
 ---
 
@@ -685,9 +686,13 @@ rm .miniautogen/agents/researcher/memory/context.json
 | `miniautogen init <nome>` | Criar novo workspace |
 | `miniautogen check` | Validar configuração |
 | `miniautogen run <flow>` | Executar um flow |
+| `miniautogen send "msg"` | Enviar mensagem a um agente (sem flow) |
+| `miniautogen chat <agent>` | Sessão de chat interativo com um agente |
+| `miniautogen status` | Resumo do workspace (agentes, flows, server) |
 | `miniautogen doctor` | Verificar ambiente |
 | `miniautogen dash` | Lançar TUI dashboard |
-| `miniautogen console` | Lançar dashboard web |
+| `miniautogen console` | Lançar dashboard web (CRUD agentes/flows/engines) |
+| `miniautogen daemon` | Gestão do daemon em background |
 | `miniautogen completions <shell>` | Gerar auto-complete |
 
 ### Gestão de recursos
@@ -699,6 +704,7 @@ rm .miniautogen/agents/researcher/memory/context.json
 | `miniautogen flow` | `create`, `list`, `show`, `update`, `delete` |
 | `miniautogen sessions` | `list`, `clean`, `show` [PLANEJADO], `delete` [PLANEJADO], `replay` [PLANEJADO], `export` [PLANEJADO] |
 | `miniautogen server` | `start`, `stop`, `status`, `logs` |
+| `miniautogen daemon` | `start`, `stop`, `restart`, `status`, `logs` |
 
 ### miniautogen init
 
@@ -706,10 +712,100 @@ rm .miniautogen/agents/researcher/memory/context.json
 miniautogen init <nome> [OPTIONS]
 
 Options:
+  --template TEXT    Template do workspace: quickstart | minimal | advanced (default: quickstart)
+  --from-example TEXT  Copiar a partir de um exemplo em examples/
   --model TEXT       Modelo LLM padrão (default: gpt-4o-mini)
   --provider TEXT    Provider padrão (default: openai)
   --no-examples      Não criar agente/tool de exemplo
   --force            Adicionar ficheiros faltantes a diretório existente
+```
+
+Templates disponíveis:
+
+| Template | Conteudo |
+|----------|----------|
+| `quickstart` | Workspace pronto com agente, flow e exemplo funcional |
+| `minimal` | Apenas `miniautogen.yaml` e estrutura base |
+| `advanced` | Workspace completo com multi-agent, deliberation e tools |
+
+Para copiar de um exemplo existente:
+
+```bash
+miniautogen init meu-projeto --from-example code-review
+```
+
+### miniautogen send
+
+Envia uma mensagem a um agente sem criar flow ou run. Ideal para interacoes rapidas.
+
+```bash
+miniautogen send "Explique o que e RAFT" [OPTIONS]
+
+Options:
+  --agent TEXT      Nome do agente (default: primeiro agente configurado)
+  --format TEXT     Formato de output: text | json
+```
+
+Suporta piping via stdin:
+
+```bash
+echo "Resuma este ficheiro" | miniautogen send --agent researcher
+cat README.md | miniautogen send "Analise este conteudo" --agent reviewer
+```
+
+### miniautogen chat
+
+Sessao de chat interativo com um agente. Mantém contexto durante a sessao.
+
+```bash
+miniautogen chat <agent> [OPTIONS]
+```
+
+Comandos disponíveis durante a sessao:
+
+| Comando | Descrição |
+|---------|-----------|
+| `/quit` | Encerrar sessao |
+| `/clear` | Limpar historico da sessao |
+| `/switch <agent>` | Trocar de agente |
+| `/help` | Mostrar ajuda |
+| `/history` | Ver historico de mensagens |
+
+### miniautogen status
+
+Mostra um resumo do workspace actual.
+
+```bash
+miniautogen status [OPTIONS]
+
+Options:
+  --format TEXT    Formato: text | json
+```
+
+Informacoes exibidas:
+- Nome e versao do projecto
+- Estado do servidor (running/stopped)
+- Contagem de agentes, engines e flows configurados
+
+### miniautogen daemon
+
+Gestão do daemon em background. Encapsula operacoes do servidor como conceito de primeira classe.
+
+```bash
+miniautogen daemon <subcommand> [OPTIONS]
+
+Subcommands:
+  start       Iniciar daemon em background
+  stop        Parar daemon
+  restart     Reiniciar daemon
+  status      Ver estado do daemon
+  logs        Ver logs do daemon
+
+Options:
+  --host TEXT      Host para bind (default: 127.0.0.1)
+  --port INT       Porta (default: 8080)
+  --format TEXT    Formato: text | json
+  --follow         Seguir logs em tempo real (apenas para 'logs')
 ```
 
 ### miniautogen run
@@ -997,10 +1093,39 @@ miniautogen dash
 Para quem prefere interface web:
 
 ```bash
+# Modo producao (build estatico)
+miniautogen console --port 8080
+
+# Modo desenvolvimento (hot reload)
 miniautogen console --dev
 ```
 
-O web console oferece as mesmas funcionalidades do TUI Dash, mais visualização de flows com React Flow e trigger de runs via browser.
+O web console oferece CRUD completo para agentes, flows e engines, alem de:
+
+| Pagina | Funcionalidades |
+|--------|----------------|
+| Dashboard (`/`) | Resumo do workspace, contagens, trigger de runs |
+| Agents (`/agents`) | Tabela de agentes, criar/editar/eliminar |
+| Flows (`/flows`) | Cards de flows, criar/editar/eliminar |
+| Runs (`/runs`) | Tabela paginada com status badges, auto-refresh |
+| Logs (`/logs`) | Stream de eventos em tempo real via WebSocket |
+| Settings (`/settings`) | CRUD de engines, configuracao do workspace |
+
+Para mais detalhes, consulte o [Guia do Web Console](web-console.md).
+
+### Docker
+
+O MiniAutoGen suporta deployment via Docker:
+
+```bash
+# Iniciar com docker compose
+docker compose up -d
+
+# Ou directamente
+docker run -v $(pwd):/workspace -e OPENAI_API_KEY=sk-... miniautogen/miniautogen console --host 0.0.0.0
+```
+
+Para mais detalhes, consulte o [Guia de Docker](docker.md).
 
 ---
 
@@ -1114,7 +1239,53 @@ anyio.run(main)
 
 ---
 
-## 16. Troubleshooting
+## 16. Docker — deployment
+
+O MiniAutoGen inclui suporte a Docker com build multi-stage (Node.js + Python).
+
+### Quick start
+
+```bash
+docker compose up -d
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  miniautogen:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+    working_dir: /workspace
+```
+
+### Comandos
+
+```bash
+# Build
+docker compose build
+
+# Start
+docker compose up -d
+
+# Logs
+docker compose logs -f
+
+# Stop
+docker compose down
+```
+
+Para mais detalhes, consulte o [Guia de Docker](docker.md).
+
+---
+
+## 17. Troubleshooting
 
 ### "Flow must have either 'target' or 'mode'"
 

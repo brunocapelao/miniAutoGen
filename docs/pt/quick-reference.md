@@ -138,15 +138,80 @@ Camada unificada de drivers para agentes externos.
 
 Interface de linha de comando baseada em Click.
 
-Comandos:
+16 comandos:
 
-- `init` -- scaffolding de projeto com `miniautogen.yml` e exemplos opcionais
+- `init` -- scaffolding de projeto (templates: quickstart, minimal, advanced)
 - `check` -- validação da configuração do projeto
 - `run` -- execução de flow nomeado em modo headless
+- `send` -- enviar mensagem a um agente
+- `chat` -- chat interativo com um agente
+- `status` -- estado atual do workspace e runs
+- `agent` -- gerenciar agentes (create, list, show)
+- `engine` -- gerenciar engines (create, list, show)
+- `flow` -- gerenciar flows (create, list, show)
 - `sessions list` -- listagem de runs com filtros
 - `sessions clean` -- remoção de runs antigos por idade
+- `server` -- lançar API server
+- `console` -- lançar web dashboard
+- `daemon` -- executar em modo daemon
+- `dash` -- lançar TUI dashboard
+- `doctor` -- diagnóstico do ambiente
+- `completions` -- shell completions
 
 Serviços correspondentes em `cli/services/`: `init_project`, `check_project`, `run_pipeline`, `session_ops`.
+
+---
+
+## API Endpoints
+
+### Agents
+- `GET /api/agents` -- listar agentes
+- `POST /api/agents` -- criar agente
+- `GET /api/agents/:id` -- detalhe do agente
+- `PUT /api/agents/:id` -- atualizar agente
+- `DELETE /api/agents/:id` -- remover agente
+
+### Flows
+- `GET /api/flows` -- listar flows
+- `POST /api/flows` -- criar flow
+- `GET /api/flows/:id` -- detalhe do flow
+- `PUT /api/flows/:id` -- atualizar flow
+- `DELETE /api/flows/:id` -- remover flow
+
+### Engines
+- `GET /api/engines` -- listar engines
+- `POST /api/engines` -- criar engine
+- `GET /api/engines/:id` -- detalhe do engine
+- `PUT /api/engines/:id` -- atualizar engine
+- `DELETE /api/engines/:id` -- remover engine
+
+### Config & Events
+- `GET /api/config` -- configuração geral
+- `GET /api/config/detail` -- configuração detalhada
+- `GET /api/events` -- stream de eventos
+
+### Runs
+- `GET /api/runs` -- listar runs
+- `POST /api/runs` -- trigger de run
+
+---
+
+## Web Console Pages
+
+| Rota | Descrição |
+|------|-----------|
+| `/` | Dashboard principal |
+| `/agents` | Lista de agentes |
+| `/agents/new` | Criar agente |
+| `/agents/:id/edit` | Editar agente |
+| `/flows` | Lista de flows |
+| `/flows/new` | Criar flow |
+| `/flows/:id/edit` | Editar flow |
+| `/engines` | Lista de engines |
+| `/runs` | Lista de runs |
+| `/settings` | Editor de configurações |
+| `/logs` | Visualizador de logs |
+| `/approvals` | Human-in-the-loop approvals |
 
 ---
 

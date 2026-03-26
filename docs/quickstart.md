@@ -11,9 +11,17 @@ pip install miniautogen
 ## 2. Create a Project
 
 ```bash
-miniautogen init my-project
+miniautogen init my-project --template quickstart
 cd my-project
 ```
+
+Three templates are available:
+
+| Template | Description |
+|----------|-------------|
+| **quickstart** | Ready-to-run project with a pre-configured agent and flow |
+| **minimal** | Bare minimum structure for experienced users |
+| **advanced** | Full-featured scaffold with multiple agents, flows, and policies |
 
 This scaffolds the following structure:
 
@@ -173,6 +181,24 @@ Then run a flow:
 miniautogen run main
 ```
 
+You can also send a single message to an agent directly:
+
+```bash
+miniautogen send "Hello, world!" --agent assistant
+```
+
+Or start an interactive chat session:
+
+```bash
+miniautogen chat --agent assistant
+```
+
+Check the workspace status at any time:
+
+```bash
+miniautogen status
+```
+
 ## 7. What Happens Under the Hood
 
 When you run a flow, MiniAutoGen orchestrates execution through a layered
@@ -197,11 +223,37 @@ architecture:
 5. **Results** -- each run produces a `RunResult` with the final state,
    collected outputs from all agents, and any errors encountered.
 
-## 8. Next Steps
+## 8. Web Console
+
+Launch the web console for a full GUI experience with CRUD management of
+agents, flows, and engines, plus settings editor, log viewer, and run tracking:
+
+```bash
+miniautogen console
+```
+
+Open `http://localhost:8080` in your browser.
+
+## 9. Docker Quick Start
+
+Run MiniAutoGen in a container:
+
+```bash
+docker-compose up
+```
+
+This starts the API server and web console. See the included `Dockerfile` and
+`docker-compose.yml` for configuration options.
+
+## 10. Next Steps
 
 - **`miniautogen dash`** -- launch the TUI dashboard to monitor and manage
   agents, flows, and runs visually.
+- **`miniautogen console`** -- launch the web console with full CRUD, settings,
+  and log viewer.
 - **`miniautogen sessions`** -- list and inspect past run sessions.
+- **`miniautogen status`** -- check workspace and run status.
+- **`miniautogen doctor`** -- diagnose your environment setup.
 - **`miniautogen check`** -- validate your project at any time.
 - Browse the [architecture docs](pt/architecture/README.md) for deeper
   technical details.

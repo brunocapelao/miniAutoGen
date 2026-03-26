@@ -77,7 +77,7 @@ O Flow define **como** múltiplos Agents colaboram. Quatro modos de coordenaçã
 | Coordenação | Grafo livre (boilerplate pesado) | 2 processos (não-determinístico) | 1 modo (GroupChat, overhead O(n×m)) | **4 modos + composição** |
 | Type safety | TypedDict | Nenhum | Parcial | **Protocols + Pydantic** |
 | Middleware | Callbacks (observacionais) | Nenhum | Nenhum | **Interceptors (transformativos)** |
-| Observabilidade | Via estado | Básico | Básico | **69 eventos tipados** |
+| Observabilidade | Via estado | Básico | Básico | **72 eventos tipados** |
 | Tolerância a falhas | Checkpoint recovery | Nenhum | Nenhum | **Supervision trees + circuit breakers** |
 | Idempotência | Nenhum | Nenhum | Nenhum | **EffectJournal** |
 | Durable execution | Best-in-class | Nenhum | Efémero | Roadmap |
@@ -140,6 +140,64 @@ Progressive skill loading + filesystem-first state + middleware pipeline reduz c
 AutoGen tem 1 modo. CrewAI tem 2 (não-determinísticos). DeerFlow tem 1. Open SWE tem 1. LangGraph tem grafos livres sem type safety forte. **Nenhum combina múltiplos modos + Protocols runtime-checkable.**
 
 > Análises completas: [Bit Office](../../.specs/analysis-bit-office-vs-miniautogen.md) · [5 Frameworks](../../.specs/analysis-5-frameworks-one-pattern.md) · [Deep Dive Concorrentes](../../.specs/analysis-competitors-deep-dive.md) · [Open SWE](../../.specs/analysis-open-swe.md)
+
+---
+
+## CLI (16 comandos)
+
+| Comando | Descrição |
+|---------|-----------|
+| `miniautogen init` | Criar novo workspace (templates: quickstart, minimal, advanced) |
+| `miniautogen check` | Validar configuração |
+| `miniautogen run` | Executar um flow |
+| `miniautogen send` | Enviar mensagem a um agente |
+| `miniautogen chat` | Chat interativo com um agente |
+| `miniautogen status` | Estado atual do workspace e runs |
+| `miniautogen agent` | Gerenciar agentes (create, list, show) |
+| `miniautogen engine` | Gerenciar engines (create, list, show) |
+| `miniautogen flow` | Gerenciar flows (create, list, show) |
+| `miniautogen sessions` | Gerenciar sessões de execução |
+| `miniautogen server` | Lançar API server |
+| `miniautogen console` | Lançar web dashboard |
+| `miniautogen daemon` | Executar em modo daemon |
+| `miniautogen dash` | Lançar TUI dashboard |
+| `miniautogen doctor` | Diagnóstico do ambiente |
+| `miniautogen completions` | Shell completions |
+
+---
+
+## Web Console
+
+Dashboard web para observação e controle de flows em tempo real:
+
+- Dashboard com contadores de agents, flows e runs
+- CRUD completo de agents, flows e engines
+- Settings editor e log viewer integrados
+- Visualização de flows com React Flow
+- Trigger de runs via interface web com run tracking
+- Event feed em tempo real (WebSocket com fallback para polling)
+- Human-in-the-loop (approval list e modal)
+
+```bash
+miniautogen console --port 8080
+```
+
+---
+
+## Docker
+
+```bash
+docker-compose up
+```
+
+Dockerfile e docker-compose.yml incluídos para deploy containerizado.
+
+---
+
+## Testes
+
+- 3,144+ testes Python (pytest + AnyIO)
+- 134 testes frontend (Vitest)
 
 ---
 
