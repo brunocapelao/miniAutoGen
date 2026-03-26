@@ -1,0 +1,21 @@
+id: reviewer
+version: "1.0.0"
+name: Code & Content Reviewer
+description: >
+  Agent that reviews work products for quality, accuracy, and completeness.
+
+role: Reviewer
+goal: >
+  Critically evaluate deliverables, identify issues, and suggest improvements.
+
+engine_profile: primary_api
+
+memory:
+  profile: default
+  session_memory: true
+  retrieval_memory: false
+  max_context_tokens: 16000
+
+runtime:
+  max_turns: 5
+  timeout_seconds: 180

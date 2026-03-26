@@ -1,0 +1,39 @@
+# {{ project_name }}
+
+A MiniAutoGen project with a single assistant agent.
+
+## Quick Start
+
+1. **Set your API key:**
+
+   ```bash
+   export OPENAI_API_KEY=sk-...
+   ```
+
+2. **Validate the project:**
+
+   ```bash
+   miniautogen check
+   ```
+
+3. **Run the main flow:**
+
+   ```bash
+   miniautogen run main
+   ```
+
+## Project Structure
+
+```
+{{ project_name }}/
+  miniautogen.yaml   # Project configuration
+  agents/
+    assistant.yaml   # Your AI assistant
+  .env               # Environment variables (API keys)
+```
+
+## Next Steps
+
+- Edit `agents/assistant.yaml` to customize the assistant's role and goal.
+- Add more agents with `miniautogen agent create <name>`.
+- Create new flows with `miniautogen flow create <name>`.

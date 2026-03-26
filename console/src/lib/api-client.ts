@@ -19,6 +19,18 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
   return resp.json();
 }
 
+function post<T>(path: string, data: unknown): Promise<T> {
+  return apiFetch<T>(path, { method: 'POST', body: JSON.stringify(data) });
+}
+
+function put<T>(path: string, data: unknown): Promise<T> {
+  return apiFetch<T>(path, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+function del<T>(path: string): Promise<T> {
+  return apiFetch<T>(path, { method: 'DELETE' });
+}
+
 export const api = {
   getWorkspace: () => apiFetch<Workspace>('/workspace'),
   getAgents: () => apiFetch<Agent[]>('/agents'),
@@ -42,4 +54,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ decision, reason }),
     }),
+
+  // Agent CRUD
+  createAgent: (data: { name: string; role: string; goal: string; engine_profile: string; temperature?: number }) =>
+    post<Agent>('/agents', data),
+  updateAgent: (name: string, data: Record<string, unknown>) =>
+    put<Agent>(`/agents/${encodeURIComponent(name)}`, data),
+  deleteAgent: (name: string) =>
+    del<{ status: string }>(`/agents/${encodeURIComponent(name)}`),
+
+  // Flow CRUD
+  createFlow: (data: { name: string; mode?: string; participants?: string[]; leader?: string; target?: string }) =>
+    post<Flow>('/flows', data),
+  updateFlow: (name: string, data: Record<string, unknown>) =>
+    put<Flow>(`/flows/${encodeURIComponent(name)}`, data),
+  deleteFlow: (name: string) =>
+    del<{ status: string }>(`/flows/${encodeURIComponent(name)}`),
 };

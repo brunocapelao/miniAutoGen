@@ -36,10 +36,10 @@ class TestInitCheckIntegration:
     def test_default_project_passes_all_checks(
         self, tmp_path: Path, monkeypatch,
     ) -> None:
-        """Default scaffold (with examples) passes every check."""
+        """Legacy scaffold (with examples) passes every check."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-        project_dir = scaffold_project("testproject", tmp_path)
+        project_dir = scaffold_project("testproject", tmp_path, template="project")
         results = _run_check(project_dir, monkeypatch)
 
         failures = [r for r in results if not r.passed]
@@ -51,10 +51,10 @@ class TestInitCheckIntegration:
     def test_default_project_validates_all_categories(
         self, tmp_path: Path, monkeypatch,
     ) -> None:
-        """Default scaffold produces results for all expected check areas."""
+        """Legacy scaffold produces results for all expected check areas."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-        project_dir = scaffold_project("testproject", tmp_path)
+        project_dir = scaffold_project("testproject", tmp_path, template="project")
         results = _run_check(project_dir, monkeypatch)
 
         result_names = {r.name for r in results}
@@ -83,7 +83,7 @@ class TestInitCheckIntegration:
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
         project_dir = scaffold_project(
-            "noexamples", tmp_path, include_examples=False,
+            "noexamples", tmp_path, include_examples=False, template="project",
         )
         results = _run_check(project_dir, monkeypatch)
 
@@ -105,6 +105,7 @@ class TestInitCheckIntegration:
             tmp_path,
             model="gemini-2.5-pro",
             provider="gemini",
+            template="project",
         )
         results = _run_check(project_dir, monkeypatch)
 
@@ -118,10 +119,10 @@ class TestInitCheckIntegration:
     def test_no_warnings_in_default_project(
         self, tmp_path: Path, monkeypatch,
     ) -> None:
-        """Default scaffold should not produce warnings."""
+        """Legacy scaffold should not produce warnings."""
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
 
-        project_dir = scaffold_project("testproject", tmp_path)
+        project_dir = scaffold_project("testproject", tmp_path, template="project")
         results = _run_check(project_dir, monkeypatch)
 
         warnings = [r for r in results if r.warning]
@@ -136,7 +137,7 @@ class TestInitCheckIntegration:
         """Without OPENAI_API_KEY, environment check should fail."""
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
-        project_dir = scaffold_project("testproject", tmp_path)
+        project_dir = scaffold_project("testproject", tmp_path, template="project")
         results = _run_check(project_dir, monkeypatch)
 
         env_results = [r for r in results if r.name.startswith("env:")]

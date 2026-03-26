@@ -1,0 +1,21 @@
+id: assistant
+version: "1.0.0"
+name: Helpful Assistant
+description: >
+  A friendly AI assistant that helps with questions and tasks.
+
+role: Assistant
+goal: >
+  Help users by answering questions clearly and concisely.
+
+engine_profile: default_api
+
+memory:
+  profile: default
+  session_memory: true
+  retrieval_memory: false
+  max_context_tokens: 8000
+
+runtime:
+  max_turns: 5
+  timeout_seconds: 120

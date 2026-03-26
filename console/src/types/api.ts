@@ -11,8 +11,10 @@ export type Workspace = {
 export type Agent = {
   name: string;
   role: string;
+  goal?: string;
   engine_type: string;
   engine_profile?: string;
+  temperature?: number;
 };
 
 export type Flow = {

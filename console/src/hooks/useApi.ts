@@ -89,3 +89,69 @@ export function useResolveApproval(runId: string) {
     },
   });
 }
+
+export function useCreateAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; role: string; goal: string; engine_profile: string; temperature?: number }) =>
+      api.createAgent(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+}
+
+export function useUpdateAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: Record<string, unknown> }) =>
+      api.updateAgent(name, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+      queryClient.invalidateQueries({ queryKey: ['agent', variables.name] });
+    },
+  });
+}
+
+export function useDeleteAgent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.deleteAgent(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agents'] });
+    },
+  });
+}
+
+export function useCreateFlow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; mode?: string; participants?: string[]; leader?: string; target?: string }) =>
+      api.createFlow(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flows'] });
+    },
+  });
+}
+
+export function useUpdateFlow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: Record<string, unknown> }) =>
+      api.updateFlow(name, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['flows'] });
+      queryClient.invalidateQueries({ queryKey: ['flow', variables.name] });
+    },
+  });
+}
+
+export function useDeleteFlow() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.deleteFlow(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['flows'] });
+    },
+  });
+}

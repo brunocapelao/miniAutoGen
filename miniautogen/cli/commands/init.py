@@ -34,12 +34,25 @@ from miniautogen.cli.services.init_project import scaffold_project
     default=False,
     help="Add missing files to existing non-empty directory.",
 )
+@click.option(
+    "--template",
+    type=click.Choice(["project", "quickstart", "minimal", "advanced"]),
+    default="project",
+    help="Project template variant.",
+)
+@click.option(
+    "--from-example",
+    default=None,
+    help="Initialize from an existing example project.",
+)
 def init_command(
     name: str,
     model: str,
     provider: str,
     no_examples: bool,
     force: bool,
+    template: str,
+    from_example: str | None,
 ) -> None:
     """Create a new MiniAutoGen project."""
     try:
@@ -50,6 +63,8 @@ def init_command(
             provider=provider,
             include_examples=not no_examples,
             force=force,
+            template=template,
+            from_example=from_example,
         )
         echo_success(f"Workspace created: {project_dir}\n")
 

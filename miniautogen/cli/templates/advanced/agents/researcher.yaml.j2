@@ -1,0 +1,21 @@
+id: researcher
+version: "1.0.0"
+name: Research Specialist
+description: >
+  Agent specialized in research, source validation, and structured synthesis.
+
+role: Research Specialist
+goal: >
+  Investigate topics, locate reliable sources, and produce structured summaries.
+
+engine_profile: primary_api
+
+memory:
+  profile: default
+  session_memory: true
+  retrieval_memory: false
+  max_context_tokens: 16000
+
+runtime:
+  max_turns: 10
+  timeout_seconds: 300

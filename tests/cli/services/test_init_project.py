@@ -6,13 +6,13 @@ from miniautogen.cli.services.init_project import scaffold_project
 
 
 def test_scaffold_creates_directory(tmp_path) -> None:
-    result = scaffold_project("myproject", tmp_path)
+    result = scaffold_project("myproject", tmp_path, template="project")
     assert result.exists()
     assert result.name == "myproject"
 
 
 def test_scaffold_creates_config(tmp_path) -> None:
-    result = scaffold_project("myproject", tmp_path)
+    result = scaffold_project("myproject", tmp_path, template="project")
     config = result / "miniautogen.yaml"
     assert config.is_file()
     content = config.read_text()
@@ -22,7 +22,7 @@ def test_scaffold_creates_config(tmp_path) -> None:
 
 
 def test_scaffold_creates_full_structure(tmp_path) -> None:
-    result = scaffold_project("myproject", tmp_path)
+    result = scaffold_project("myproject", tmp_path, template="project")
     assert (result / "agents" / "researcher.yaml").is_file()
     assert (result / "skills" / "example" / "SKILL.md").is_file()
     assert (result / "skills" / "example" / "skill.yaml").is_file()
@@ -38,6 +38,7 @@ def test_scaffold_no_examples(tmp_path) -> None:
         "myproject",
         tmp_path,
         include_examples=False,
+        template="project",
     )
     assert (result / "miniautogen.yaml").is_file()
     assert (result / "pipelines" / "main.py").is_file()
@@ -52,6 +53,7 @@ def test_scaffold_custom_model_provider(tmp_path) -> None:
         tmp_path,
         model="gemini-2.5-pro",
         provider="gemini",
+        template="project",
     )
     content = (result / "miniautogen.yaml").read_text()
     assert "gemini-2.5-pro" in content
@@ -59,7 +61,7 @@ def test_scaffold_custom_model_provider(tmp_path) -> None:
 
 
 def test_scaffold_creates_gitignore(tmp_path) -> None:
-    result = scaffold_project("myproject", tmp_path)
+    result = scaffold_project("myproject", tmp_path, template="project")
     assert (result / ".gitignore").is_file()
 
 
@@ -75,7 +77,7 @@ def test_scaffold_force_preserves_existing(tmp_path) -> None:
     d = tmp_path / "myproject"
     d.mkdir()
     (d / "miniautogen.yaml").write_text("custom: true\n")
-    result = scaffold_project("myproject", tmp_path, force=True)
+    result = scaffold_project("myproject", tmp_path, force=True, template="project")
     assert (result / "miniautogen.yaml").read_text() == "custom: true\n"
     assert (result / "pipelines" / "main.py").is_file()
 

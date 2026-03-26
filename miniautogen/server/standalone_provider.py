@@ -46,6 +46,28 @@ class StandaloneProvider:
     def get_pipeline(self, name: str) -> dict[str, Any]:
         return self._base.get_pipeline(name)
 
+    # -- CRUD: Agents ----------------------------------------------------------
+
+    def create_agent(self, name: str, *, role: str, goal: str, engine_profile: str, temperature: float | None = None) -> dict[str, Any]:
+        return self._base.create_agent(name, role=role, goal=goal, engine_profile=engine_profile, temperature=temperature)
+
+    def update_agent(self, name: str, **updates: Any) -> dict[str, Any]:
+        return self._base.update_agent(name, **updates)
+
+    def delete_agent(self, name: str) -> dict[str, Any]:
+        return self._base.delete_agent(name)
+
+    # -- CRUD: Pipelines -------------------------------------------------------
+
+    def create_pipeline(self, name: str, *, mode: str = "workflow", participants: list[str] | None = None, leader: str | None = None, target: str | None = None) -> dict[str, Any]:
+        return self._base.create_pipeline(name, mode=mode, participants=participants, leader=leader, target=target)
+
+    def update_pipeline(self, name: str, **updates: Any) -> dict[str, Any]:
+        return self._base.update_pipeline(name, **updates)
+
+    def delete_pipeline(self, name: str) -> dict[str, Any]:
+        return self._base.delete_pipeline(name)
+
     # -- In-memory compatibility (Sprint 1 interface) -------------------------
 
     def get_runs(self) -> list[dict[str, Any]]:

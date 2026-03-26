@@ -1,0 +1,31 @@
+project:
+  name: hello-world
+  version: "0.1.0"
+
+defaults:
+  engine: default_api
+  memory_profile: default
+
+engines:
+  default_api:
+    kind: api
+    provider: openai
+    model: gpt-4o-mini
+    temperature: 0.7
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
+
+flows:
+  main:
+    mode: workflow
+    participants:
+      - assistant
+
+database:
+  url: sqlite+aiosqlite:///miniautogen.db

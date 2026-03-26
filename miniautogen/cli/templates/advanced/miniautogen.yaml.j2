@@ -1,0 +1,44 @@
+project:
+  name: "{{ project_name }}"
+  version: "0.1.0"
+
+defaults:
+  engine: primary_api
+  memory_profile: default
+
+engines:
+  primary_api:
+    kind: {{ "cli" if provider in ("gemini-cli", "claude-code", "codex-cli") else "api" }}
+    provider: "{{ provider }}"
+    model: "{{ model }}"
+    temperature: 0.2
+
+  creative_api:
+    kind: {{ "cli" if provider in ("gemini-cli", "claude-code", "codex-cli") else "api" }}
+    provider: "{{ provider }}"
+    model: "{{ model }}"
+    temperature: 0.8
+
+memory_profiles:
+  default:
+    session: true
+    retrieval:
+      enabled: false
+    compaction:
+      enabled: false
+
+flows:
+  research:
+    mode: workflow
+    participants:
+      - researcher
+      - reviewer
+
+  design:
+    mode: deliberation
+    participants:
+      - architect
+      - reviewer
+
+database:
+  url: sqlite+aiosqlite:///miniautogen.db

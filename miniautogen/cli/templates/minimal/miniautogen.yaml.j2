@@ -1,0 +1,18 @@
+project:
+  name: "{{ project_name }}"
+  version: "0.1.0"
+
+defaults:
+  engine: default_api
+
+engines:
+  default_api:
+    kind: {{ "cli" if provider in ("gemini-cli", "claude-code", "codex-cli") else "api" }}
+    provider: "{{ provider }}"
+    model: "{{ model }}"
+    temperature: 0.2
+
+flows: {}
+
+database:
+  url: sqlite+aiosqlite:///miniautogen.db

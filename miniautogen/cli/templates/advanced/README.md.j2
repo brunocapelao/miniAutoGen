@@ -1,0 +1,60 @@
+# {{ project_name }}
+
+A MiniAutoGen project with multiple agents and flows.
+
+## Overview
+
+This project includes:
+
+- **3 Agents:** Researcher, Reviewer, and Architect
+- **2 Engines:** Primary (low temperature) and Creative (high temperature)
+- **2 Flows:** Research (workflow) and Design (deliberation)
+
+## Quick Start
+
+1. **Set your API key:**
+
+   ```bash
+   export OPENAI_API_KEY=sk-...
+   ```
+
+2. **Validate the project:**
+
+   ```bash
+   miniautogen check
+   ```
+
+3. **Run a flow:**
+
+   ```bash
+   miniautogen run research
+   miniautogen run design
+   ```
+
+## Project Structure
+
+```
+{{ project_name }}/
+  miniautogen.yaml     # Project configuration (2 engines, 2 flows)
+  agents/
+    researcher.yaml    # Research specialist agent
+    reviewer.yaml      # Code & content reviewer agent
+    architect.yaml     # System architect agent
+  .env                 # Environment variables (API keys)
+```
+
+## Flows
+
+### Research (Workflow)
+
+A sequential workflow where the researcher investigates a topic and the reviewer validates the findings.
+
+### Design (Deliberation)
+
+A deliberation flow where the architect proposes designs and the reviewer challenges assumptions.
+
+## Customization
+
+- Edit agent YAML files to adjust roles, goals, and capabilities.
+- Modify engine settings in `miniautogen.yaml` for different providers/models.
+- Create additional flows with `miniautogen flow create <name>`.

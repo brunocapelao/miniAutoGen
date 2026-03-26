@@ -54,3 +54,35 @@ class ConsoleDataProvider(Protocol):
     ) -> tuple[list[dict[str, Any]], int]:
         """Query events for a run from persistent store. Returns (items, total)."""
         ...
+
+    # -- CRUD: Agents ----------------------------------------------------------
+
+    def create_agent(
+        self,
+        name: str,
+        *,
+        role: str,
+        goal: str,
+        engine_profile: str,
+        temperature: float | None = None,
+    ) -> dict[str, Any]: ...
+
+    def update_agent(self, name: str, **updates: Any) -> dict[str, Any]: ...
+
+    def delete_agent(self, name: str) -> dict[str, Any]: ...
+
+    # -- CRUD: Pipelines -------------------------------------------------------
+
+    def create_pipeline(
+        self,
+        name: str,
+        *,
+        mode: str = "workflow",
+        participants: list[str] | None = None,
+        leader: str | None = None,
+        target: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def update_pipeline(self, name: str, **updates: Any) -> dict[str, Any]: ...
+
+    def delete_pipeline(self, name: str) -> dict[str, Any]: ...
