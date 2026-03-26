@@ -115,6 +115,35 @@ class DashDataProvider:
             logger.exception("Failed to load project config from %s", self._config_path)
             return {}
 
+    def get_config_detail(self) -> dict[str, Any]:
+        """Get detailed config for settings editor.
+
+        Returns engines, defaults, database, project metadata
+        in a structure suitable for the settings page.
+        """
+        if not self._config_path.is_file():
+            return {}
+        try:
+            config = load_config(self._config_path)
+            engines = self.get_engines()
+            return {
+                "project": {
+                    "name": config.project.name,
+                    "version": config.project.version,
+                },
+                "defaults": {
+                    "engine": config.defaults.engine,
+                    "memory_profile": config.defaults.memory_profile,
+                },
+                "database": {
+                    "url": config.database.url if config.database else "(none)",
+                },
+                "engines": engines,
+            }
+        except Exception:
+            logger.exception("Failed to load config detail from %s", self._config_path)
+            return {}
+
     def get_engines(self) -> list[dict[str, Any]]:
         """List all engine profiles (explicit YAML + discovered).
 

@@ -93,3 +93,11 @@ cli.add_command(send_command)
 from miniautogen.cli.commands.chat import chat_command  # noqa: E402
 
 cli.add_command(chat_command)
+
+from miniautogen.cli.commands.status import status_command  # noqa: E402
+
+cli.add_command(status_command)
+
+from miniautogen.cli.commands.daemon import daemon_group  # noqa: E402
+
+cli.add_command(daemon_group)

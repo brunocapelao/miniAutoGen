@@ -1,4 +1,4 @@
-import type { Workspace, Agent, Flow, RunSummary, RunEvent, Approval, Page } from '@/types/api';
+import type { Workspace, Agent, Flow, Engine, RunSummary, RunEvent, Approval, Page } from '@/types/api';
 
 // In production (static export served by FastAPI), use relative URL (same origin).
 // In development (next dev), use NEXT_PUBLIC_API_URL env var.
@@ -62,6 +62,28 @@ export const api = {
     put<Agent>(`/agents/${encodeURIComponent(name)}`, data),
   deleteAgent: (name: string) =>
     del<{ status: string }>(`/agents/${encodeURIComponent(name)}`),
+
+  // Engine CRUD
+  getEngines: () => apiFetch<Engine[]>('/engines'),
+  getEngine: (name: string) => apiFetch<Engine>(`/engines/${encodeURIComponent(name)}`),
+  createEngine: (data: { name: string; provider: string; model: string; kind?: string; temperature?: number; api_key_env?: string; endpoint?: string }) =>
+    post<Engine>('/engines', data),
+  updateEngine: (name: string, data: Record<string, unknown>) =>
+    put<Engine>(`/engines/${encodeURIComponent(name)}`, data),
+  deleteEngine: (name: string) =>
+    del<{ status: string }>(`/engines/${encodeURIComponent(name)}`),
+
+  // Events
+  fetchEvents: (params?: { limit?: number; type?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', String(params.limit));
+    if (params?.type) query.set('type', params.type);
+    const qs = query.toString();
+    return apiFetch<RunEvent[]>(`/events${qs ? `?${qs}` : ''}`);
+  },
+
+  // Config
+  getConfigDetail: () => apiFetch<Record<string, unknown>>('/config/detail'),
 
   // Flow CRUD
   createFlow: (data: { name: string; mode?: string; participants?: string[]; leader?: string; target?: string }) =>

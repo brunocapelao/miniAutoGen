@@ -17,10 +17,14 @@ from miniautogen.gateway.security import verify_api_key
 from miniautogen.server.provider_protocol import ConsoleDataProvider
 from miniautogen.server.rate_limit import create_console_limiter
 from miniautogen.server.routes.agents import agents_router
+from miniautogen.server.routes.config import config_router
+from miniautogen.server.routes.engines import engines_router
 from miniautogen.server.routes.flows import flows_router
 from miniautogen.server.routes.runs import runs_router
 from miniautogen.server.routes.workspace import workspace_router
-from miniautogen.server.ws import WebSocketEventSink, ws_router
+from miniautogen.server.event_broadcaster import GlobalEventBroadcaster
+from miniautogen.server.routes.events import events_router
+from miniautogen.server.ws import WebSocketEventSink, global_events_router, ws_router
 
 logger = logging.getLogger(__name__)
 
@@ -67,17 +71,27 @@ def create_app(
     if mode == "embedded":
         event_sink = WebSocketEventSink()
 
+    # Global event broadcaster (always available)
+    broadcaster = GlobalEventBroadcaster()
+    app.state.event_broadcaster = broadcaster
+
     # Auth dependency applied to all API routes
     auth_deps = [Depends(verify_api_key)]
 
     # Routes (event_sink must be created before runs_router)
     app.include_router(workspace_router(provider), dependencies=auth_deps)
     app.include_router(agents_router(provider), dependencies=auth_deps)
+    app.include_router(engines_router(provider), dependencies=auth_deps)
     app.include_router(flows_router(provider), dependencies=auth_deps)
+    app.include_router(config_router(provider), dependencies=auth_deps)
     app.include_router(runs_router(provider, event_sink=event_sink, mode=mode), dependencies=auth_deps)
+    app.include_router(events_router(), dependencies=auth_deps)
 
     if event_sink is not None:
         app.include_router(ws_router(event_sink))
+
+    # Global events WebSocket (no auth — WebSocket clients handle auth differently)
+    app.include_router(global_events_router(broadcaster))
 
     # Store event_sink on app for CLI integration
     app.state.event_sink = event_sink

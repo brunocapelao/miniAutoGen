@@ -17,6 +17,15 @@ export type Agent = {
   temperature?: number;
 };
 
+export type Engine = {
+  name: string;
+  provider: string;
+  model: string;
+  kind?: string;
+  temperature?: number;
+  source?: string;
+};
+
 export type Flow = {
   name: string;
   mode: string;

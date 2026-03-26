@@ -86,3 +86,35 @@ class ConsoleDataProvider(Protocol):
     def update_pipeline(self, name: str, **updates: Any) -> dict[str, Any]: ...
 
     def delete_pipeline(self, name: str) -> dict[str, Any]: ...
+
+    # -- CRUD: Engines ---------------------------------------------------------
+
+    def get_engines(self) -> list[dict[str, Any]]: ...
+
+    def get_engine(self, name: str) -> dict[str, Any]: ...
+
+    def create_engine(
+        self,
+        name: str,
+        *,
+        provider: str,
+        model: str,
+        kind: str = "api",
+        temperature: float = 0.2,
+        api_key_env: str | None = None,
+        endpoint: str | None = None,
+    ) -> dict[str, Any]: ...
+
+    def update_engine(self, name: str, **updates: Any) -> dict[str, Any]: ...
+
+    def delete_engine(self, name: str) -> dict[str, Any]: ...
+
+    # -- Config: Read-only view ------------------------------------------------
+
+    def get_config_detail(self) -> dict[str, Any]:
+        """Get detailed config for settings editor.
+
+        Unlike get_config() which returns a summary, this returns
+        the full structure needed for the settings editor.
+        """
+        ...

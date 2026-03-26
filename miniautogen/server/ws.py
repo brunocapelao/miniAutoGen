@@ -11,6 +11,7 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from miniautogen.core.contracts.events import ExecutionEvent
 from miniautogen.core.events.event_sink import EventSink
+from miniautogen.server.event_broadcaster import GlobalEventBroadcaster
 
 logger = logging.getLogger(__name__)
 
@@ -107,5 +108,32 @@ def ws_router(event_sink: WebSocketEventSink) -> APIRouter:
                 await websocket.close(code=1011, reason="Internal error")
             except Exception:
                 pass
+
+    return router
+
+
+def global_events_router(broadcaster: GlobalEventBroadcaster) -> APIRouter:
+    """Create a router for global event WebSocket streaming."""
+    router = APIRouter(tags=["websocket"])
+
+    @router.websocket("/ws/events")
+    async def global_events_ws(websocket: WebSocket) -> None:
+        """WebSocket endpoint for global event streaming."""
+        await websocket.accept()
+        queue = broadcaster.subscribe()
+        try:
+            while True:
+                event = await queue.get()
+                await websocket.send_json(event)
+        except WebSocketDisconnect:
+            pass
+        except Exception as exc:
+            logger.warning("Global events WebSocket error: %s", exc)
+            try:
+                await websocket.close(code=1011, reason="Internal error")
+            except Exception:
+                pass
+        finally:
+            broadcaster.unsubscribe(queue)
 
     return router

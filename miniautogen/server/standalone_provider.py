@@ -57,6 +57,28 @@ class StandaloneProvider:
     def delete_agent(self, name: str) -> dict[str, Any]:
         return self._base.delete_agent(name)
 
+    # -- CRUD: Engines ---------------------------------------------------------
+
+    def get_engines(self) -> list[dict[str, Any]]:
+        return self._base.get_engines()
+
+    def get_engine(self, name: str) -> dict[str, Any]:
+        return self._base.get_engine(name)
+
+    def create_engine(self, name: str, *, provider: str, model: str, kind: str = "api", temperature: float = 0.2, api_key_env: str | None = None, endpoint: str | None = None) -> dict[str, Any]:
+        return self._base.create_engine(name, provider=provider, model=model, kind=kind, temperature=temperature, api_key_env=api_key_env, endpoint=endpoint)
+
+    def update_engine(self, name: str, **updates: Any) -> dict[str, Any]:
+        return self._base.update_engine(name, **updates)
+
+    def delete_engine(self, name: str) -> dict[str, Any]:
+        return self._base.delete_engine(name)
+
+    # -- Config: Read-only view ------------------------------------------------
+
+    def get_config_detail(self) -> dict[str, Any]:
+        return self._base.get_config_detail()
+
     # -- CRUD: Pipelines -------------------------------------------------------
 
     def create_pipeline(self, name: str, *, mode: str = "workflow", participants: list[str] | None = None, leader: str | None = None, target: str | None = None) -> dict[str, Any]:

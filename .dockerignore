@@ -1,0 +1,13 @@
+.git
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+node_modules
+console/node_modules
+.miniautogen
+*.db
+.env
+docs/
+tests/
+examples/

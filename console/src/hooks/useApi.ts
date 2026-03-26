@@ -90,6 +90,61 @@ export function useResolveApproval(runId: string) {
   });
 }
 
+export function useEngines() {
+  return useQuery({
+    queryKey: ['engines'],
+    queryFn: api.getEngines,
+  });
+}
+
+export function useEngine(name: string) {
+  return useQuery({
+    queryKey: ['engine', name],
+    queryFn: () => api.getEngine(name),
+    enabled: !!name,
+  });
+}
+
+export function useCreateEngine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { name: string; provider: string; model: string; kind?: string; temperature?: number; api_key_env?: string; endpoint?: string }) =>
+      api.createEngine(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['engines'] });
+    },
+  });
+}
+
+export function useUpdateEngine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, data }: { name: string; data: Record<string, unknown> }) =>
+      api.updateEngine(name, data),
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['engines'] });
+      queryClient.invalidateQueries({ queryKey: ['engine', variables.name] });
+    },
+  });
+}
+
+export function useDeleteEngine() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api.deleteEngine(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['engines'] });
+    },
+  });
+}
+
+export function useConfigDetail() {
+  return useQuery({
+    queryKey: ['configDetail'],
+    queryFn: api.getConfigDetail,
+  });
+}
+
 export function useCreateAgent() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -1,0 +1,14 @@
+version: "3.8"
+services:
+  miniautogen:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./workspace:/workspace
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+    working_dir: /workspace
+    restart: unless-stopped
