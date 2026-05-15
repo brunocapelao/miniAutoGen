@@ -19,9 +19,10 @@ from miniautogen.backends.models import (
     StartSessionRequest,
     StartSessionResponse,
 )
+from miniautogen.core.contracts.agent_driver import AgentDriverProtocol
 
 
-class AgentDriver(ABC):
+class AgentDriver(ABC, AgentDriverProtocol):
     """Unified interface for external agent backends."""
 
     @abstractmethod

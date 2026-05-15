@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from typing import AsyncIterator, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, AsyncIterator, Protocol, runtime_checkable
 
-from miniautogen.backends.models import (
-    AgentEvent,
-    ArtifactRef,
-    BackendCapabilities,
-    CancelTurnRequest,
-    SendTurnRequest,
-    StartSessionRequest,
-    StartSessionResponse,
-)
+if TYPE_CHECKING:
+    from miniautogen.backends.models import (
+        AgentEvent,
+        ArtifactRef,
+        BackendCapabilities,
+        CancelTurnRequest,
+        SendTurnRequest,
+        StartSessionRequest,
+        StartSessionResponse,
+    )
 
 
 @runtime_checkable
