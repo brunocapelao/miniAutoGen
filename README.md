@@ -31,10 +31,10 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 - `PipelineRunner` como runtime oficial com timeout, checkpoint e lifecycle de eventos
 - Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
 - 5 stores especializados (messages, runs, checkpoints, effects, events) com backends InMemory e SQLAlchemy
-- 10 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
+- 9 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
 - 72 tipos de evento em 13 categorias para observabilidade via structlog
 - Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
-- CLI com 16 comandos: `init`, `check`, `run`, `send`, `chat`, `status`, `agent`, `engine`, `flow`, `sessions`, `server`, `console`, `daemon`, `dash`, `doctor`, `completions`
+- CLI com 16 comandos e grupos: `init`, `check`, `run`, `send`, `chat`, `status`, `agent`, `engine`, `flow`, `sessions`, `server`, `console`, `daemon`, `dash`, `doctor`, `completions`
 - Taxonomia canónica de erros com 8 categorias e `classify_error()` extensível
 - Effect Engine com idempotência via `EffectInterceptor` e `EffectJournal`
 - Supervisão hierárquica (StepSupervisor + FlowSupervisor) em todos os 3 runtimes
@@ -140,7 +140,7 @@ Dockerfile e docker-compose.yml incluídos para deploy containerizado.
 
 ## Testes
 
-- 3,144+ testes Python (pytest + AnyIO)
+- 2,457+ testes Python (pytest + AnyIO)
 - 134 testes frontend (Vitest)
 
 ---
