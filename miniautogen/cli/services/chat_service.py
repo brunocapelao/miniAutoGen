@@ -5,15 +5,11 @@ Maintains conversation history across turns, reusing a single AgentRuntime.
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from miniautogen.cli.config import load_config, CONFIG_FILENAME
+from miniautogen.api import create_runtime
 from miniautogen.cli.services.agent_ops import load_agent_specs
-from miniautogen.core.contracts.run_context import RunContext
-from miniautogen.core.events.event_sink import NullEventSink
 
 
 def list_available_agents(project_root: Path) -> list[str]:
@@ -68,12 +64,6 @@ class ChatSession:
         Raises:
             ValueError: If no agents found or agent not found.
         """
-        from miniautogen.backends.engine_resolver import EngineResolver
-        from miniautogen.core.runtime.agent_runtime import AgentRuntime
-
-        config = load_config(project_root / CONFIG_FILENAME)
-
-        # Resolve agent
         agent_specs = load_agent_specs(project_root)
         if not agent_specs:
             raise ValueError(
@@ -90,29 +80,10 @@ class ChatSession:
             )
 
         spec = agent_specs[agent_name]
-        run_id = f"chat-{uuid.uuid4().hex[:8]}"
-
-        # Resolve engine -> driver
-        engine_resolver = EngineResolver()
-        engine_name = getattr(spec, "engine_profile", None) or config.defaults.engine
-        driver = engine_resolver.create_fresh_driver(engine_name, config)
-
-        # Create AgentRuntime
-        run_context = RunContext(
-            run_id=run_id,
-            started_at=datetime.now(timezone.utc),
-            correlation_id=run_id,
-        )
-
-        runtime = AgentRuntime(
-            agent_id=agent_name,
-            driver=driver,
-            run_context=run_context,
-            event_sink=NullEventSink(),
+        runtime, run_id = await create_runtime(
+            project_root, agent_name, "chat",
             system_prompt=getattr(spec, "goal", None) or "",
         )
-
-        await runtime.initialize()
 
         return cls(
             agent_name=agent_name,
