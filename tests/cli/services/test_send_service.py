@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import yaml
@@ -57,35 +57,16 @@ def workspace_no_agents(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _make_mocks() -> tuple[MagicMock, AsyncMock]:
-    """Build mock EngineResolver and AgentRuntime."""
-    mock_driver = MagicMock()
-
-    mock_resolver_instance = MagicMock()
-    mock_resolver_instance.create_fresh_driver.return_value = mock_driver
-
-    mock_runtime_instance = AsyncMock()
-    mock_runtime_instance.initialize = AsyncMock()
-    mock_runtime_instance.process = AsyncMock(return_value="Hello back!")
-    mock_runtime_instance.close = AsyncMock()
-
-    return mock_resolver_instance, mock_runtime_instance
-
-
 @pytest.mark.anyio
 async def test_send_message_returns_response(workspace: Path) -> None:
     """Happy path: sends a message and gets a response dict."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
+    mock_runtime.process = AsyncMock(return_value="Hello back!")
+    mock_runtime.close = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.send_service.create_runtime",
+        return_value=(mock_runtime, "send-abcdef01"),
     ):
         from miniautogen.cli.services.send_service import send_message
 
@@ -95,7 +76,6 @@ async def test_send_message_returns_response(workspace: Path) -> None:
     assert result["message"] == "Hello agent"
     assert result["response"] == "Hello back!"
     assert result["run_id"].startswith("send-")
-    mock_runtime.initialize.assert_awaited_once()
     mock_runtime.process.assert_awaited_once_with("Hello agent")
     mock_runtime.close.assert_awaited_once()
 
@@ -103,17 +83,11 @@ async def test_send_message_returns_response(workspace: Path) -> None:
 @pytest.mark.anyio
 async def test_send_message_default_agent(workspace: Path) -> None:
     """When agent_name is None, uses the first agent in workspace."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.send_service.create_runtime",
+        return_value=(mock_runtime, "send-abcdef01"),
     ):
         from miniautogen.cli.services.send_service import send_message
 
@@ -143,18 +117,13 @@ async def test_send_message_no_agents(workspace_no_agents: Path) -> None:
 @pytest.mark.anyio
 async def test_send_message_closes_runtime_on_error(workspace: Path) -> None:
     """Runtime.close() is called even when process() raises."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
     mock_runtime.process = AsyncMock(side_effect=RuntimeError("LLM error"))
+    mock_runtime.close = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.send_service.create_runtime",
+        return_value=(mock_runtime, "send-abcdef01"),
     ):
         from miniautogen.cli.services.send_service import send_message
 
