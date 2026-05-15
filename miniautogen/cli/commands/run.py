@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 import threading
 import time
-
 from pathlib import Path
 
 import click
@@ -13,7 +12,7 @@ import click
 from miniautogen.cli.config import require_project_config
 from miniautogen.cli.errors import PipelineNotFoundError
 from miniautogen.cli.main import run_async
-from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success, echo_warning
+from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success
 
 
 def _resolve_input(input_value: str | None) -> str | None:
@@ -146,7 +145,7 @@ def run_command(
     if pipeline_name not in config.pipelines:
         raise PipelineNotFoundError(
             f"Flow '{pipeline_name}' not found in config",
-            hint=f"Run 'miniautogen flow list' to see available flows.",
+            hint="Run 'miniautogen flow list' to see available flows.",
         )
 
     # Resolve input
@@ -163,7 +162,7 @@ def run_command(
     if console:
         import webbrowser
 
-        from miniautogen.server.app import create_app
+        from miniautogen.api import create_app
         from miniautogen.tui.data_provider import DashDataProvider
 
         console_provider = DashDataProvider(root)
