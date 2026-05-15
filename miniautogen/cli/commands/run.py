@@ -127,15 +127,15 @@ class _Spinner:
     help="Port for the web console (default: 8080).",
 )
 def run_command(
-    pipeline_name: str,
-    timeout: float | None,
-    output_format: str,
-    verbose: bool,
-    input_value: str | None,
-    resume: str | None,
-    explain: bool,
-    console: bool,
-    console_port: int,
+    pipeline_name: str = "main",
+    timeout: float | None = None,
+    output_format: str = "text",
+    verbose: bool = False,
+    input_value: str | None = None,
+    resume: str | None = None,
+    explain: bool = False,
+    console: bool = False,
+    console_port: int = 8080,
 ) -> None:
     """Execute a pipeline headlessly."""
     from miniautogen.cli.services.run_pipeline import execute_pipeline
