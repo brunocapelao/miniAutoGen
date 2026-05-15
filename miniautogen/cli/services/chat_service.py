@@ -8,8 +8,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from miniautogen.api import create_runtime
 from miniautogen.cli.services.agent_ops import load_agent_specs
+from miniautogen.cli.services.runtime_factory import create_runtime
 
 
 def list_available_agents(project_root: Path) -> list[str]:

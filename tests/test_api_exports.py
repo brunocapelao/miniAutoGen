@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 
 class TestApiExportsCompleteness:
     """Verify all expected types are importable from miniautogen.api."""
@@ -181,3 +184,21 @@ class TestApiAllAttribute:
         """After adding ~30 new exports, total should be >= 84."""
         import miniautogen.api as api
         assert len(api.__all__) >= 84, f"Only {len(api.__all__)} exports, expected >= 84"
+
+
+class TestApiLayering:
+    """Verify the public API facade does not depend on CLI implementation modules."""
+
+    def test_api_does_not_import_cli_modules(self) -> None:
+        api_path = Path(__file__).parent.parent / "miniautogen" / "api.py"
+        tree = ast.parse(api_path.read_text(), filename=str(api_path))
+
+        imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imports.append(node.module)
+
+        cli_imports = [module for module in imports if module.startswith("miniautogen.cli")]
+        assert cli_imports == []
