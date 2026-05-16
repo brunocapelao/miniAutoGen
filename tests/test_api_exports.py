@@ -157,6 +157,12 @@ class TestApiExportsCompleteness:
         from miniautogen.api import SupervisionStrategy
         assert SupervisionStrategy is not None
 
+    # -- Backend driver protocol --
+
+    def test_export_agent_driver_protocol(self) -> None:
+        from miniautogen.api import AgentDriverProtocol
+        assert AgentDriverProtocol is not None
+
 
 class TestApiAllAttribute:
     """Verify __all__ includes every exported symbol."""
@@ -176,6 +182,7 @@ class TestApiAllAttribute:
             "AgentHook", "MemoryProvider", "InMemoryMemoryProvider",
             "RuntimeInterceptor", "CoordinatorCapability",
             "ErrorCategory", "SupervisionStrategy",
+            "AgentDriverProtocol",
         }
         missing = expected_new - set(api.__all__)
         assert not missing, f"Missing from __all__: {missing}"

@@ -15,6 +15,7 @@ from miniautogen.backends import (
     EngineResolver,
 )
 from miniautogen.core.contracts import (
+    AgentDriverProtocol,
     AgentHook,
     AgentSpec,
     CoordinationMode,
@@ -278,6 +279,7 @@ __all__ = [
     "SessionRecovery",
     # Backend driver abstraction
     "AgentDriver",
+    "AgentDriverProtocol",
     "BackendCapabilities",
     "BackendResolver",
     "EngineResolver",

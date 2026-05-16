@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -44,3 +45,63 @@ async def test_create_runtime_raises_value_error_for_unknown_agent(workspace: Pa
 
     with pytest.raises(ValueError, match="Agent 'missing' not found. Available: coder"):
         await create_runtime(workspace, "missing")
+
+
+@pytest.mark.anyio
+async def test_create_runtime_uses_null_event_sink_by_default(workspace: Path) -> None:
+    from miniautogen.api import NullEventSink
+    from miniautogen.cli.services.runtime_factory import create_runtime
+
+    captured: dict[str, object] = {}
+
+    class _StubRuntime:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        async def initialize(self) -> None:
+            return None
+
+    with (
+        patch(
+            "miniautogen.cli.services.runtime_factory.AgentRuntime",
+            _StubRuntime,
+        ),
+        patch(
+            "miniautogen.cli.services.runtime_factory.EngineResolver"
+        ) as mock_resolver,
+    ):
+        mock_resolver.return_value.create_fresh_driver.return_value = object()
+        await create_runtime(workspace, "coder")
+
+    assert isinstance(captured["event_sink"], NullEventSink)
+
+
+@pytest.mark.anyio
+async def test_create_runtime_accepts_custom_event_sink(workspace: Path) -> None:
+    from miniautogen.api import InMemoryEventSink
+    from miniautogen.cli.services.runtime_factory import create_runtime
+
+    captured: dict[str, object] = {}
+
+    class _StubRuntime:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+        async def initialize(self) -> None:
+            return None
+
+    sink = InMemoryEventSink()
+
+    with (
+        patch(
+            "miniautogen.cli.services.runtime_factory.AgentRuntime",
+            _StubRuntime,
+        ),
+        patch(
+            "miniautogen.cli.services.runtime_factory.EngineResolver"
+        ) as mock_resolver,
+    ):
+        mock_resolver.return_value.create_fresh_driver.return_value = object()
+        await create_runtime(workspace, "coder", event_sink=sink)
+
+    assert captured["event_sink"] is sink

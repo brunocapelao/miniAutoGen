@@ -15,6 +15,16 @@ from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success
 
 
+def _wait_for_console_shutdown() -> None:
+    """Block until Ctrl+C; uvicorn's daemon thread keeps serving."""
+    echo_info("Console still running. Press Ctrl+C to exit.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        echo_info("Shutting down console...")
+
+
 def _resolve_input(input_value: str | None) -> str | None:
     """Resolve input from --input flag, @file reference, or stdin."""
     if input_value is not None:
@@ -264,21 +274,9 @@ def run_command(
                 f"Flow '{pipeline_name}' failed: "
                 f"{result.get('error', 'unknown')}"
             )
-            # In console mode, keep server running for post-run inspection
             if console and console_server:
-                echo_info("Console still running. Press Ctrl+C to exit.")
-                try:
-                    while True:
-                        time.sleep(1)
-                except KeyboardInterrupt:
-                    echo_info("Shutting down console...")
+                _wait_for_console_shutdown()
             raise SystemExit(1)
 
-    # In console mode, keep server running for post-run inspection
     if console and console_server:
-        echo_info("Console still running. Press Ctrl+C to exit.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            echo_info("Shutting down console...")
+        _wait_for_console_shutdown()

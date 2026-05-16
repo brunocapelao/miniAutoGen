@@ -35,24 +35,17 @@ async def send_message(
         ValueError: If no agents found or agent not found.
         RuntimeError: If agent execution fails.
     """
-    agent_specs = load_agent_specs(project_root)
-    if not agent_specs:
-        raise ValueError(
-            "No agents found in workspace. "
-            "Create one first: miniautogen agent create <name>"
-        )
-
     if agent_name is None:
+        agent_specs = load_agent_specs(project_root)
+        if not agent_specs:
+            raise ValueError(
+                "No agents found in workspace. "
+                "Create one first: miniautogen agent create <name>"
+            )
         agent_name = next(iter(agent_specs))
-    elif agent_name not in agent_specs:
-        available = ", ".join(agent_specs.keys())
-        raise ValueError(
-            f"Agent '{agent_name}' not found. Available: {available}"
-        )
 
     runtime, run_id = await create_runtime(
         project_root, agent_name, "send",
-        system_prompt="",
     )
     try:
         response = await runtime.process(message)

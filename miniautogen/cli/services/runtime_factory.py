@@ -6,7 +6,13 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from miniautogen.api import AgentRuntime, EngineResolver, NullEventSink, RunContext
+from miniautogen.api import (
+    AgentRuntime,
+    EngineResolver,
+    EventSink,
+    NullEventSink,
+    RunContext,
+)
 from miniautogen.cli.config import CONFIG_FILENAME, load_config
 from miniautogen.cli.services.agent_ops import load_agent_specs
 
@@ -16,6 +22,8 @@ async def create_runtime(
     agent_name: str,
     run_id_prefix: str = "run",
     system_prompt: str = "",
+    *,
+    event_sink: EventSink | None = None,
 ) -> tuple[AgentRuntime, str]:
     """Load agent config, create driver, build and initialize AgentRuntime.
 
@@ -24,6 +32,7 @@ async def create_runtime(
         agent_name: Name of the agent to use.
         run_id_prefix: Prefix for the auto-generated run ID.
         system_prompt: Optional override. Falls back to agent spec goal.
+        event_sink: Optional event sink for observability. Defaults to NullEventSink.
 
     Returns:
         Tuple of (initialized AgentRuntime, run_id).
@@ -54,7 +63,7 @@ async def create_runtime(
         agent_id=agent_name,
         driver=driver,
         run_context=run_context,
-        event_sink=NullEventSink(),
+        event_sink=event_sink or NullEventSink(),
         system_prompt=system_prompt or getattr(spec, "goal", None) or "",
     )
     await runtime.initialize()
