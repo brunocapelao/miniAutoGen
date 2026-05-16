@@ -232,20 +232,14 @@ async def execute_pipeline(
         if resume_run_id is not None:
             from miniautogen.cli.errors import ExecutionError
 
-            if config.database is None:
+            if checkpoint_store_for_cancel is None:
                 raise ExecutionError(
                     "Resume requires a configured checkpoint store. "
                     "Ensure your project has persistence configured.",
                     hint="Add a 'database' section to your miniautogen.yaml.",
                 )
 
-            from miniautogen.api import SQLAlchemyCheckpointStore
-
-            checkpoint_store = SQLAlchemyCheckpointStore(config.database.url)
-            await checkpoint_store.init_db()
-
-            checkpoint = await checkpoint_store.get_checkpoint(resume_run_id)
-            await checkpoint_store.engine.dispose()
+            checkpoint = await checkpoint_store_for_cancel.get_checkpoint(resume_run_id)
 
             if checkpoint is None:
                 raise ExecutionError(
