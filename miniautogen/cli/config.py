@@ -14,12 +14,45 @@ DA-9 Terminology Migration:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
+
 CONFIG_FILENAME = "miniautogen.yaml"
+
+
+def _has_cycle(specs: list[TaskEntrySpec]) -> bool:
+    """Detect cycles in a list of TaskEntrySpec DAG using Kahn's algorithm."""
+    ids = {s.id or f"task[{i}]" for i, s in enumerate(specs)}
+    id_map: dict[str, TaskEntrySpec] = {}
+    for i, spec in enumerate(specs or []):
+        sid = spec.id or f"task[{i}]"
+        id_map[sid] = spec
+
+    in_degree: dict[str, int] = {sid: 0 for sid in ids}
+    adj: dict[str, list[str]] = {sid: [] for sid in ids}
+
+    for sid, spec in id_map.items():
+        for dep in spec.depends_on:
+            if dep in id_map:
+                adj[dep].append(sid)
+                in_degree[sid] = in_degree.get(sid, 0) + 1
+
+    queue = [sid for sid, deg in in_degree.items() if deg == 0]
+    visited = 0
+
+    while queue:
+        node = queue.pop(0)
+        visited += 1
+        for neighbor in adj.get(node, []):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    return visited != len(ids)
 
 
 class ProjectMeta(BaseModel):
@@ -104,7 +137,7 @@ class FlowConfig(BaseModel):
     """
 
     target: str | None = None
-    mode: str | None = None  # workflow | deliberation | loop | composite
+    mode: str | None = None  # workflow | deliberation | loop | team | composite
     participants: list[str] = Field(default_factory=list)
     input_text: str | None = None
     # Mode-specific options
@@ -114,10 +147,25 @@ class FlowConfig(BaseModel):
     router: str | None = None  # agentic loop
     chain_flows: list[str] = Field(default_factory=list)  # composite
 
+    # Team mode options (Spec 015)
+    lead: str | None = None  # team mode
+    teammate_prompts: dict[str, str] = Field(default_factory=dict)  # team mode
+    on_teammate_failure: Literal["isolate", "abort_team"] = "isolate"  # team mode
+    max_concurrent_teammates: int | None = None  # team mode
+    team_lead_prompt: str | None = None  # team mode
+
+    # Team task list options (Spec 016)
+    task_list: TaskListConfig | None = None
+
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured
     prompts: dict[str, str] = Field(default_factory=dict)
     response_schema: str | None = None  # Python dotted path for structured format
+
+    # Per-agent timeout fields (Spec 013)
+    agent_timeouts: dict[str, float] = Field(default_factory=dict)
+    round_timeouts: dict[str, float] = Field(default_factory=dict)
+    on_timeout_action: Literal["continue", "abort"] = "continue"
 
     @model_validator(mode="after")
     def validate_flow_config(self) -> "FlowConfig":
@@ -132,6 +180,17 @@ class FlowConfig(BaseModel):
                 raise ValueError("Deliberation mode requires 'leader'")
             if self.mode == "loop" and not self.router:
                 raise ValueError("Loop mode requires 'router'")
+            if self.mode == "team":
+                if not self.lead:
+                    raise ValueError("Team mode requires 'lead'")
+                if not self.participants:
+                    raise ValueError("Team mode requires 'participants'")
+        # Validate task list DAG cycles
+        if self.task_list and self.task_list.enabled:
+            if _has_cycle(self.task_list.initial_tasks):
+                raise ValueError(
+                    "task_list.initial_tasks contains a cycle in depends_on"
+                )
         return self
 
     @model_validator(mode="after")
@@ -139,8 +198,7 @@ class FlowConfig(BaseModel):
         valid_formats = {"free_text", "json", "structured"}
         if self.response_format not in valid_formats:
             raise ValueError(
-                f"response_format must be one of {valid_formats}, "
-                f"got '{self.response_format}'"
+                f"response_format must be one of {valid_formats}, got '{self.response_format}'"
             )
         if self.response_format == "structured" and not self.response_schema:
             raise ValueError(
@@ -151,8 +209,27 @@ class FlowConfig(BaseModel):
             allowed_prefixes = ("miniautogen.",)
             if not any(self.response_schema.startswith(p) for p in allowed_prefixes):
                 raise ValueError(
-                    f"response_schema must start with 'miniautogen.', "
-                    f"got '{self.response_schema}'"
+                    f"response_schema must start with 'miniautogen.', got '{self.response_schema}'"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_timeout_values(self) -> "FlowConfig":
+        for k, v in self.agent_timeouts.items():
+            if v < 1.0:
+                raise ValueError(f"agent_timeouts[{k!r}] must be >= 1.0 (got {v})")
+        for k, v in self.round_timeouts.items():
+            if v < 1.0:
+                raise ValueError(f"round_timeouts[{k!r}] must be >= 1.0 (got {v})")
+        for agent_id in self.agent_timeouts:
+            if self.participants and agent_id not in self.participants:
+                import warnings
+
+                warnings.warn(
+                    f"agent_timeouts has unknown agent {agent_id!r} "
+                    f"(not in participants {self.participants})",
+                    UserWarning,
+                    stacklevel=2,
                 )
         return self
 

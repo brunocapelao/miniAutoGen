@@ -1,6 +1,6 @@
 """Extended tests for run.py and run_pipeline.py to reach ~95% coverage.
 
-Covers: _resolve_input, _Spinner, run_command options, execute_pipeline paths.
+Covers: _resolve_input, run_command options, execute_pipeline paths.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from miniautogen.cli.commands.run import _Spinner, _resolve_input, run_command
+from miniautogen.cli.commands.run import _resolve_input, run_command
 from miniautogen.cli.config import PipelineConfig, ProjectConfig, ProjectMeta
 from miniautogen.cli.main import cli
 
@@ -87,50 +87,6 @@ class TestResolveInput:
         monkeypatch.setattr("builtins.open", _raise)
         with pytest.raises(click.BadParameter, match="Cannot read"):
             _resolve_input(f"@{target}")
-
-
-# ---------------------------------------------------------------------------
-# _Spinner tests
-# ---------------------------------------------------------------------------
-
-class TestSpinner:
-    """Tests for the _Spinner helper."""
-
-    def test_start_stop(self):
-        sp = _Spinner("working...")
-        sp.start()
-        assert sp._thread is not None
-        assert sp._thread.is_alive()
-        sp.stop()
-        assert not sp._thread.is_alive()
-
-    def test_update_message(self):
-        sp = _Spinner("initial")
-        assert sp._message == "initial"
-        sp.update("updated")
-        assert sp._message == "updated"
-
-    def test_stop_with_final_message(self, capsys):
-        sp = _Spinner("msg")
-        sp.start()
-        sp.stop(final="Done!")
-        # Thread should be stopped
-        assert sp._stop.is_set()
-
-    def test_stop_without_thread(self):
-        """stop() is safe even if start() was never called."""
-        sp = _Spinner("msg")
-        sp.stop()  # Should not raise
-
-    def test_spin_loop_runs(self):
-        """Verify the _spin method iterates frames."""
-        sp = _Spinner("test")
-        sp.start()
-        # Give the spinner a moment to iterate
-        import time
-        time.sleep(0.2)
-        sp.stop()
-        # If we got here without error, the spin loop worked
 
 
 # ---------------------------------------------------------------------------
@@ -350,8 +306,8 @@ class TestRunCommand:
         result = runner.invoke(cli, ["run", "--resume", "run-xyz"])
         assert "resum" in result.output.lower()
 
-    def test_spinner_used_on_tty(self, monkeypatch, tmp_path):
-        """Spinner is started when stderr is a TTY and format is text."""
+    def test_rich_ui_used_on_tty(self, monkeypatch, tmp_path):
+        """RichLiveEventSink is used when stderr is a TTY and format is text."""
         monkeypatch.chdir(tmp_path)
         config = _make_config({"main": "pipelines.main:build"})
 
@@ -364,19 +320,7 @@ class TestRunCommand:
             lambda func, *a, **kw: {"status": "completed", "events": 0},
         )
 
-        spinner_calls = {"start": 0, "stop": 0}
-
-        class MockSpinner:
-            def __init__(self, msg):
-                pass
-
-            def start(self):
-                spinner_calls["start"] += 1
-
-            def stop(self, final=""):
-                spinner_calls["stop"] += 1
-
-        monkeypatch.setattr("miniautogen.cli.commands.run._Spinner", MockSpinner)
+        from miniautogen.cli.services.rich_live_sink import RichLiveEventSink
 
         import miniautogen.cli.commands.run as run_mod
 
@@ -386,7 +330,19 @@ class TestRunCommand:
         fake_stdin = type("FakeTTY", (), {"isatty": lambda self: True})()
         monkeypatch.setattr(run_mod.sys, "stdin", fake_stdin)
 
-        # Call the underlying callback directly (unwrap the click decorator)
+        sink_called = False
+
+        class MockRichSink(RichLiveEventSink):
+            def __enter__(self):
+                nonlocal sink_called
+                sink_called = True
+                return self
+
+        monkeypatch.setattr(
+            "miniautogen.cli.services.rich_live_sink.RichLiveEventSink",
+            MockRichSink,
+        )
+
         run_command.callback(
             pipeline_name="main",
             timeout=None,
@@ -397,8 +353,7 @@ class TestRunCommand:
             explain=False,
         )
 
-        assert spinner_calls["start"] == 1
-        assert spinner_calls["stop"] == 1
+        assert sink_called
 
     def test_completed_with_events(self, monkeypatch, tmp_path):
         monkeypatch.chdir(tmp_path)

@@ -78,10 +78,11 @@ class RunContext(MiniAutoGenBaseModel):
     timeout_seconds: float | None = None
     namespace: str | None = None
     metadata: tuple[tuple[str, Any], ...] = ()
+    parent_run_id: str | None = None
 
-    def model_copy(self, *, update: dict[str, Any] | None = None, **kwargs: Any) -> "RunContext":  # type: ignore[override]
+    def model_copy(self, *, update: dict[str, Any] | None = None, **kwargs: Any) -> "RunContext":
         """Override model_copy to restrict updates to allowed fields only."""
-        allowed = {"state", "metadata", "input_payload"}
+        allowed = {"state", "metadata", "input_payload", "parent_run_id"}
         if update:
             disallowed = set(update.keys()) - allowed
             if disallowed:

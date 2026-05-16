@@ -8,11 +8,13 @@ from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
 from .conversation import Conversation
 from .coordination import (
     AgenticLoopPlan,
+    ContributionSummary,
     CoordinationKind,
     CoordinationMode,
     CoordinationPlan,
     DeliberationPlan,
     SubrunRequest,
+    TeamPlan,
     WorkflowPlan,
     WorkflowStep,
 )
@@ -48,6 +50,18 @@ from .runtime_interceptor import RuntimeInterceptor
 from .skill_spec import SkillSpec
 from .store import StoreProtocol
 from .supervision import StepSupervision, SupervisionDecision
+from .team_task import (
+    ConfigurationError,
+    StateConsistencyError,
+    TaskEntry,
+    TaskEntrySpec,
+    TaskFilter,
+    TaskListConfig,
+    TaskStatus,
+    is_valid_transition,
+    validate_transition,
+)
+from .timeout_resolution import ResolvedTimeout, TimeoutSource, resolve_timeout
 from .tool import ToolProtocol, ToolResult
 from .tool_spec import ToolSpec
 
@@ -59,6 +73,7 @@ __all__ = [
     "AgenticLoopState",
     "ConversationalAgent",
     "ConversationPolicy",
+    "ContributionSummary",
     "CoordinationKind",
     "CoordinationMode",
     "Conversation",
@@ -90,17 +105,30 @@ __all__ = [
     "PeerReview",
     "ResearchOutput",
     "Review",
+    "ResolvedTimeout",
     "RouterDecision",
     "RunContext",
+    "TimeoutSource",
+    "resolve_timeout",
     "RunResult",
     "RunStatus",
     "RuntimeInterceptor",
     "SkillSpec",
+    "ConfigurationError",
+    "StateConsistencyError",
     "StepSupervision",
     "StoreProtocol",
     "SupervisionDecision",
+    "TaskEntry",
+    "TaskEntrySpec",
+    "TaskFilter",
+    "TaskListConfig",
+    "TaskStatus",
+    "is_valid_transition",
+    "validate_transition",
     "SupervisionStrategy",
     "SubrunRequest",
+    "TeamPlan",
     "ToolProtocol",
     "ToolResult",
     "ToolSpec",

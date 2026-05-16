@@ -90,10 +90,29 @@ class EventType(str, Enum):
     # Run state machine events
     RUN_STATE_CHANGED = "run_state_changed"
 
+    # Agent turn timeout events
+    AGENT_TURN_TIMED_OUT = "agent_turn_timed_out"
+
     # Approval channel events (decoupled human-in-the-loop)
     APPROVAL_CHANNEL_SUBMITTED = "approval_channel_submitted"
     APPROVAL_CHANNEL_RESOLVED = "approval_channel_resolved"
     APPROVAL_CHANNEL_TIMED_OUT = "approval_channel_timed_out"
+
+    # Team coordination events (Spec 015)
+    TEAM_STARTED = "team_started"
+    TEAMMATE_SPAWNED = "teammate_spawned"
+    TEAMMATE_FINISHED = "teammate_finished"
+    TEAMMATE_FAILED = "teammate_failed"
+    TEAM_FINISHED = "team_finished"
+    TEAM_FAILED = "team_failed"
+
+    # Team task list events (Spec 016)
+    TASK_ADDED = "task_added"
+    TASK_CLAIMED = "task_claimed"
+    TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
+    TASK_RELEASED = "task_released"
+    TASK_BLOCKED_BY_DEPENDENCY = "task_blocked_by_dependency"
 
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
@@ -171,4 +190,22 @@ INTERCEPTOR_EVENT_TYPES: set[EventType] = {
     EventType.INTERCEPTOR_BEFORE_STEP,
     EventType.INTERCEPTOR_AFTER_STEP,
     EventType.INTERCEPTOR_BAIL,
+}
+
+TEAM_EVENT_TYPES: set[EventType] = {
+    EventType.TEAM_STARTED,
+    EventType.TEAMMATE_SPAWNED,
+    EventType.TEAMMATE_FINISHED,
+    EventType.TEAMMATE_FAILED,
+    EventType.TEAM_FINISHED,
+    EventType.TEAM_FAILED,
+}
+
+TEAM_TASK_EVENT_TYPES: set[EventType] = {
+    EventType.TASK_ADDED,
+    EventType.TASK_CLAIMED,
+    EventType.TASK_COMPLETED,
+    EventType.TASK_FAILED,
+    EventType.TASK_RELEASED,
+    EventType.TASK_BLOCKED_BY_DEPENDENCY,
 }

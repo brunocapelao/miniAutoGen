@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -15,10 +14,10 @@ from miniautogen.core.contracts.coordination import (
     WorkflowStep,
 )
 from miniautogen.core.contracts.run_context import RunContext
-from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.event_sink import InMemoryEventSink
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.core.runtime.workflow_runtime import WorkflowRuntime
+from miniautogen.policies.timeout_policy import TimeoutPolicy
 
 
 def _make_context(run_id: str = "run-1") -> RunContext:
@@ -47,6 +46,16 @@ class _FailingAgent:
 
     async def process(self, input_data: Any) -> Any:
         raise RuntimeError("step exploded")
+
+
+class _SlowAgent:
+    """Agent that exceeds timeout policy limits."""
+
+    async def process(self, input_data: Any) -> Any:
+        import anyio
+
+        await anyio.sleep(2.0)
+        return f"{input_data}-late"
 
 
 class _CallableAgent:
@@ -201,6 +210,45 @@ async def test_step_failure_returns_error_result() -> None:
     assert result.status == "failed"
     assert result.error is not None
     assert "RuntimeError" in result.error
+
+
+@pytest.mark.asyncio
+async def test_sequential_step_timeout_fails_workflow_with_agent_timeout() -> None:
+    """Workflow timeouts terminate the flow instead of feeding None to later steps."""
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    timeout_policy = TimeoutPolicy(
+        agent_timeouts={"slow": 0.1},
+        round_timeouts={},
+        flow_timeout=None,
+        engine_timeout=120.0,
+        on_timeout_action="continue",
+    )
+    runtime = WorkflowRuntime(
+        runner=runner,
+        agent_registry={"slow": _SlowAgent(), "next": _FakeAgent("next")},
+        timeout_policy=timeout_policy,
+    )
+
+    plan = WorkflowPlan(
+        steps=[
+            WorkflowStep(component_name="slow-step", agent_id="slow"),
+            WorkflowStep(component_name="next-step", agent_id="next"),
+        ],
+    )
+
+    result = await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+    assert result.status == "timed_out"
+    assert result.error == "agent_timeout"
+    assert all(
+        event.type != "run_finished" or event.scope != "workflow_runtime"
+        for event in event_sink.events
+    )
+    assert any(
+        event.type == "run_timed_out" and event.scope == "workflow_runtime"
+        for event in event_sink.events
+    )
 
 
 @pytest.mark.asyncio

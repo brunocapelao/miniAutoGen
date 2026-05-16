@@ -201,6 +201,34 @@ Then run a flow:
 miniautogen run main
 ```
 
+The CLI provides a Rich Live inline UI showing agent activity, current action,
+turn/round progress, and streaming thoughts in real time:
+
+```
+┌─ miniautogen run · main · run_id=abc12345 · elapsed=02:14 ─┐
+│                                                             │
+│  ▶ Engenheiro de Dados  · Contribute · Round 2/5            │
+│                                                             │
+│  └─ "Proponho um pipeline streaming via Kafka particionado  │
+│      por hash de CPF para isolar consumo PII..."            │
+│                                                             │
+│  Events: 47  ·  Press Ctrl+C to cancel & save               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The UI behaviour adapts to the execution context:
+
+| Cenário                 | Comando                                       | UI exibida           |
+|-------------------------|-----------------------------------------------|----------------------|
+| Terminal interativo     | `miniautogen run main`                        | Rich Live inline     |
+| Debug verboso           | `miniautogen run main --verbose`              | Logs por linha       |
+| CI / pipe               | `miniautogen run main \| cat`                  | Logs por linha       |
+| Output programático     | `miniautogen run main --format json`          | Sem UI (só JSON)     |
+| Forçar modo CI          | `MINIAUTOGEN_NO_TTY=1 miniautogen run main`   | Logs por linha       |
+
+> ![Rich Live Demo](assets/rich-live-demo.svg)
+> *Rich Live inline UI during a 3-agent deliberation.*
+
 You can also send a single message to an agent directly:
 
 ```bash
@@ -290,7 +318,55 @@ docker-compose up
 This starts the API server and web console. See the included `Dockerfile` and
 `docker-compose.yml` for configuration options.
 
-## 10. Next Steps
+## 10. Configurando SLAs por Agente
+
+Spec 013 introduz timeouts em três níveis de granularidade no YAML:
+
+| Precedência | Nível         | Campo              | Exemplo                  |
+|-------------|---------------|--------------------|--------------------------|
+| 1 (maior)   | Por agente    | `agent_timeouts`   | `engenheiro: 60.0`       |
+| 2           | Por round     | `round_timeouts`   | `contribute: 60.0`       |
+| 3           | Do flow       | `--timeout` (CLI)  | `miniautogen run --timeout 120` |
+| 4 (menor)   | Da engine     | `timeout_seconds`  | `timeout_seconds: 300.0` |
+
+```yaml
+# miniautogen.yaml
+flows:
+  especificacao:
+    mode: deliberation
+    participants: [advogado, paralegal, engenheiro]
+    leader: advogado
+
+    # Per-agent: cada agente tem seu próprio SLA
+    agent_timeouts:
+      advogado: 300.0
+      engenheiro: 60.0
+      paralegal: 120.0
+
+    # Per-round: fases da deliberação
+    round_timeouts:
+      contribute: 60.0
+      review: 90.0
+      synthesize: 180.0
+
+    # continue (default): agente silenciosamente ignorado
+    # abort: falha o flow inteiro
+    on_timeout_action: continue
+```
+
+### `continue` vs `abort`
+
+- **`continue`** (default): se o timeout de um agente expirar, a contribuição
+  é marcada como incompleta e o flow prossegue normalmente.
+  Use quando a ausência de um agente não deve bloquear a deliberação.
+- **`abort`**: se o timeout expirar, o `TimeoutError` propaga e encerra o flow
+  com exit code 124. Use quando todas as contribuições são obrigatórias.
+
+> **Leitura complementar:**
+> - [Spec completa](/.specs/per-agent-timeouts.md)
+> - [Graceful Cancel e Checkpoint](/.specs/cancel-checkpoint.md) (interage com save shielded)
+
+## 11. Next Steps
 
 - **`miniautogen dash`** -- launch the TUI dashboard to monitor and manage
   agents, flows, and runs visually.

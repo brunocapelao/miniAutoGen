@@ -16,6 +16,7 @@ from .deliberation_runtime import DeliberationRuntime
 from .final_document import render_final_document_markdown
 from .pipeline_runner import PipelineRunner
 from .prompt_resolver import resolve_prompt
+from .team_runtime import TeamRuntime
 from .workflow_runtime import WorkflowRuntime
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "CompositeRuntime",
     "DeliberationRuntime",
     "PipelineRunner",
+    "TeamRuntime",
     "WorkflowRuntime",
     "apply_leader_review",
     "build_default_consolidate_prompt",
