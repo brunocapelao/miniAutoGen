@@ -12,11 +12,11 @@ from miniautogen.cli.main import cli
 def _mock_project(tmp_path, *, pipeline_body: str | None = None):
     config = {
         "project": {"name": "test"},
-        "defaults": {"engine_profile": "default_api"},
-        "engine_profiles": {
+        "defaults": {"engine": "default_api"},
+        "engines": {
             "default_api": {"kind": "api", "provider": "litellm"},
         },
-        "pipelines": {"main": {"target": "pipelines.main:build_pipeline"}},
+        "flows": {"main": {"target": "pipelines.main:build_pipeline"}},
     }
     (tmp_path / CONFIG_FILENAME).write_text(yaml.dump(config))
     pipelines_dir = tmp_path / "pipelines"
