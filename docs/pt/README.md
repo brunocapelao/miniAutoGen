@@ -57,6 +57,7 @@ O Flow define **como** múltiplos Agents colaboram. Quatro modos de coordenaçã
 | **Workflow** | Tarefas decomponiveis em steps sequenciais ou paralelos |
 | **Agentic Loop** | Conversação roteada onde um agente decide quem fala a seguir |
 | **Deliberation** | Revisão por pares multi-round com consolidação |
+| **Team** | Orquestração hierárquica com Lead e colaboradores |
 | **Composite** | Encadeamento de sub-Flows de modos diferentes |
 
 **Interceptors** transformam o fluxo em cada step (before, after, on_error) — não apenas observam, modificam. **Policies** observam eventos e reagem lateralmente (budget, timeout, approval, retry). Ambos são composáveis e configuráveis por Flow.

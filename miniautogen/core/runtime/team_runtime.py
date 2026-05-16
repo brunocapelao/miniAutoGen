@@ -275,16 +275,6 @@ class TeamRuntime:
             return cfg if cfg.enabled else None
         return None
 
-    async def _parse_plan_approval_config(self, plan: TeamPlan) -> PlanApprovalConfig | None:
-        raw = plan.plan_approval
-        if raw is None:
-            return None
-        if isinstance(raw, PlanApprovalConfig):
-            return raw
-        if isinstance(raw, dict):
-            return PlanApprovalConfig(**raw)
-        return None
-
     async def _run_with_task_list(
         self,
         agents: list[Any],
@@ -297,7 +287,6 @@ class TeamRuntime:
         assert task_list_config is not None  # checked by caller
 
         mailbox_cfg = await self._parse_mailbox_config(plan)
-        plan_approval_cfg = await self._parse_plan_approval_config(plan)
 
         # Create store
         from miniautogen.core.runtime.team_task_list import InMemoryTaskListStore
@@ -731,7 +720,7 @@ class TeamRuntime:
             msg = None
             try:
                 if mailbox is not None:
-                    with anyio.move_on_after(idle_threshold) as scope:
+                    with anyio.move_on_after(idle_threshold):
                         stream = mailbox.receive_stream(name)
                         msg = await anext(stream, None)
                         if msg is not None and idle_aggregator is not None:
@@ -837,7 +826,9 @@ class TeamRuntime:
                         await idle_aggregator.mark_idle(name)
 
                     mail_agents_list = mail_agents or [name]
-                    if idle_aggregator is not None and await idle_aggregator.all_idle(len(mail_agents_list)):
+                    if idle_aggregator is not None and await idle_aggregator.all_idle(
+                        len(mail_agents_list),
+                    ):
                         await self._emit(
                             EventType.TEAMMATE_IDLE,
                             run_id,

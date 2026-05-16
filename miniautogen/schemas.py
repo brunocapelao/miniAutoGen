@@ -19,14 +19,3 @@ class ChatState(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict)
     active_agent_id: str | None = None
     messages: list[Message] = Field(default_factory=list)
-
-
-class MailboxConfig(BaseModel):
-    enabled: bool = False
-    buffer_size: int = 256
-    idle_threshold_seconds: float = 5.0
-
-
-class PlanApprovalConfig(BaseModel):
-    timeout_seconds: float = 300.0
-    required_for: list[str] = Field(default_factory=list)

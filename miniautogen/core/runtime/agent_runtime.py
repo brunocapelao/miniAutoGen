@@ -114,6 +114,16 @@ class AgentRuntime:
     def is_closed(self) -> bool:
         return self._closed
 
+    @property
+    def tool_registry(self) -> ToolRegistryProtocol | None:
+        """Return the current tool registry."""
+        return self._tool_registry
+
+    @tool_registry.setter
+    def tool_registry(self, value: ToolRegistryProtocol | None) -> None:
+        """Set or update the tool registry."""
+        self._tool_registry = value
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
