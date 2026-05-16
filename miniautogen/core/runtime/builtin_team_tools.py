@@ -10,6 +10,9 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import anyio
+
+
 from miniautogen.core.contracts.team_message import MailMessage
 from miniautogen.core.contracts.tool import ToolResult
 from miniautogen.core.contracts.tool_registry import ToolDefinition
@@ -155,7 +158,6 @@ def _make_inbox_pop_handler(
     async def handler(params: dict[str, Any]) -> ToolResult:
         limit = params.get("limit", 10)
         messages: list[MailMessage] = []
-        import anyio
 
         try:
             async with anyio.move_on_after(0):
@@ -255,8 +257,6 @@ def _make_request_plan_approval_handler(
             kind="plan_approval_request",
             correlation_id=corr_id,
         ))
-
-        import anyio
 
         try:
             decision, reason = await approvals.wait(corr_id)

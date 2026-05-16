@@ -91,7 +91,7 @@ async def test_team_runs_with_mailbox_and_plan_approval() -> None:
 
     assert result.status.value in ("finished", "failed")
     if result.status.value == "failed":
-        assert False, f"Team run failed: {result.error}"
+        pytest.fail(f"Team run failed: {result.error}")
 
     event_types = {e.type for e in sink.events}
     assert EventType.TEAM_STARTED.value in event_types

@@ -19,6 +19,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from miniautogen.core.contracts.coordination import MailboxConfig, PlanApprovalConfig
 from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
 
 CONFIG_FILENAME = "miniautogen.yaml"
@@ -158,8 +159,8 @@ class FlowConfig(BaseModel):
     task_list: TaskListConfig | None = None
 
     # Team mailbox options (Spec 017)
-    mailbox: Any | None = None
-    plan_approval: Any | None = None
+    mailbox: MailboxConfig | dict[str, Any] | None = None
+    plan_approval: PlanApprovalConfig | dict[str, Any] | None = None
 
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured

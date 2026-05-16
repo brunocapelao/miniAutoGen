@@ -837,7 +837,9 @@ class TeamRuntime:
                         await idle_aggregator.mark_idle(name)
 
                     mail_agents_list = mail_agents or [name]
-                    if idle_aggregator is not None and await idle_aggregator.all_idle(len(mail_agents_list)):
+                    if idle_aggregator is not None and await idle_aggregator.all_idle(
+                        len(mail_agents_list),
+                    ):
                         await self._emit(
                             EventType.TEAMMATE_IDLE,
                             run_id,
