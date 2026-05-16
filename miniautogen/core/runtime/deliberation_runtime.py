@@ -456,7 +456,7 @@ class DeliberationRuntime:
                 )
                 return RunResult(
                     run_id=context.run_id,
-                    status=RunStatus.FAILED,
+                    status=RunStatus.TIMED_OUT,
                     error=error_msg,
                 )
             rendered = render_final_document_markdown(final_doc)
