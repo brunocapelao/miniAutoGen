@@ -16,6 +16,7 @@ from miniautogen.core.contracts.timeout_resolution import (
     ResolvedTimeout,
     resolve_timeout,
 )
+from miniautogen.core.events.types import EventType
 
 logger = structlog.get_logger()
 

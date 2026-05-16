@@ -6,9 +6,9 @@ Defines the protocol and plans that coordination modes must follow.
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.run_context import RunContext
@@ -25,6 +25,7 @@ class CoordinationKind(str, Enum):
     WORKFLOW = "workflow"
     DELIBERATION = "deliberation"
     AGENTIC_LOOP = "agentic_loop"
+    TEAM = "team"
 
 
 class CoordinationPlan(BaseModel):
@@ -47,9 +48,7 @@ class CoordinationMode(Protocol[PlanT]):
 
     kind: CoordinationKind
 
-    async def run(
-        self, agents: list[Any], context: RunContext, plan: PlanT
-    ) -> RunResult: ...
+    async def run(self, agents: list[Any], context: RunContext, plan: PlanT) -> RunResult: ...
 
 
 # --- Workflow contracts ---
@@ -112,6 +111,42 @@ class AgenticLoopPlan(CoordinationPlan):
     goal: str = ""
     initial_message: str | None = None
     default_supervision: StepSupervision | None = None
+
+
+# --- Team contracts ---
+
+
+class ContributionSummary(BaseModel):
+    """Summary of a single teammate's contribution for the lead."""
+
+    teammate: str
+    status: Literal["finished", "failed", "cancelled"]
+    output: Any = None
+    error_category: str | None = None
+    error_message: str | None = None
+
+
+class TeamPlan(CoordinationPlan):
+    """Execution plan for TeamRuntime.
+
+    Models a team of peer agents with a lead who consolidates results.
+    Each teammate runs as an isolated AgentRuntime concurrently.
+    """
+
+    lead_agent: str
+    teammates: list[str] = Field(min_length=1)
+    lead_prompt: str | None = None
+    teammate_prompts: dict[str, str] = Field(default_factory=dict)
+    on_teammate_failure: Literal["isolate", "abort_team"] = "isolate"
+    max_concurrent_teammates: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def _no_dup_no_self(self) -> "TeamPlan":
+        if len(set(self.teammates)) != len(self.teammates):
+            raise ValueError("teammates must be unique")
+        if self.lead_agent in self.teammates:
+            raise ValueError("lead_agent cannot also be a teammate")
+        return self
 
 
 # --- Subrun contracts ---

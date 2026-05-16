@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     CoordinationMode,
@@ -15,10 +16,8 @@ from miniautogen.core.contracts.coordination import (
     WorkflowPlan,
     WorkflowStep,
 )
-from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
-
 
 # --- CoordinationKind ---
 
@@ -28,8 +27,8 @@ def test_coordination_kind_has_workflow_and_deliberation() -> None:
     assert CoordinationKind.DELIBERATION == "deliberation"
 
 
-def test_coordination_kind_has_three_members() -> None:
-    assert len(CoordinationKind) == 3
+def test_coordination_kind_has_four_members() -> None:
+    assert len(CoordinationKind) == 4
 
 
 # --- CoordinationPlan ---
@@ -138,9 +137,7 @@ class _FakeWorkflowMode:
 
     kind = CoordinationKind.WORKFLOW
 
-    async def run(
-        self, agents: list[Any], context: RunContext, plan: WorkflowPlan
-    ) -> RunResult:
+    async def run(self, agents: list[Any], context: RunContext, plan: WorkflowPlan) -> RunResult:
         return RunResult(run_id="test", status="finished")
 
 

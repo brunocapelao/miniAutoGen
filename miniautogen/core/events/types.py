@@ -98,6 +98,14 @@ class EventType(str, Enum):
     APPROVAL_CHANNEL_RESOLVED = "approval_channel_resolved"
     APPROVAL_CHANNEL_TIMED_OUT = "approval_channel_timed_out"
 
+    # Team coordination events (Spec 015)
+    TEAM_STARTED = "team_started"
+    TEAMMATE_SPAWNED = "teammate_spawned"
+    TEAMMATE_FINISHED = "teammate_finished"
+    TEAMMATE_FAILED = "teammate_failed"
+    TEAM_FINISHED = "team_finished"
+    TEAM_FAILED = "team_failed"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
@@ -174,4 +182,13 @@ INTERCEPTOR_EVENT_TYPES: set[EventType] = {
     EventType.INTERCEPTOR_BEFORE_STEP,
     EventType.INTERCEPTOR_AFTER_STEP,
     EventType.INTERCEPTOR_BAIL,
+}
+
+TEAM_EVENT_TYPES: set[EventType] = {
+    EventType.TEAM_STARTED,
+    EventType.TEAMMATE_SPAWNED,
+    EventType.TEAMMATE_FINISHED,
+    EventType.TEAMMATE_FAILED,
+    EventType.TEAM_FINISHED,
+    EventType.TEAM_FAILED,
 }
