@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
 import sys
-import threading
 import time
 from pathlib import Path
 
@@ -13,6 +13,7 @@ from miniautogen.cli.config import require_project_config
 from miniautogen.cli.errors import PipelineNotFoundError
 from miniautogen.cli.main import run_async
 from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success, echo_warning
+from miniautogen.cli.services.event_sinks import _select_ui_sink
 
 
 def _wait_for_console_shutdown() -> None:
@@ -51,39 +52,6 @@ def _resolve_input(input_value: str | None) -> str | None:
         return sys.stdin.read()
 
     return None
-
-
-class _Spinner:
-    """Simple terminal spinner for pipeline execution."""
-
-    _FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
-
-    def __init__(self, message: str) -> None:
-        self._message = message
-        self._stop = threading.Event()
-        self._thread: threading.Thread | None = None
-
-    def start(self) -> None:
-        self._thread = threading.Thread(target=self._spin, daemon=True)
-        self._thread.start()
-
-    def update(self, message: str) -> None:
-        self._message = message
-
-    def stop(self, final: str = "") -> None:
-        self._stop.set()
-        if self._thread:
-            self._thread.join(timeout=1)
-        # Clear spinner line
-        click.echo(f"\r\033[K{final}", nl=bool(final))
-
-    def _spin(self) -> None:
-        idx = 0
-        while not self._stop.is_set():
-            frame = self._FRAMES[idx % len(self._FRAMES)]
-            click.echo(f"\r{frame} {self._message}", nl=False)
-            idx += 1
-            time.sleep(0.08)
 
 
 @click.command("run")
@@ -229,37 +197,38 @@ def run_command(
     if resume:
         echo_info(f"Resuming run '{resume}' for flow '{pipeline_name}'...")
 
-    # Start spinner for interactive terminals
-    spinner = None
-    use_spinner = output_format == "text" and sys.stderr.isatty() and not verbose
-    if use_spinner:
-        spinner = _Spinner(f"Running flow '{pipeline_name}'...")
-        spinner.start()
+    ui_sink = _select_ui_sink(output_format=output_format, verbose=verbose)
+
+    from miniautogen.cli.services.rich_live_sink import RichLiveEventSink
+
+    cm = ui_sink if isinstance(ui_sink, RichLiveEventSink) else contextlib.nullcontext()
 
     try:
-        try:
-            result = run_async(
-                execute_pipeline,
-                config,
-                pipeline_name,
-                root,
-                timeout=timeout,
-                verbose=verbose,
-                pipeline_input=pipeline_input,
-                resume_run_id=resume,
-                event_sink=console_event_sink,
-            )
-        except KeyboardInterrupt:
-            echo_warning("Saving checkpoint before exit...")
-            raise SystemExit(130)
-        except TimeoutError:
-            echo_warning(
-                "Timeout reached. Checkpoint saved (use --resume to continue)."
-            )
-            raise SystemExit(124)
-    finally:
-        if spinner:
-            spinner.stop()
+        with cm:
+            try:
+                result = run_async(
+                    execute_pipeline,
+                    config,
+                    pipeline_name,
+                    root,
+                    timeout=timeout,
+                    verbose=verbose,
+                    pipeline_input=pipeline_input,
+                    resume_run_id=resume,
+                    event_sink=ui_sink,
+                    console_event_sink=console_event_sink,
+                )
+            except KeyboardInterrupt:
+                echo_warning("Saving checkpoint before exit...")
+                raise SystemExit(130)
+            except TimeoutError:
+                echo_warning(
+                    "Timeout reached. Checkpoint saved (use --resume to continue)."
+                )
+                raise SystemExit(124)
+    except KeyboardInterrupt:
+        # Handle Ctrl+C during Rich Live exit
+        raise SystemExit(130)
 
     if output_format == "json":
         echo_json(result)
