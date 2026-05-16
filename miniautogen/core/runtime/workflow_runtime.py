@@ -30,6 +30,11 @@ from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 from miniautogen.policies.effect import EffectPolicy
+from miniautogen.policies.timeout_policy import TimeoutPolicy
+
+
+class WorkflowAgentTimeout(Exception):
+    """Raised internally when a workflow agent turn times out."""
 
 
 class WorkflowRuntime:
@@ -47,11 +52,13 @@ class WorkflowRuntime:
         agent_registry: dict[str, Any] | None = None,
         checkpoint_manager: CheckpointManager | None = None,
         effect_policy: EffectPolicy | None = None,
+        timeout_policy: TimeoutPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._registry = agent_registry or {}
         self._checkpoint_manager = checkpoint_manager
         self._logger = get_logger(__name__)
+        self._timeout_policy = timeout_policy
 
         self._effect_interceptor: Any = None
         if effect_policy is not None:
@@ -92,7 +99,11 @@ class WorkflowRuntime:
             return RunResult(run_id=run_id, status=RunStatus.FAILED, error=validation_error)
 
         # --- Emit RUN_STARTED ---
-        await self._emit(event_type=EventType.RUN_STARTED.value, run_id=run_id, correlation_id=correlation_id)
+        await self._emit(
+            event_type=EventType.RUN_STARTED.value,
+            run_id=run_id,
+            correlation_id=correlation_id,
+        )
         logger.info("workflow_started", fan_out=plan.fan_out, steps=len(plan.steps))
 
         try:
@@ -112,6 +123,25 @@ class WorkflowRuntime:
                 final_output = outputs
 
         except BaseException as exc:
+            if self._is_agent_timeout(exc):
+                try:
+                    await self._emit(
+                        event_type=EventType.RUN_TIMED_OUT.value,
+                        run_id=run_id,
+                        correlation_id=correlation_id,
+                        payload={"error": "agent_timeout"},
+                    )
+                except Exception:
+                    logger.warning(
+                        "failed_to_emit_timeout_event",
+                        original_error="agent_timeout",
+                    )
+                logger.warning("workflow_timed_out", error="agent_timeout")
+                return RunResult(
+                    run_id=run_id,
+                    status=RunStatus.TIMED_OUT,
+                    error="agent_timeout",
+                )
             if isinstance(exc, BaseExceptionGroup):
                 error_messages = [type(e).__name__ for e in exc.exceptions]
                 combined_error = "; ".join(error_messages)
@@ -132,7 +162,11 @@ class WorkflowRuntime:
             return RunResult(run_id=run_id, status=RunStatus.FAILED, error=combined_error)
 
         # --- Emit RUN_FINISHED ---
-        await self._emit(event_type=EventType.RUN_FINISHED.value, run_id=run_id, correlation_id=correlation_id)
+        await self._emit(
+            event_type=EventType.RUN_FINISHED.value,
+            run_id=run_id,
+            correlation_id=correlation_id,
+        )
         logger.info("workflow_finished")
 
         return RunResult(run_id=run_id, status=RunStatus.FINISHED, output=final_output)
@@ -149,6 +183,13 @@ class WorkflowRuntime:
         if plan.synthesis_agent is not None and plan.synthesis_agent not in self._registry:
             return f"Synthesis agent '{plan.synthesis_agent}' not found in registry"
         return None
+
+    def _is_agent_timeout(self, exc: BaseException) -> bool:
+        if isinstance(exc, (WorkflowAgentTimeout, TimeoutError)):
+            return True
+        if isinstance(exc, BaseExceptionGroup):
+            return any(self._is_agent_timeout(inner) for inner in exc.exceptions)
+        return False
 
     async def _run_sequential(
         self,
@@ -339,6 +380,31 @@ class WorkflowRuntime:
     async def _invoke_agent(self, agent_id: str, input_data: Any) -> Any:
         """Call an agent from the registry. Supports both process() and __call__."""
         agent = self._registry[agent_id]
+        if self._timeout_policy is not None:
+            result = None
+            timed_out = False
+
+            async def emit_timeout_event(
+                event_type: str,
+                **payload: object,
+            ) -> None:
+                nonlocal timed_out
+                if event_type == EventType.AGENT_TURN_TIMED_OUT.value:
+                    timed_out = True
+                await self._emit_timeout_event(event_type, **payload)
+
+            async with self._timeout_policy.scope_for_turn(
+                agent_id=agent_id,
+                round_name=None,
+                emit=emit_timeout_event,
+            ):
+                if hasattr(agent, "process"):
+                    result = await agent.process(input_data)
+                else:
+                    result = await agent(input_data)
+            if timed_out:
+                raise WorkflowAgentTimeout("agent_timeout")
+            return result
         if hasattr(agent, "process"):
             return await agent.process(input_data)
         return await agent(input_data)
@@ -361,3 +427,15 @@ class WorkflowRuntime:
             payload=payload or {},
         )
         await self._runner.event_sink.publish(event)
+
+    async def _emit_timeout_event(self, event_type: str, **payload: object) -> None:
+        """Emit a timeout event through the runner's event sink.
+        Matches the EmitCallable signature expected by TimeoutPolicy."""
+        await self._runner.event_sink.publish(
+            ExecutionEvent(
+                type=event_type,
+                timestamp=datetime.now(timezone.utc),
+                scope="workflow_runtime",
+                payload=payload,
+            )
+        )

@@ -14,7 +14,7 @@ DA-9 Terminology Migration:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -119,6 +119,11 @@ class FlowConfig(BaseModel):
     prompts: dict[str, str] = Field(default_factory=dict)
     response_schema: str | None = None  # Python dotted path for structured format
 
+    # Per-agent timeout fields (Spec 013)
+    agent_timeouts: dict[str, float] = Field(default_factory=dict)
+    round_timeouts: dict[str, float] = Field(default_factory=dict)
+    on_timeout_action: Literal["continue", "abort"] = "continue"
+
     @model_validator(mode="after")
     def validate_flow_config(self) -> "FlowConfig":
         if not self.target and not self.mode:
@@ -144,8 +149,8 @@ class FlowConfig(BaseModel):
             )
         if self.response_format == "structured" and not self.response_schema:
             raise ValueError(
-                "response_format='structured' requires 'response_schema' "
-                "(Python dotted path to Pydantic model)"
+                f"response_format='structured' requires 'response_schema' "
+                f"(Python dotted path to Pydantic model)"
             )
         if self.response_schema:
             allowed_prefixes = ("miniautogen.",)
@@ -153,6 +158,29 @@ class FlowConfig(BaseModel):
                 raise ValueError(
                     f"response_schema must start with 'miniautogen.', "
                     f"got '{self.response_schema}'"
+                )
+        return self
+
+    @model_validator(mode="after")
+    def validate_timeout_values(self) -> "FlowConfig":
+        for k, v in self.agent_timeouts.items():
+            if v < 1.0:
+                raise ValueError(
+                    f"agent_timeouts[{k!r}] must be >= 1.0 (got {v})"
+                )
+        for k, v in self.round_timeouts.items():
+            if v < 1.0:
+                raise ValueError(
+                    f"round_timeouts[{k!r}] must be >= 1.0 (got {v})"
+                )
+        for agent_id in self.agent_timeouts:
+            if self.participants and agent_id not in self.participants:
+                import warnings
+                warnings.warn(
+                    f"agent_timeouts has unknown agent {agent_id!r} "
+                    f"(not in participants {self.participants})",
+                    UserWarning,
+                    stacklevel=2,
                 )
         return self
 

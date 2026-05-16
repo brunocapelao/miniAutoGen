@@ -526,15 +526,27 @@ class PipelineRunner:
             for rt in runtimes.values():
                 await rt.initialize()
 
-            # 4. Build coordination plan + runtime
+            # 4. Build TimeoutPolicy from FlowConfig + EngineConfig
+            timeout_policy = _build_timeout_policy(
+                flow_config=flow_config,
+                config=config,
+                flow_timeout=(
+                    self.execution_policy.timeout_seconds
+                    if self.execution_policy is not None
+                    else None
+                ),
+            )
+
+            # 5. Build coordination plan + runtime
             plan, coordination_runtime = _build_coordination_from_config(
                 flow_config=flow_config,
                 runner=self,
                 agent_registry=runtimes,
                 input_text=input_text,
+                timeout_policy=timeout_policy,
             )
 
-            # 5. Build RunContext for the coordination run
+            # 6. Build RunContext for the coordination run
             run_context = RunContext(
                 run_id=run_id,
                 started_at=datetime.now(timezone.utc),
@@ -558,7 +570,7 @@ class PipelineRunner:
             )
             logger.info("run_from_config_started", mode=flow_config.mode)
 
-            # 6. Execute coordination
+            # 7. Execute coordination
             agents_list = [
                 runtimes[name] for name in flow_config.participants
             ]
@@ -566,7 +578,7 @@ class PipelineRunner:
                 agents_list, run_context, plan,
             )
 
-            # Emit RUN_FINISHED
+            # 8. Emit RUN_FINISHED
             await self.event_sink.publish(
                 ExecutionEvent(
                     type=EventType.RUN_FINISHED.value,
@@ -651,12 +663,41 @@ async def _build_prompt_from_spec(
     return "\n".join(parts) if parts else None
 
 
+def _build_timeout_policy(
+    *,
+    flow_config: FlowConfig,
+    config: WorkspaceConfig,
+    flow_timeout: float | None = None,
+) -> Any:
+    """Build a TimeoutPolicy from FlowConfig + engine defaults."""
+    from miniautogen.policies.timeout_policy import TimeoutPolicy
+
+    engine_timeout = _resolve_engine_timeout(config)
+    return TimeoutPolicy(
+        agent_timeouts=flow_config.agent_timeouts,
+        round_timeouts=flow_config.round_timeouts,
+        flow_timeout=flow_timeout,
+        engine_timeout=engine_timeout,
+        on_timeout_action=flow_config.on_timeout_action,
+    )
+
+
+def _resolve_engine_timeout(config: WorkspaceConfig) -> float:
+    """Resolve the default engine's timeout_seconds (fallback: 120.0)."""
+    engine_name = config.defaults.engine
+    engine = config.engines.get(engine_name)
+    if engine is not None:
+        return engine.timeout_seconds
+    return 120.0
+
+
 def _build_coordination_from_config(
     *,
     flow_config: FlowConfig,
     runner: PipelineRunner,
     agent_registry: dict[str, Any],
     input_text: str | None = None,
+    timeout_policy: Any | None = None,
 ) -> tuple[Any, Any]:
     """Map a FlowConfig to a (plan, coordination_runtime) tuple.
 
@@ -719,6 +760,7 @@ def _build_coordination_from_config(
             runner=runner,
             agent_registry=agent_registry,
             checkpoint_manager=checkpoint_manager,
+            timeout_policy=timeout_policy,
         )
         return plan, coordination_runtime
 
@@ -732,6 +774,7 @@ def _build_coordination_from_config(
         coordination_runtime = DeliberationRuntime(
             runner=runner,
             agent_registry=agent_registry,
+            timeout_policy=timeout_policy,
         )
         return plan, coordination_runtime
 
@@ -744,6 +787,7 @@ def _build_coordination_from_config(
         coordination_runtime = AgenticLoopRuntime(
             runner=runner,
             agent_registry=agent_registry,
+            timeout_policy=timeout_policy,
         )
         return plan, coordination_runtime
 
