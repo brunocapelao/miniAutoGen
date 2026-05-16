@@ -104,7 +104,7 @@ class FlowConfig(BaseModel):
     """
 
     target: str | None = None
-    mode: str | None = None  # workflow | deliberation | loop | composite
+    mode: str | None = None  # workflow | deliberation | loop | team | composite
     participants: list[str] = Field(default_factory=list)
     input_text: str | None = None
     # Mode-specific options
@@ -113,6 +113,13 @@ class FlowConfig(BaseModel):
     max_turns: int = 20  # agentic loop
     router: str | None = None  # agentic loop
     chain_flows: list[str] = Field(default_factory=list)  # composite
+
+    # Team mode options (Spec 015)
+    lead: str | None = None  # team mode
+    teammate_prompts: dict[str, str] = Field(default_factory=dict)  # team mode
+    on_teammate_failure: Literal["isolate", "abort_team"] = "isolate"  # team mode
+    max_concurrent_teammates: int | None = None  # team mode
+    team_lead_prompt: str | None = None  # team mode
 
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured
@@ -137,6 +144,11 @@ class FlowConfig(BaseModel):
                 raise ValueError("Deliberation mode requires 'leader'")
             if self.mode == "loop" and not self.router:
                 raise ValueError("Loop mode requires 'router'")
+            if self.mode == "team":
+                if not self.lead:
+                    raise ValueError("Team mode requires 'lead'")
+                if not self.participants:
+                    raise ValueError("Team mode requires 'participants'")
         return self
 
     @model_validator(mode="after")
@@ -144,20 +156,18 @@ class FlowConfig(BaseModel):
         valid_formats = {"free_text", "json", "structured"}
         if self.response_format not in valid_formats:
             raise ValueError(
-                f"response_format must be one of {valid_formats}, "
-                f"got '{self.response_format}'"
+                f"response_format must be one of {valid_formats}, got '{self.response_format}'"
             )
         if self.response_format == "structured" and not self.response_schema:
             raise ValueError(
-                f"response_format='structured' requires 'response_schema' "
-                f"(Python dotted path to Pydantic model)"
+                "response_format='structured' requires 'response_schema' "
+                "(Python dotted path to Pydantic model)"
             )
         if self.response_schema:
             allowed_prefixes = ("miniautogen.",)
             if not any(self.response_schema.startswith(p) for p in allowed_prefixes):
                 raise ValueError(
-                    f"response_schema must start with 'miniautogen.', "
-                    f"got '{self.response_schema}'"
+                    f"response_schema must start with 'miniautogen.', got '{self.response_schema}'"
                 )
         return self
 
@@ -165,17 +175,14 @@ class FlowConfig(BaseModel):
     def validate_timeout_values(self) -> "FlowConfig":
         for k, v in self.agent_timeouts.items():
             if v < 1.0:
-                raise ValueError(
-                    f"agent_timeouts[{k!r}] must be >= 1.0 (got {v})"
-                )
+                raise ValueError(f"agent_timeouts[{k!r}] must be >= 1.0 (got {v})")
         for k, v in self.round_timeouts.items():
             if v < 1.0:
-                raise ValueError(
-                    f"round_timeouts[{k!r}] must be >= 1.0 (got {v})"
-                )
+                raise ValueError(f"round_timeouts[{k!r}] must be >= 1.0 (got {v})")
         for agent_id in self.agent_timeouts:
             if self.participants and agent_id not in self.participants:
                 import warnings
+
                 warnings.warn(
                     f"agent_timeouts has unknown agent {agent_id!r} "
                     f"(not in participants {self.participants})",

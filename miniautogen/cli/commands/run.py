@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import os
 import sys
 import time
 from pathlib import Path
@@ -76,7 +77,8 @@ def _resolve_input(input_value: str | None) -> str | None:
     help="Verbose output.",
 )
 @click.option(
-    "--input", "input_value",
+    "--input",
+    "input_value",
     default=None,
     help="Input text or @file path for the pipeline.",
 )
@@ -124,6 +126,13 @@ def run_command(
         raise PipelineNotFoundError(
             f"Flow '{pipeline_name}' not found in config",
             hint="Run 'miniautogen flow list' to see available flows.",
+        )
+
+    # Experimental gate for team mode (Spec 015)
+    flow_config = config.pipelines[pipeline_name]
+    if flow_config.mode == "team" and os.environ.get("MINIAUTOGEN_EXPERIMENTAL_TEAMS") != "1":
+        raise click.UsageError(
+            "Team runtime is experimental. Set MINIAUTOGEN_EXPERIMENTAL_TEAMS=1 to enable."
         )
 
     # Resolve input
@@ -222,9 +231,7 @@ def run_command(
                 echo_warning("Saving checkpoint before exit...")
                 raise SystemExit(130)
             except TimeoutError:
-                echo_warning(
-                    "Timeout reached. Checkpoint saved (use --resume to continue)."
-                )
+                echo_warning("Timeout reached. Checkpoint saved (use --resume to continue).")
                 raise SystemExit(124)
     except KeyboardInterrupt:
         # Handle Ctrl+C during Rich Live exit
@@ -236,9 +243,7 @@ def run_command(
         status = result.get("status", "unknown")
         events = result.get("events", 0)
         if status == "completed":
-            echo_success(
-                f"Flow '{pipeline_name}' completed successfully"
-            )
+            echo_success(f"Flow '{pipeline_name}' completed successfully")
             # Show pipeline output if available
             output = result.get("output")
             if isinstance(output, dict) and "output" in output:
@@ -248,10 +253,7 @@ def run_command(
             if events:
                 echo_info(f"Events emitted: {events}")
         else:
-            echo_error(
-                f"Flow '{pipeline_name}' failed: "
-                f"{result.get('error', 'unknown')}"
-            )
+            echo_error(f"Flow '{pipeline_name}' failed: {result.get('error', 'unknown')}")
             if console and console_server:
                 _wait_for_console_shutdown()
             raise SystemExit(1)

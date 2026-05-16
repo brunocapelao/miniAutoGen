@@ -8,11 +8,13 @@ from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
 from .conversation import Conversation
 from .coordination import (
     AgenticLoopPlan,
+    ContributionSummary,
     CoordinationKind,
     CoordinationMode,
     CoordinationPlan,
     DeliberationPlan,
     SubrunRequest,
+    TeamPlan,
     WorkflowPlan,
     WorkflowStep,
 )
@@ -60,6 +62,7 @@ __all__ = [
     "AgenticLoopState",
     "ConversationalAgent",
     "ConversationPolicy",
+    "ContributionSummary",
     "CoordinationKind",
     "CoordinationMode",
     "Conversation",
@@ -105,6 +108,7 @@ __all__ = [
     "SupervisionDecision",
     "SupervisionStrategy",
     "SubrunRequest",
+    "TeamPlan",
     "ToolProtocol",
     "ToolResult",
     "ToolSpec",
