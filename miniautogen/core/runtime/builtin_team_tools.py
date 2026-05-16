@@ -12,6 +12,7 @@ from typing import Any
 
 import anyio
 
+
 from miniautogen.core.contracts.team_message import MailMessage
 from miniautogen.core.contracts.tool import ToolResult
 from miniautogen.core.contracts.tool_registry import ToolDefinition
@@ -159,7 +160,7 @@ def _make_inbox_pop_handler(
         messages: list[MailMessage] = []
 
         try:
-            with anyio.move_on_after(0):
+            async with anyio.move_on_after(0):
                 stream = mailbox.receive_stream(agent_id)
                 async for msg in stream:
                     messages.append(msg)
