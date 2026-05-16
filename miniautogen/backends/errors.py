@@ -25,6 +25,14 @@ class EventMappingError(AgentDriverError):
     """Failed to map a backend-native event to the canonical model."""
 
 
+class BackendError(AgentDriverError):
+    """Base exception for all backend configuration and runtime errors."""
+
+
+class BackendConfigurationError(BackendError):
+    """Raised when backend configuration is invalid or incomplete."""
+
+
 class CancelNotSupportedError(AgentDriverError):
     """The backend/driver does not support cancellation."""
 

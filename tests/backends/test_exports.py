@@ -38,6 +38,8 @@ class TestBackendsPackageExports:
         from miniautogen.backends.errors import (  # noqa: F401
             AgentDriverError,
             ArtifactCollectionError,
+            BackendConfigurationError,
+            BackendError,
             BackendUnavailableError,
             CancelNotSupportedError,
             EventMappingError,
