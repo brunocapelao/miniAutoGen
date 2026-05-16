@@ -36,6 +36,7 @@ from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 from miniautogen.policies.effect import EffectPolicy
+from miniautogen.policies.timeout_policy import TimeoutPolicy
 
 _SCOPE = "agentic_loop_runtime"
 
@@ -55,10 +56,12 @@ class AgenticLoopRuntime:
         runner: PipelineRunner,
         agent_registry: dict[str, Any] | None = None,
         effect_policy: EffectPolicy | None = None,
+        timeout_policy: TimeoutPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._registry = agent_registry or {}
         self._logger = get_logger(__name__)
+        self._timeout_policy = timeout_policy
 
         self._effect_interceptor: Any = None
         if effect_policy is not None:
@@ -137,9 +140,23 @@ class AgenticLoopRuntime:
                         {"sender": m.sender_id, "content": m.content}
                         for m in conversation.messages
                     ]
-                    decision: RouterDecision = await router_agent.route(
-                        history_for_router
-                    )
+                    decision: RouterDecision | None = None
+                    if self._timeout_policy is not None:
+                        async with self._timeout_policy.scope_for_turn(
+                            agent_id=plan.router_agent,
+                            round_name="route",
+                            emit=self._emit_timeout_event,
+                        ):
+                            decision = await router_agent.route(
+                                history_for_router
+                            )
+                    else:
+                        decision = await router_agent.route(
+                            history_for_router
+                        )
+                    if decision is None:
+                        stop_reason = LoopStopReason.TIMEOUT
+                        break
                     routing_history.append(decision)
 
                     # Emit ROUTER_DECISION
@@ -201,10 +218,24 @@ class AgenticLoopRuntime:
 
                     while True:
                         try:
-                            reply = await agent.reply(
-                                last_message,
-                                {"run_id": run_id, "turn": state.turn_count},
-                            )
+                            reply = None
+                            if self._timeout_policy is not None:
+                                async with self._timeout_policy.scope_for_turn(
+                                    agent_id=agent_id,
+                                    round_name="reply",
+                                    emit=self._emit_timeout_event,
+                                ):
+                                    reply = await agent.reply(
+                                        last_message,
+                                        {"run_id": run_id, "turn": state.turn_count},
+                                    )
+                            else:
+                                reply = await agent.reply(
+                                    last_message,
+                                    {"run_id": run_id, "turn": state.turn_count},
+                                )
+                            if reply is None:
+                                break
                             if restart_count > 0:
                                 await supervisor.emit_retry_succeeded(
                                     step_id=step_id,
@@ -342,3 +373,15 @@ class AgenticLoopRuntime:
             payload=payload or {},
         )
         await self._runner.event_sink.publish(event)
+
+    async def _emit_timeout_event(self, event_type: str, **payload: object) -> None:
+        """Emit a timeout event through the runner's event sink.
+        Matches the EmitCallable signature expected by TimeoutPolicy."""
+        await self._runner.event_sink.publish(
+            ExecutionEvent(
+                type=event_type,
+                timestamp=datetime.now(timezone.utc),
+                scope=_SCOPE,
+                payload=payload,
+            )
+        )

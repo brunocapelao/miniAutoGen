@@ -48,6 +48,7 @@ from .runtime_interceptor import RuntimeInterceptor
 from .skill_spec import SkillSpec
 from .store import StoreProtocol
 from .supervision import StepSupervision, SupervisionDecision
+from .timeout_resolution import ResolvedTimeout, TimeoutSource, resolve_timeout
 from .tool import ToolProtocol, ToolResult
 from .tool_spec import ToolSpec
 
@@ -90,8 +91,11 @@ __all__ = [
     "PeerReview",
     "ResearchOutput",
     "Review",
+    "ResolvedTimeout",
     "RouterDecision",
     "RunContext",
+    "TimeoutSource",
+    "resolve_timeout",
     "RunResult",
     "RunStatus",
     "RuntimeInterceptor",

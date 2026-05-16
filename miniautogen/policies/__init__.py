@@ -21,6 +21,7 @@ from miniautogen.policies.permission import (
 )
 from miniautogen.policies.retry import RetryPolicy, build_retrying_call
 from miniautogen.policies.timeout import TimeoutScope
+from miniautogen.policies.timeout_policy import TimeoutPolicy
 from miniautogen.policies.validation import (
     ValidationError,
     ValidationPolicy,
@@ -46,6 +47,7 @@ __all__ = [
     "PolicyEvaluator",
     "PolicyResult",
     "RetryPolicy",
+    "TimeoutPolicy",
     "TimeoutScope",
     "ValidationError",
     "ValidationPolicy",

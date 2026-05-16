@@ -38,6 +38,7 @@ from miniautogen.core.runtime.flow_supervisor import FlowSupervisor
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 from miniautogen.observability import get_logger
 from miniautogen.policies.effect import EffectPolicy
+from miniautogen.policies.timeout_policy import TimeoutPolicy
 
 _SCOPE = "deliberation_runtime"
 
@@ -56,10 +57,12 @@ class DeliberationRuntime:
         runner: PipelineRunner,
         agent_registry: dict[str, Any] | None = None,
         effect_policy: EffectPolicy | None = None,
+        timeout_policy: TimeoutPolicy | None = None,
     ) -> None:
         self._runner = runner
         self._registry: dict[str, Any] = agent_registry or {}
         self._logger = get_logger(__name__)
+        self._timeout_policy = timeout_policy
 
         self._effect_interceptor: Any = None
         if effect_policy is not None:
@@ -159,7 +162,18 @@ class DeliberationRuntime:
 
                 while True:
                     try:
-                        output = await agent.contribute(plan.topic)
+                        output = None
+                        if self._timeout_policy is not None:
+                            async with self._timeout_policy.scope_for_turn(
+                                agent_id=participant_name,
+                                round_name="contribute",
+                                emit=self._emit_timeout_event,
+                            ):
+                                output = await agent.contribute(plan.topic)
+                        else:
+                            output = await agent.contribute(plan.topic)
+                        if output is None:
+                            break
                         contributions.append(output)
                         logger.info(
                             "contribution_collected",
@@ -215,7 +229,10 @@ class DeliberationRuntime:
                             continue
 
                         # STOP or ESCALATE → fail the deliberation
-                        error_msg = f"Agent '{participant_name}' failed during contribution: {type(exc).__name__}"
+                        error_msg = (
+                            f"Agent '{participant_name}' failed during "
+                            f"contribution: {type(exc).__name__}"
+                        )
                         logger.error(
                             "contribution_failed",
                             participant=participant_name,
@@ -248,9 +265,22 @@ class DeliberationRuntime:
 
                     while True:
                         try:
-                            review = await agent.review(
-                                contribution.role_name, contribution
-                            )
+                            review = None
+                            if self._timeout_policy is not None:
+                                async with self._timeout_policy.scope_for_turn(
+                                    agent_id=participant_name,
+                                    round_name="review",
+                                    emit=self._emit_timeout_event,
+                                ):
+                                    review = await agent.review(
+                                        contribution.role_name, contribution
+                                    )
+                            else:
+                                review = await agent.review(
+                                    contribution.role_name, contribution
+                                )
+                            if review is None:
+                                break
                             reviews.append(review)
                             logger.info(
                                 "peer_review_collected",
@@ -272,7 +302,9 @@ class DeliberationRuntime:
                             if supervision is None:
                                 error_msg = (
                                     f"Agent '{participant_name}' failed during "
-                                    f"peer review of '{contribution.role_name}': {type(exc).__name__}"
+                                    "peer review of "
+                                    f"'{contribution.role_name}': "
+                                    f"{type(exc).__name__}"
                                 )
                                 logger.error(
                                     "peer_review_failed",
@@ -340,16 +372,32 @@ class DeliberationRuntime:
 
             # --- phase 3: leader consolidation ---
             try:
-                state = await leader_agent.consolidate(
-                    plan.topic, contributions, reviews
-                )
+                state = None
+                if self._timeout_policy is not None:
+                    async with self._timeout_policy.scope_for_turn(
+                        agent_id=leader_name,
+                        round_name="synthesize",
+                        emit=self._emit_timeout_event,
+                    ):
+                        state = await leader_agent.consolidate(
+                            plan.topic, contributions, reviews
+                        )
+                else:
+                    state = await leader_agent.consolidate(
+                        plan.topic, contributions, reviews
+                    )
+                if state is None:
+                    state = DeliberationState()
                 logger.info(
                     "consolidation_complete",
                     leader=leader_name,
                     round_num=round_num + 1,
                 )
             except Exception as exc:
-                error_msg = f"Leader '{leader_name}' failed during consolidation: {type(exc).__name__}"
+                error_msg = (
+                    f"Leader '{leader_name}' failed during "
+                    f"consolidation: {type(exc).__name__}"
+                )
                 logger.error(
                     "consolidation_failed",
                     leader=leader_name,
@@ -383,13 +431,41 @@ class DeliberationRuntime:
 
         # --- phase 5: final document (3C) ---
         try:
-            final_doc = await leader_agent.produce_final_document(
-                state, contributions
-            )
+            final_doc = None
+            if self._timeout_policy is not None:
+                async with self._timeout_policy.scope_for_turn(
+                    agent_id=leader_name,
+                    round_name="produce_final_document",
+                    emit=self._emit_timeout_event,
+                ):
+                    final_doc = await leader_agent.produce_final_document(
+                        state, contributions
+                    )
+            else:
+                final_doc = await leader_agent.produce_final_document(
+                    state, contributions
+                )
+            if final_doc is None:
+                error_msg = f"Leader '{leader_name}' timed out producing final document"
+                logger.error("final_document_timeout", leader=leader_name)
+                await self._emit(
+                    event_type=_EVT_FAILED,
+                    run_id=context.run_id,
+                    correlation_id=correlation_id,
+                    payload={"error": error_msg},
+                )
+                return RunResult(
+                    run_id=context.run_id,
+                    status=RunStatus.FAILED,
+                    error=error_msg,
+                )
             rendered = render_final_document_markdown(final_doc)
             logger.info("final_document_produced", leader=leader_name)
         except Exception as exc:
-            error_msg = f"Leader '{leader_name}' failed producing final document: {type(exc).__name__}"
+            error_msg = (
+                f"Leader '{leader_name}' failed producing final "
+                f"document: {type(exc).__name__}"
+            )
             logger.error(
                 "final_document_failed",
                 leader=leader_name,
@@ -451,5 +527,17 @@ class DeliberationRuntime:
                 correlation_id=correlation_id,
                 scope=_SCOPE,
                 payload=payload or {},
+            )
+        )
+
+    async def _emit_timeout_event(self, event_type: str, **payload: object) -> None:
+        """Emit a timeout event through the runner's event sink.
+        Matches the EmitCallable signature expected by TimeoutPolicy."""
+        await self._runner.event_sink.publish(
+            ExecutionEvent(
+                type=event_type,
+                timestamp=datetime.now(timezone.utc),
+                scope=_SCOPE,
+                payload=payload,
             )
         )

@@ -5,9 +5,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+import anyio
 import pytest
 
-from miniautogen.core.contracts.coordination import CoordinationKind, CoordinationMode, DeliberationPlan
+from miniautogen.core.contracts.coordination import (
+    CoordinationKind,
+    CoordinationMode,
+    DeliberationPlan,
+)
 from miniautogen.core.contracts.deliberation import (
     DeliberationState,
     FinalDocument,
@@ -19,7 +24,7 @@ from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.events.event_sink import InMemoryEventSink
 from miniautogen.core.runtime.deliberation_runtime import DeliberationRuntime
 from miniautogen.core.runtime.pipeline_runner import PipelineRunner
-
+from miniautogen.policies.timeout_policy import TimeoutPolicy
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -126,10 +131,15 @@ class FakeAgent:
 def _make_runtime(
     agents: dict[str, Any] | None = None,
     event_sink: InMemoryEventSink | None = None,
+    timeout_policy: TimeoutPolicy | None = None,
 ) -> DeliberationRuntime:
     sink = event_sink or InMemoryEventSink()
     runner = PipelineRunner(event_sink=sink)
-    return DeliberationRuntime(runner=runner, agent_registry=agents)
+    return DeliberationRuntime(
+        runner=runner,
+        agent_registry=agents,
+        timeout_policy=timeout_policy,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +181,52 @@ async def test_minimal_deliberation_2_agents_1_round() -> None:
 
     # Leader should have consolidated
     assert len(agent_a.consolidate_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_leader_synthesis_uses_documented_synthesize_round_timeout() -> None:
+    event_sink = InMemoryEventSink()
+
+    class SlowConsolidatingAgent(FakeAgent):
+        async def consolidate(
+            self,
+            topic: str,
+            contributions: list[ResearchOutput],
+            reviews: list[PeerReview] | None = None,
+        ) -> DeliberationState:
+            await anyio.sleep(0.2)
+            return await super().consolidate(topic, contributions, reviews)
+
+    timeout_policy = TimeoutPolicy(
+        agent_timeouts={},
+        round_timeouts={"synthesize": 0.05},
+        flow_timeout=None,
+        engine_timeout=5.0,
+        on_timeout_action="continue",
+    )
+    agent_a = SlowConsolidatingAgent("leader")
+    agent_b = FakeAgent("researcher")
+    runtime = _make_runtime(
+        agents={"leader": agent_a, "researcher": agent_b},
+        event_sink=event_sink,
+        timeout_policy=timeout_policy,
+    )
+
+    plan = DeliberationPlan(
+        topic="Evaluate market entry",
+        participants=["leader", "researcher"],
+        leader_agent="leader",
+        max_rounds=1,
+    )
+
+    await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+    timed_out = [
+        event for event in event_sink.events if event.type == "agent_turn_timed_out"
+    ]
+    assert len(timed_out) == 1
+    assert timed_out[0].get_payload("round_name") == "synthesize"
+    assert timed_out[0].get_payload("source") == "round"
 
 
 @pytest.mark.asyncio

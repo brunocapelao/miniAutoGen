@@ -90,6 +90,9 @@ class EventType(str, Enum):
     # Run state machine events
     RUN_STATE_CHANGED = "run_state_changed"
 
+    # Agent turn timeout events
+    AGENT_TURN_TIMED_OUT = "agent_turn_timed_out"
+
     # Approval channel events (decoupled human-in-the-loop)
     APPROVAL_CHANNEL_SUBMITTED = "approval_channel_submitted"
     APPROVAL_CHANNEL_RESOLVED = "approval_channel_resolved"

@@ -1,0 +1,36 @@
+# Example: Per-Agent Timeouts (Spec 013)
+# Shows three levels of granularity: agent, round, and flow.
+project:
+  name: per-agent-timeouts-demo
+  version: 0.1.0
+
+defaults:
+  engine: default_api
+
+engines:
+  default_api:
+    provider: openai-compat
+    model: gpt-4o
+    timeout_seconds: 300.0  # Level 4: engine fallback (lowest precedence)
+
+flows:
+  especificacao:
+    mode: deliberation
+    participants: [advogado, paralegal, engenheiro]
+    leader: advogado
+    max_rounds: 3
+
+    # Level 1: per-agent timeouts (highest precedence)
+    agent_timeouts:
+      advogado: 300.0
+      engenheiro: 60.0
+      paralegal: 120.0
+
+    # Level 2: per-round/role timeouts
+    round_timeouts:
+      contribute: 60.0
+      review: 90.0
+      synthesize: 180.0
+
+    # Action when a timeout fires: continue | abort
+    on_timeout_action: continue  # default: continue
