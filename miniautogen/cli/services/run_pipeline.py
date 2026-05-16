@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
@@ -147,6 +148,30 @@ async def execute_pipeline(
         sys.path.append(project_str)
         added_to_path = True
 
+    # Wire cancel checkpoint store if database is configured
+    checkpoint_store_for_cancel = None
+    if config.database is not None and config.database.url:
+        from miniautogen.api import SQLAlchemyCheckpointStore
+
+        checkpoint_store_for_cancel = SQLAlchemyCheckpointStore(config.database.url)
+        await checkpoint_store_for_cancel.init_db()
+
+    async def _on_cancel(reason: str, state: dict) -> None:
+        store = checkpoint_store_for_cancel
+        if store is None:
+            return
+        payload = {
+            "run_id": state.get("run_id", "unknown"),
+            "flow_name": pipeline_name,
+            "state": state,
+            "terminal_reason": reason,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        await store.save_checkpoint(
+            run_id=payload["run_id"],
+            payload=payload,
+        )
+
     try:
         internal_sink = InMemoryEventSink()
         sinks: list[Any] = [internal_sink]
@@ -154,12 +179,16 @@ async def execute_pipeline(
             sinks.append(_VerboseEventSink())
         if event_sink is not None:
             sinks.append(event_sink)
-        effective_sink: EventSink = CompositeEventSink(sinks=sinks) if len(sinks) > 1 else internal_sink
-        execution_policy = None
+        effective_sink: EventSink = (
+            CompositeEventSink(sinks=sinks) if len(sinks) > 1 else internal_sink
+        )
+
+        policy_kwargs: dict[str, Any] = {}
         if timeout is not None:
-            execution_policy = ExecutionPolicy(
-                timeout_seconds=timeout,
-            )
+            policy_kwargs["timeout_seconds"] = timeout
+        if checkpoint_store_for_cancel is not None:
+            policy_kwargs["on_cancel"] = _on_cancel
+        execution_policy = ExecutionPolicy(**policy_kwargs) if policy_kwargs else None
 
         runner = PipelineRunner(
             event_sink=effective_sink,
@@ -203,20 +232,14 @@ async def execute_pipeline(
         if resume_run_id is not None:
             from miniautogen.cli.errors import ExecutionError
 
-            if config.database is None:
+            if checkpoint_store_for_cancel is None:
                 raise ExecutionError(
                     "Resume requires a configured checkpoint store. "
                     "Ensure your project has persistence configured.",
                     hint="Add a 'database' section to your miniautogen.yaml.",
                 )
 
-            from miniautogen.api import SQLAlchemyCheckpointStore
-
-            checkpoint_store = SQLAlchemyCheckpointStore(config.database.url)
-            await checkpoint_store.init_db()
-
-            checkpoint = await checkpoint_store.get_checkpoint(resume_run_id)
-            await checkpoint_store.engine.dispose()
+            checkpoint = await checkpoint_store_for_cancel.get_checkpoint(resume_run_id)
 
             if checkpoint is None:
                 raise ExecutionError(
@@ -244,6 +267,8 @@ async def execute_pipeline(
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
+    except TimeoutError:
+        raise
     except click.ClickException:
         raise
     except Exception as exc:
@@ -253,5 +278,10 @@ async def execute_pipeline(
             "error_type": type(exc).__name__,
         }
     finally:
+        if checkpoint_store_for_cancel is not None:
+            try:
+                await checkpoint_store_for_cancel.engine.dispose()
+            except Exception:
+                pass
         if added_to_path and project_str in sys.path:
             sys.path.remove(project_str)

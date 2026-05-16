@@ -15,7 +15,7 @@ from miniautogen.observability import get_logger
 from miniautogen.policies.approval import ApprovalGate, ApprovalRequest
 from miniautogen.policies.approval_channel import ApprovalChannel, ChannelApprovalGate
 from miniautogen.policies.chain import PolicyChain, PolicyContext
-from miniautogen.policies.execution import ExecutionPolicy
+from miniautogen.policies.execution import CheckpointReason, ExecutionPolicy
 from miniautogen.policies.retry import RetryPolicy, build_retrying_call
 from miniautogen.stores.checkpoint_store import CheckpointStore
 from miniautogen.stores.run_store import RunStore
@@ -202,6 +202,30 @@ class PipelineRunner:
 
         return runtimes
 
+    async def _graceful_save(
+        self,
+        reason: CheckpointReason,
+        state: Any,
+        run_id: str,
+    ) -> None:
+        if not self.execution_policy or not self.execution_policy.on_cancel:
+            return
+        ttl = self.execution_policy.graceful_save_timeout
+        with anyio.CancelScope(shield=True):
+            try:
+                with anyio.fail_after(ttl):
+                    save_state = {"run_id": run_id}
+                    if isinstance(state, dict):
+                        save_state.update(state)
+                    await self.execution_policy.on_cancel(reason, save_state)
+            except TimeoutError:
+                self.logger.warning(
+                    "checkpoint_save_timed_out",
+                    ttl=ttl,
+                )
+            except Exception:
+                self.logger.warning("checkpoint_save_failed")
+
     async def _execute_pipeline(
         self,
         pipeline: Any,
@@ -362,6 +386,7 @@ class PipelineRunner:
                 with anyio.fail_after(effective_timeout):
                     result = await self._execute_pipeline(pipeline, state)
         except TimeoutError:
+            await self._graceful_save("timed_out", state, current_run_id)
             if self.run_store is not None:
                 await self.run_store.save_run(
                     current_run_id,
@@ -380,6 +405,19 @@ class PipelineRunner:
                 )
             )
             logger.warning("run_timed_out")
+            raise
+        except (KeyboardInterrupt, anyio.get_cancelled_exc_class()):
+            await self._graceful_save("cancelled", state, current_run_id)
+            await self.event_sink.publish(
+                ExecutionEvent(
+                    type=EventType.RUN_CANCELLED.value,
+                    timestamp=datetime.now(timezone.utc),
+                    run_id=current_run_id,
+                    correlation_id=correlation_id,
+                    scope="pipeline_runner",
+                )
+            )
+            logger.warning("run_cancelled")
             raise
         except Exception as exc:
             await self._persist_failed_run(current_run_id, correlation_id, type(exc).__name__)
