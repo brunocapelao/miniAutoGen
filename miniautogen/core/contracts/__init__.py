@@ -13,6 +13,8 @@ from .coordination import (
     CoordinationMode,
     CoordinationPlan,
     DeliberationPlan,
+    MailboxConfig,
+    PlanApprovalConfig,
     SubrunRequest,
     TeamPlan,
     WorkflowPlan,
@@ -50,6 +52,8 @@ from .runtime_interceptor import RuntimeInterceptor
 from .skill_spec import SkillSpec
 from .store import StoreProtocol
 from .supervision import StepSupervision, SupervisionDecision
+from .team_hook import TeamHook
+from .team_message import MailMessage, MailKind, PlanApprovalRequest
 from .team_task import (
     ConfigurationError,
     StateConsistencyError,
@@ -77,6 +81,12 @@ __all__ = [
     "CoordinationKind",
     "CoordinationMode",
     "Conversation",
+    "MailboxConfig",
+    "MailKind",
+    "MailMessage",
+    "PlanApprovalConfig",
+    "PlanApprovalRequest",
+    "TeamHook",
     "Contribution",
     "CoordinationPlan",
     "CoordinatorCapability",

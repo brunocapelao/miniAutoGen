@@ -114,6 +114,32 @@ class EventType(str, Enum):
     TASK_RELEASED = "task_released"
     TASK_BLOCKED_BY_DEPENDENCY = "task_blocked_by_dependency"
 
+    # Team mailbox events (Spec 017)
+    MESSAGE_SENT = "message_sent"
+    MESSAGE_DELIVERED = "message_delivered"
+    INBOX_DRAINED = "inbox_drained"
+    TEAMMATE_IDLE = "teammate_idle"
+
+    # Team plan approval events (Spec 017)
+    PLAN_APPROVAL_REQUESTED = "plan_approval_requested"
+    PLAN_APPROVAL_GRANTED = "plan_approval_granted"
+    PLAN_APPROVAL_DENIED = "plan_approval_denied"
+    PLAN_APPROVAL_TIMED_OUT = "plan_approval_timed_out"
+
+
+TEAM_MAILBOX_EVENT_TYPES: set[EventType] = {
+    EventType.MESSAGE_SENT,
+    EventType.MESSAGE_DELIVERED,
+    EventType.INBOX_DRAINED,
+    EventType.TEAMMATE_IDLE,
+}
+
+TEAM_PLAN_APPROVAL_EVENT_TYPES: set[EventType] = {
+    EventType.PLAN_APPROVAL_REQUESTED,
+    EventType.PLAN_APPROVAL_GRANTED,
+    EventType.PLAN_APPROVAL_DENIED,
+    EventType.PLAN_APPROVAL_TIMED_OUT,
+}
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
