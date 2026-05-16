@@ -106,6 +106,14 @@ class EventType(str, Enum):
     TEAM_FINISHED = "team_finished"
     TEAM_FAILED = "team_failed"
 
+    # Team task list events (Spec 016)
+    TASK_ADDED = "task_added"
+    TASK_CLAIMED = "task_claimed"
+    TASK_COMPLETED = "task_completed"
+    TASK_FAILED = "task_failed"
+    TASK_RELEASED = "task_released"
+    TASK_BLOCKED_BY_DEPENDENCY = "task_blocked_by_dependency"
+
 
 APPROVAL_EVENT_TYPES: set[EventType] = {
     EventType.APPROVAL_REQUESTED,
@@ -191,4 +199,13 @@ TEAM_EVENT_TYPES: set[EventType] = {
     EventType.TEAMMATE_FAILED,
     EventType.TEAM_FINISHED,
     EventType.TEAM_FAILED,
+}
+
+TEAM_TASK_EVENT_TYPES: set[EventType] = {
+    EventType.TASK_ADDED,
+    EventType.TASK_CLAIMED,
+    EventType.TASK_COMPLETED,
+    EventType.TASK_FAILED,
+    EventType.TASK_RELEASED,
+    EventType.TASK_BLOCKED_BY_DEPENDENCY,
 }

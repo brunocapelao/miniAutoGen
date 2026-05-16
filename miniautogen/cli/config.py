@@ -19,7 +19,40 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
+from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
+
 CONFIG_FILENAME = "miniautogen.yaml"
+
+
+def _has_cycle(specs: list[TaskEntrySpec]) -> bool:
+    """Detect cycles in a list of TaskEntrySpec DAG using Kahn's algorithm."""
+    ids = {s.id or f"task[{i}]" for i, s in enumerate(specs)}
+    id_map: dict[str, TaskEntrySpec] = {}
+    for i, spec in enumerate(specs or []):
+        sid = spec.id or f"task[{i}]"
+        id_map[sid] = spec
+
+    in_degree: dict[str, int] = {sid: 0 for sid in ids}
+    adj: dict[str, list[str]] = {sid: [] for sid in ids}
+
+    for sid, spec in id_map.items():
+        for dep in spec.depends_on:
+            if dep in id_map:
+                adj[dep].append(sid)
+                in_degree[sid] = in_degree.get(sid, 0) + 1
+
+    queue = [sid for sid, deg in in_degree.items() if deg == 0]
+    visited = 0
+
+    while queue:
+        node = queue.pop(0)
+        visited += 1
+        for neighbor in adj.get(node, []):
+            in_degree[neighbor] -= 1
+            if in_degree[neighbor] == 0:
+                queue.append(neighbor)
+
+    return visited != len(ids)
 
 
 class ProjectMeta(BaseModel):
@@ -121,6 +154,9 @@ class FlowConfig(BaseModel):
     max_concurrent_teammates: int | None = None  # team mode
     team_lead_prompt: str | None = None  # team mode
 
+    # Team task list options (Spec 016)
+    task_list: TaskListConfig | None = None
+
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured
     prompts: dict[str, str] = Field(default_factory=dict)
@@ -149,6 +185,12 @@ class FlowConfig(BaseModel):
                     raise ValueError("Team mode requires 'lead'")
                 if not self.participants:
                     raise ValueError("Team mode requires 'participants'")
+        # Validate task list DAG cycles
+        if self.task_list and self.task_list.enabled:
+            if _has_cycle(self.task_list.initial_tasks):
+                raise ValueError(
+                    "task_list.initial_tasks contains a cycle in depends_on"
+                )
         return self
 
     @model_validator(mode="after")

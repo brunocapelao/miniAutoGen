@@ -14,6 +14,7 @@ from miniautogen.core.contracts.agentic_loop import ConversationPolicy
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.contracts.supervision import StepSupervision
+from miniautogen.core.contracts.team_task import TaskListConfig
 
 # TODO(review): validate plan type matches mode before stabilization (biz-reviewer, 2026-03-16, Low)
 _EXPERIMENTAL_CONTRACTS = {"SubrunRequest"}
@@ -140,12 +141,23 @@ class TeamPlan(CoordinationPlan):
     on_teammate_failure: Literal["isolate", "abort_team"] = "isolate"
     max_concurrent_teammates: int | None = Field(default=None, ge=1)
 
+    # Team task list (Spec 016)
+    task_list: TaskListConfig | None = None
+    lead_runs_first: bool = False
+
     @model_validator(mode="after")
     def _no_dup_no_self(self) -> "TeamPlan":
         if len(set(self.teammates)) != len(self.teammates):
             raise ValueError("teammates must be unique")
         if self.lead_agent in self.teammates:
             raise ValueError("lead_agent cannot also be a teammate")
+        return self
+
+    @model_validator(mode="after")
+    def _apply_task_list_defaults(self) -> "TeamPlan":
+        if self.task_list and self.task_list.enabled:
+            if not self.lead_runs_first:
+                object.__setattr__(self, "lead_runs_first", True)
         return self
 
 
