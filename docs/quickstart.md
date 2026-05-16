@@ -201,6 +201,34 @@ Then run a flow:
 miniautogen run main
 ```
 
+The CLI provides a Rich Live inline UI showing agent activity, current action,
+turn/round progress, and streaming thoughts in real time:
+
+```
+┌─ miniautogen run · main · run_id=abc12345 · elapsed=02:14 ─┐
+│                                                             │
+│  ▶ Engenheiro de Dados  · Contribute · Round 2/5            │
+│                                                             │
+│  └─ "Proponho um pipeline streaming via Kafka particionado  │
+│      por hash de CPF para isolar consumo PII..."            │
+│                                                             │
+│  Events: 47  ·  Press Ctrl+C to cancel & save               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The UI behaviour adapts to the execution context:
+
+| Cenário                 | Comando                                       | UI exibida           |
+|-------------------------|-----------------------------------------------|----------------------|
+| Terminal interativo     | `miniautogen run main`                        | Rich Live inline     |
+| Debug verboso           | `miniautogen run main --verbose`              | Logs por linha       |
+| CI / pipe               | `miniautogen run main \| cat`                  | Logs por linha       |
+| Output programático     | `miniautogen run main --format json`          | Sem UI (só JSON)     |
+| Forçar modo CI          | `MINIAUTOGEN_NO_TTY=1 miniautogen run main`   | Logs por linha       |
+
+> ![Rich Live Demo](assets/rich-live-demo.svg)
+> *Rich Live inline UI during a 3-agent deliberation.*
+
 You can also send a single message to an agent directly:
 
 ```bash

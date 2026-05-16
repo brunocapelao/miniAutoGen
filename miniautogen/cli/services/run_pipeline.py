@@ -17,22 +17,12 @@ import click
 from miniautogen.api import (
     CompositeEventSink,
     EventSink,
-    ExecutionEvent,
     ExecutionPolicy,
     InMemoryEventSink,
     PipelineRunner,
 )
 from miniautogen.cli.config import ProjectConfig
-
-
-class _VerboseEventSink:
-    """Event sink that echoes events to stderr for --verbose mode."""
-
-    async def publish(self, event: ExecutionEvent) -> None:
-        click.echo(
-            f"[{event.type}] run_id={event.run_id} scope={event.scope}",
-            err=True,
-        )
+from miniautogen.cli.services.event_sinks import _VerboseEventSink
 
 
 def resolve_pipeline_target(
@@ -113,6 +103,7 @@ async def execute_pipeline(
     pipeline_input: str | None = None,
     resume_run_id: str | None = None,
     event_sink: Any = None,
+    console_event_sink: Any = None,
 ) -> dict[str, Any]:
     """Execute a named pipeline from the project config.
 
@@ -121,9 +112,11 @@ async def execute_pipeline(
         pipeline_name: Key in config.pipelines.
         project_root: Path to project root (added to sys.path).
         timeout: Optional timeout in seconds.
-        verbose: If True, log events to console.
+        verbose: If True, log events to console (deprecated — use event_sink).
         pipeline_input: Optional input text for the pipeline.
         resume_run_id: Optional run_id to resume from checkpoint.
+        event_sink: Optional UI event sink (rich, verbose, or None).
+        console_event_sink: Optional console dashboard event sink.
 
     Returns:
         Result dict with run_id, status, output.
@@ -179,6 +172,8 @@ async def execute_pipeline(
             sinks.append(_VerboseEventSink())
         if event_sink is not None:
             sinks.append(event_sink)
+        if console_event_sink is not None:
+            sinks.append(console_event_sink)
         effective_sink: EventSink = (
             CompositeEventSink(sinks=sinks) if len(sinks) > 1 else internal_sink
         )
