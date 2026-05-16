@@ -33,6 +33,18 @@ class _AgentWithConversation:
         return await self.process(prompt)
 
 
+class _AgentWithRuntimeContext:
+    """AgentRuntime-like test double that exposes its current RunContext."""
+
+    def __init__(self, context: RunContext) -> None:
+        self._run_context = context
+        self.seen_parent_run_id: str | None = None
+
+    async def process(self, prompt: str) -> str:
+        self.seen_parent_run_id = self._run_context.parent_run_id
+        return "done"
+
+
 def _make_context(run_id: str = "team-run-1", **kwargs: Any) -> RunContext:
     return RunContext(
         run_id=run_id,
@@ -77,3 +89,28 @@ async def test_teammates_do_not_see_lead_secret() -> None:
     # Teammates should only have their own prompts
     assert all("SEGREDO" not in p for p in legal.all_prompts)
     assert all("SEGREDO" not in p for p in security.all_prompts)
+
+
+@pytest.mark.asyncio
+async def test_teammate_runtime_context_has_parent_run_id() -> None:
+    """AgentRuntime-backed teammates must execute with parent_run_id set."""
+    team_ctx = _make_context(run_id="team-run-parent")
+    initial_agent_ctx = _make_context(run_id="team-run-parent")
+    legal = _AgentWithRuntimeContext(initial_agent_ctx)
+
+    class _Lead:
+        async def process(self, prompt: Any) -> str:
+            return "lead-summary"
+
+    registry = {"legal": legal, "lead": _Lead()}
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    runtime = TeamRuntime(runner=runner, agent_registry=registry)
+
+    plan = TeamPlan(lead_agent="lead", teammates=["legal"])
+
+    result = await runtime.run(agents=[], context=team_ctx, plan=plan)
+
+    assert result.status == "finished"
+    assert legal.seen_parent_run_id == "team-run-parent"
+    assert legal._run_context.parent_run_id is None

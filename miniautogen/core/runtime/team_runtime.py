@@ -27,6 +27,10 @@ if TYPE_CHECKING:
     from miniautogen.core.runtime.pipeline_runner import PipelineRunner
 
 
+class TeamAgentTimeout(Exception):
+    """Raised internally when a team agent turn times out."""
+
+
 class TeamRuntime:
     """Coordination mode for agent teams with a lead and concurrent teammates.
 
@@ -95,6 +99,11 @@ class TeamRuntime:
         contributions: dict[str, ContributionSummary] = {}
         abort = False
         was_cancelled = False
+        limiter = (
+            anyio.CapacityLimiter(plan.max_concurrent_teammates)
+            if plan.max_concurrent_teammates is not None
+            else None
+        )
 
         try:
             async with anyio.create_task_group() as tg:
@@ -135,6 +144,7 @@ class TeamRuntime:
                         contributions,
                         run_id,
                         tg.cancel_scope,
+                        limiter,
                     )
 
                 if abort:
@@ -223,15 +233,27 @@ class TeamRuntime:
         contributions: dict[str, ContributionSummary],
         run_id: str,
         cancel_scope: anyio.CancelScope | None = None,
+        limiter: anyio.CapacityLimiter | None = None,
     ) -> None:
         """Run a single teammate, capturing result or failure."""
         try:
-            if hasattr(agent, "process"):
-                output = await agent.process(prompt)
-            elif callable(agent):
-                output = await agent(prompt)
+            if limiter is None:
+                output = await self._invoke_agent(
+                    agent_id=name,
+                    agent=agent,
+                    input_data=prompt,
+                    context=context,
+                    round_name="teammate",
+                )
             else:
-                output = await agent(prompt)
+                async with limiter:
+                    output = await self._invoke_agent(
+                        agent_id=name,
+                        agent=agent,
+                        input_data=prompt,
+                        context=context,
+                        round_name="teammate",
+                    )
 
             contributions[name] = ContributionSummary(
                 teammate=name,
@@ -262,6 +284,25 @@ class TeamRuntime:
                 },
             )
             raise
+        except TeamAgentTimeout:
+            contributions[name] = ContributionSummary(
+                teammate=name,
+                status="failed",
+                error_category="timeout",
+                error_message="agent_timeout",
+            )
+            await self._emit(
+                EventType.TEAMMATE_FAILED,
+                run_id,
+                payload={
+                    "teammate": name,
+                    "sub_run_id": f"{run_id}/{name}",
+                    "error_category": "timeout",
+                    "message": "agent_timeout",
+                },
+            )
+            if failure_policy == "abort_team" and cancel_scope is not None:
+                cancel_scope.cancel()
         except Exception as exc:
             error_category = "execution"
             contributions[name] = ContributionSummary(
@@ -303,23 +344,24 @@ class TeamRuntime:
         lead_prompt = plan.lead_prompt or "Consolidate the team findings."
 
         try:
-            if hasattr(lead_agent, "process"):
-                output = await lead_agent.process(
-                    {"_contributions": contributions, "_prompt": lead_prompt},
-                )
-            elif callable(lead_agent):
-                output = await lead_agent(
-                    {"_contributions": contributions, "_prompt": lead_prompt},
-                )
-            else:
-                output = await lead_agent(
-                    {"_contributions": contributions, "_prompt": lead_prompt},
-                )
+            output = await self._invoke_agent(
+                agent_id=plan.lead_agent,
+                agent=lead_agent,
+                input_data={"_contributions": contributions, "_prompt": lead_prompt},
+                context=context,
+                round_name="lead",
+            )
 
             return RunResult(
                 run_id=run_id,
                 status=RunStatus.FINISHED,
                 output=output,
+            )
+        except TeamAgentTimeout:
+            return RunResult(
+                run_id=run_id,
+                status=RunStatus.TIMED_OUT,
+                error="agent_timeout",
             )
         except Exception as exc:
             error = str(exc)
@@ -346,6 +388,66 @@ class TeamRuntime:
                 )
                 raise ValueError(msg)
 
+    async def _invoke_agent(
+        self,
+        *,
+        agent_id: str,
+        agent: Any,
+        input_data: Any,
+        context: RunContext,
+        round_name: str,
+    ) -> Any:
+        """Invoke an agent with child context and optional timeout policy."""
+        if self._timeout_policy is None:
+            return await self._call_agent_with_context(agent, input_data, context)
+
+        result = None
+        timed_out = False
+
+        async def emit_timeout_event(event_type: str, **payload: object) -> None:
+            nonlocal timed_out
+            if event_type == EventType.AGENT_TURN_TIMED_OUT.value:
+                timed_out = True
+            await self._emit_raw(
+                event_type,
+                context.run_id,
+                correlation_id=context.correlation_id,
+                payload=payload,
+            )
+
+        try:
+            async with self._timeout_policy.scope_for_turn(
+                agent_id=agent_id,
+                round_name=round_name,
+                emit=emit_timeout_event,
+            ):
+                result = await self._call_agent_with_context(agent, input_data, context)
+        except TimeoutError as exc:
+            raise TeamAgentTimeout("agent_timeout") from exc
+
+        if timed_out:
+            raise TeamAgentTimeout("agent_timeout")
+        return result
+
+    async def _call_agent_with_context(
+        self,
+        agent: Any,
+        input_data: Any,
+        context: RunContext,
+    ) -> Any:
+        """Call an agent while temporarily applying the provided RunContext."""
+        previous_context = getattr(agent, "_run_context", None)
+        has_context = hasattr(agent, "_run_context")
+        if has_context:
+            agent._run_context = context  # noqa: SLF001
+        try:
+            if hasattr(agent, "process"):
+                return await agent.process(input_data)
+            return await agent(input_data)
+        finally:
+            if has_context:
+                agent._run_context = previous_context  # noqa: SLF001
+
     async def _emit(
         self,
         event_type: EventType,
@@ -361,6 +463,27 @@ class TeamRuntime:
             timestamp=datetime.now(timezone.utc),
             run_id=run_id,
             correlation_id=run_id,
+            scope="team_runtime",
+            payload=payload or {},
+        )
+        await self._runner.event_sink.publish(event)
+
+    async def _emit_raw(
+        self,
+        event_type: str,
+        run_id: str,
+        *,
+        correlation_id: str,
+        payload: dict[str, Any] | None = None,
+    ) -> None:
+        """Emit a raw event type through the runner's event sink."""
+        from miniautogen.core.contracts.events import ExecutionEvent
+
+        event = ExecutionEvent(
+            type=event_type,
+            timestamp=datetime.now(timezone.utc),
+            run_id=run_id,
+            correlation_id=correlation_id,
             scope="team_runtime",
             payload=payload or {},
         )
