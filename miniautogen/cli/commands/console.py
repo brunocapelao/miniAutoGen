@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 
 import click
@@ -163,8 +162,7 @@ def _run_production_mode(
 
     import uvicorn
 
-    from miniautogen.server.app import create_app
-    from miniautogen.server.standalone_provider import StandaloneProvider
+    from miniautogen.api import StandaloneProvider, create_app
     from miniautogen.tui.data_provider import DashDataProvider
 
     # Build frontend if needed
@@ -203,13 +201,11 @@ def _run_dev_mode(
 ) -> None:
     """Start backend API + Next.js dev server in parallel."""
     import os
-    import signal
     import webbrowser
 
     import uvicorn
 
-    from miniautogen.server.app import create_app
-    from miniautogen.server.standalone_provider import StandaloneProvider
+    from miniautogen.api import StandaloneProvider, create_app
     from miniautogen.tui.data_provider import DashDataProvider
 
     if not _CONSOLE_SRC.is_dir():
@@ -286,9 +282,8 @@ def _run_dev_mode(
 def _create_stores(db: str | None):
     """Create run/event stores based on --db flag."""
     if db:
+        from miniautogen.api import SQLAlchemyEventStore, SQLAlchemyRunStore
         from miniautogen.cli.main import run_async
-        from miniautogen.stores.sqlalchemy_event_store import SQLAlchemyEventStore
-        from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 
         run_store = SQLAlchemyRunStore(db)
         event_store = SQLAlchemyEventStore(db)
@@ -301,8 +296,7 @@ def _create_stores(db: str | None):
         safe_url = db if not parsed.password else db.replace(f":{parsed.password}@", ":****@")
         echo_info(f"Using persistent store: {safe_url}")
     else:
-        from miniautogen.stores.in_memory_event_store import InMemoryEventStore
-        from miniautogen.stores.in_memory_run_store import InMemoryRunStore
+        from miniautogen.api import InMemoryEventStore, InMemoryRunStore
 
         run_store = InMemoryRunStore()
         event_store = InMemoryEventStore()

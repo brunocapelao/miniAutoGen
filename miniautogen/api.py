@@ -12,8 +12,10 @@ from miniautogen.backends import (
     AgentDriver,
     BackendCapabilities,
     BackendResolver,
+    EngineResolver,
 )
 from miniautogen.core.contracts import (
+    AgentDriverProtocol,
     AgentHook,
     AgentSpec,
     CoordinationMode,
@@ -77,11 +79,6 @@ from miniautogen.core.contracts.tool_registry import (
 )
 from miniautogen.core.contracts.turn_result import TurnResult
 from miniautogen.core.effect_interceptor import EffectInterceptor
-from miniautogen.core.runtime.agent_runtime import AgentRuntime
-from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
-from miniautogen.core.runtime.delegation_router import ConfigDelegationRouter
-from miniautogen.core.runtime.persistent_memory import PersistentMemoryProvider
-from miniautogen.core.runtime.filesystem_tool_registry import FileSystemToolRegistry
 from miniautogen.core.events.event_sink import (
     CompositeEventSink,
     EventSink,
@@ -137,13 +134,17 @@ from miniautogen.policies.execution import ExecutionPolicy
 from miniautogen.policies.retry import RetryPolicy
 from miniautogen.policies.semantic_cache import ExactCache, SemanticCache
 from miniautogen.scripting import ScriptBuilder, quick_run
+from miniautogen.server.app import create_app
+from miniautogen.server.standalone_provider import StandaloneProvider
 from miniautogen.stores.checkpoint_store import CheckpointStore
 from miniautogen.stores.effect_journal import EffectJournal
 from miniautogen.stores.in_memory_checkpoint_store import InMemoryCheckpointStore
 from miniautogen.stores.in_memory_effect_journal import InMemoryEffectJournal
+from miniautogen.stores.in_memory_event_store import InMemoryEventStore
 from miniautogen.stores.in_memory_run_store import InMemoryRunStore
 from miniautogen.stores.run_store import RunStore
 from miniautogen.stores.sqlalchemy_checkpoint_store import SQLAlchemyCheckpointStore
+from miniautogen.stores.sqlalchemy_event_store import SQLAlchemyEventStore
 from miniautogen.stores.sqlalchemy_run_store import SQLAlchemyRunStore
 from miniautogen.testing import MockEngine, RecordReplayEngine
 
@@ -278,15 +279,22 @@ __all__ = [
     "SessionRecovery",
     # Backend driver abstraction
     "AgentDriver",
+    "AgentDriverProtocol",
     "BackendCapabilities",
     "BackendResolver",
+    "EngineResolver",
+    # CLI/server facade helpers
+    "StandaloneProvider",
+    "create_app",
     # Stores
     "CheckpointStore",
     "InMemoryCheckpointStore",
     "EffectJournal",
     "InMemoryEffectJournal",
+    "InMemoryEventStore",
     "InMemoryRunStore",
     "RunStore",
     "SQLAlchemyCheckpointStore",
+    "SQLAlchemyEventStore",
     "SQLAlchemyRunStore",
 ]

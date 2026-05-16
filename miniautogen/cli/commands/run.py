@@ -5,7 +5,6 @@ from __future__ import annotations
 import sys
 import threading
 import time
-
 from pathlib import Path
 
 import click
@@ -13,7 +12,17 @@ import click
 from miniautogen.cli.config import require_project_config
 from miniautogen.cli.errors import PipelineNotFoundError
 from miniautogen.cli.main import run_async
-from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success, echo_warning
+from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success
+
+
+def _wait_for_console_shutdown() -> None:
+    """Block until Ctrl+C; uvicorn's daemon thread keeps serving."""
+    echo_info("Console still running. Press Ctrl+C to exit.")
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        echo_info("Shutting down console...")
 
 
 def _resolve_input(input_value: str | None) -> str | None:
@@ -128,15 +137,15 @@ class _Spinner:
     help="Port for the web console (default: 8080).",
 )
 def run_command(
-    pipeline_name: str,
-    timeout: float | None,
-    output_format: str,
-    verbose: bool,
-    input_value: str | None,
-    resume: str | None,
-    explain: bool,
-    console: bool,
-    console_port: int,
+    pipeline_name: str = "main",
+    timeout: float | None = None,
+    output_format: str = "text",
+    verbose: bool = False,
+    input_value: str | None = None,
+    resume: str | None = None,
+    explain: bool = False,
+    console: bool = False,
+    console_port: int = 8080,
 ) -> None:
     """Execute a pipeline headlessly."""
     from miniautogen.cli.services.run_pipeline import execute_pipeline
@@ -146,7 +155,7 @@ def run_command(
     if pipeline_name not in config.pipelines:
         raise PipelineNotFoundError(
             f"Flow '{pipeline_name}' not found in config",
-            hint=f"Run 'miniautogen flow list' to see available flows.",
+            hint="Run 'miniautogen flow list' to see available flows.",
         )
 
     # Resolve input
@@ -163,7 +172,7 @@ def run_command(
     if console:
         import webbrowser
 
-        from miniautogen.server.app import create_app
+        from miniautogen.api import create_app
         from miniautogen.tui.data_provider import DashDataProvider
 
         console_provider = DashDataProvider(root)
@@ -265,21 +274,9 @@ def run_command(
                 f"Flow '{pipeline_name}' failed: "
                 f"{result.get('error', 'unknown')}"
             )
-            # In console mode, keep server running for post-run inspection
             if console and console_server:
-                echo_info("Console still running. Press Ctrl+C to exit.")
-                try:
-                    while True:
-                        time.sleep(1)
-                except KeyboardInterrupt:
-                    echo_info("Shutting down console...")
+                _wait_for_console_shutdown()
             raise SystemExit(1)
 
-    # In console mode, keep server running for post-run inspection
     if console and console_server:
-        echo_info("Console still running. Press Ctrl+C to exit.")
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            echo_info("Shutting down console...")
+        _wait_for_console_shutdown()

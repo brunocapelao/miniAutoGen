@@ -1,6 +1,7 @@
 """Typed contracts for the MiniAutoGen core."""
 
 from .agent import ConversationalAgent, DeliberationAgent, WorkflowAgent
+from .agent_driver import AgentDriverProtocol
 from .agent_hook import AgentHook
 from .agent_spec import AgentSpec
 from .agentic_loop import AgenticLoopState, ConversationPolicy, RouterDecision
@@ -34,9 +35,9 @@ from .effect import (
     EffectStatus,
 )
 from .engine_profile import EngineProfile
-from .interaction import InteractionStrategy
 from .enums import ErrorCategory, LoopStopReason, RunStatus, SupervisionStrategy
 from .events import ExecutionEvent
+from .interaction import InteractionStrategy
 from .mcp_binding import McpServerBinding
 from .memory_profile import MemoryProfile
 from .memory_provider import InMemoryMemoryProvider, MemoryProvider
@@ -51,6 +52,7 @@ from .tool import ToolProtocol, ToolResult
 from .tool_spec import ToolSpec
 
 __all__ = [
+    "AgentDriverProtocol",
     "AgentHook",
     "AgentSpec",
     "AgenticLoopPlan",

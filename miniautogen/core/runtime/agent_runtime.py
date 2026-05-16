@@ -18,39 +18,44 @@ import hashlib
 import json
 import logging
 import re
-from typing import Any, AsyncIterator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 import anyio
 
-from miniautogen.backends.driver import AgentDriver
 from miniautogen.backends.models import (
     AgentEvent,
     SendTurnRequest,
     StartSessionRequest,
 )
+from miniautogen.core.contracts.agent_driver import AgentDriverProtocol
 from miniautogen.core.contracts.agent_hook import AgentHook
 from miniautogen.core.contracts.agentic_loop import RouterDecision
 from miniautogen.core.contracts.delegation import (
     DelegationRouterProtocol,
     PersistableMemory,
 )
-from miniautogen.core.contracts.deliberation import Contribution, DeliberationState, FinalDocument, Review
+from miniautogen.core.contracts.deliberation import (
+    Contribution,
+    DeliberationState,
+    FinalDocument,
+    Review,
+)
 from miniautogen.core.contracts.events import ExecutionEvent
+from miniautogen.core.contracts.interaction import InteractionStrategy
 from miniautogen.core.contracts.memory_provider import MemoryProvider
 from miniautogen.core.contracts.run_context import RunContext
 from miniautogen.core.contracts.tool_registry import ToolCall, ToolRegistryProtocol
 from miniautogen.core.contracts.turn_result import TurnResult
 from miniautogen.core.events.event_sink import EventSink, NullEventSink
 from miniautogen.core.events.types import EventType
-from miniautogen.core.contracts.interaction import InteractionStrategy
 from miniautogen.core.runtime.agent_errors import AgentClosedError, AgentSecurityError
 from miniautogen.core.runtime.default_prompts import (
-    build_default_contribute_prompt,
-    build_default_review_prompt,
     build_default_consolidate_prompt,
+    build_default_contribute_prompt,
     build_default_final_document_prompt,
+    build_default_review_prompt,
     build_default_route_prompt,
 )
 from miniautogen.core.runtime.prompt_resolver import resolve_prompt
@@ -68,7 +73,7 @@ class AgentRuntime:
         self,
         *,
         agent_id: str,
-        driver: AgentDriver,
+        driver: AgentDriverProtocol,
         run_context: RunContext,
         event_sink: EventSink | None = None,
         system_prompt: str | None = None,

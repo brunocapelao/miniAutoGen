@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 import yaml
@@ -48,35 +48,14 @@ def workspace(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def _make_mocks() -> tuple[MagicMock, AsyncMock]:
-    """Build mock EngineResolver and AgentRuntime."""
-    mock_driver = MagicMock()
-
-    mock_resolver_instance = MagicMock()
-    mock_resolver_instance.create_fresh_driver.return_value = mock_driver
-
-    mock_runtime_instance = AsyncMock()
-    mock_runtime_instance.initialize = AsyncMock()
-    mock_runtime_instance.process = AsyncMock(return_value="Hello back!")
-    mock_runtime_instance.close = AsyncMock()
-
-    return mock_resolver_instance, mock_runtime_instance
-
-
 @pytest.mark.anyio
 async def test_create_session(workspace: Path) -> None:
     """Creates a session with mocked runtime and correct defaults."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.chat_service.create_runtime",
+        return_value=(mock_runtime, "chat-abcdef01"),
     ):
         from miniautogen.cli.services.chat_service import ChatSession
 
@@ -86,24 +65,17 @@ async def test_create_session(workspace: Path) -> None:
     assert session.run_id.startswith("chat-")
     assert session.history == []
     assert session.is_closed is False
-    mock_runtime.initialize.assert_awaited_once()
 
 
 @pytest.mark.anyio
 async def test_send_message_tracks_history(workspace: Path) -> None:
     """History grows with each user/assistant message pair."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
     mock_runtime.process = AsyncMock(side_effect=["Response 1", "Response 2"])
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.chat_service.create_runtime",
+        return_value=(mock_runtime, "chat-abcdef01"),
     ):
         from miniautogen.cli.services.chat_service import ChatSession
 
@@ -123,17 +95,11 @@ async def test_send_message_tracks_history(workspace: Path) -> None:
 @pytest.mark.anyio
 async def test_clear_history(workspace: Path) -> None:
     """Clearing history removes all messages."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.chat_service.create_runtime",
+        return_value=(mock_runtime, "chat-abcdef01"),
     ):
         from miniautogen.cli.services.chat_service import ChatSession
 
@@ -148,17 +114,11 @@ async def test_clear_history(workspace: Path) -> None:
 @pytest.mark.anyio
 async def test_close_session(workspace: Path) -> None:
     """Closing the session marks it as closed and calls runtime.close()."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.chat_service.create_runtime",
+        return_value=(mock_runtime, "chat-abcdef01"),
     ):
         from miniautogen.cli.services.chat_service import ChatSession
 
@@ -173,17 +133,11 @@ async def test_close_session(workspace: Path) -> None:
 @pytest.mark.anyio
 async def test_send_after_close(workspace: Path) -> None:
     """Sending a message after close raises RuntimeError."""
-    mock_resolver, mock_runtime = _make_mocks()
+    mock_runtime = AsyncMock()
 
-    with (
-        patch(
-            "miniautogen.backends.engine_resolver.EngineResolver",
-            return_value=mock_resolver,
-        ),
-        patch(
-            "miniautogen.core.runtime.agent_runtime.AgentRuntime",
-            return_value=mock_runtime,
-        ),
+    with patch(
+        "miniautogen.cli.services.chat_service.create_runtime",
+        return_value=(mock_runtime, "chat-abcdef01"),
     ):
         from miniautogen.cli.services.chat_service import ChatSession
 
