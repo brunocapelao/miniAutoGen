@@ -106,6 +106,7 @@ from miniautogen.core.runtime.composite_runtime import CompositionStep
 from miniautogen.core.runtime.composite_tool_registry import CompositeToolRegistry
 from miniautogen.core.runtime.delegation_router import ConfigDelegationRouter
 from miniautogen.core.runtime.filesystem_tool_registry import FileSystemToolRegistry
+from miniautogen.core.runtime.workspace_tools import build_workspace_tools
 from miniautogen.core.runtime.human_agent import (
     HumanAgent,
     InputChannel,
@@ -214,6 +215,8 @@ __all__ = [
     "PersistentMemoryProvider",
     # Runtime interceptor
     "RuntimeInterceptor",
+    # Workspace management tools
+    "build_workspace_tools",
     # Pipeline
     "Pipeline",
     "PipelineComponent",

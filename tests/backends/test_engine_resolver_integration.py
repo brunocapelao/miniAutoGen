@@ -179,7 +179,7 @@ class TestEngineConfigToBackendConfig:
             model="gemini-2.5-pro",
         )
         backend = resolver._engine_to_backend("gemini-cli-test", engine)
-        assert backend.command == ["gemini"]
+        assert backend.command == ["gemini", "-m", "gemini-2.5-pro"]
 
     def test_cli_provider_custom_command(self) -> None:
         resolver = EngineResolver()

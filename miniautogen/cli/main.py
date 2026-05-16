@@ -76,6 +76,7 @@ from miniautogen.cli.commands.doctor import doctor_command
 from miniautogen.cli.commands.engine import engine_group
 from miniautogen.cli.commands.flow import flow_group
 from miniautogen.cli.commands.init import init_command
+from miniautogen.cli.commands.lead import lead_command
 from miniautogen.cli.commands.pipeline import pipeline_group
 from miniautogen.cli.commands.run import run_command
 from miniautogen.cli.commands.send import send_command
@@ -101,6 +102,7 @@ cli.add_command(chat_command)
 cli.add_command(status_command)
 cli.add_command(daemon_group)
 cli.add_command(team_command)
+cli.add_command(lead_command)
 
 # Hidden/Legacy
 pipeline_group.hidden = True
