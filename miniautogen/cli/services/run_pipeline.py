@@ -273,6 +273,8 @@ async def execute_pipeline(
             "error": str(exc),
             "error_type": type(exc).__name__,
         }
+    except TimeoutError:
+        raise
     except click.ClickException:
         raise
     except Exception as exc:

@@ -9,7 +9,7 @@ from miniautogen.cli.config import CONFIG_FILENAME
 from miniautogen.cli.main import cli
 
 
-def _mock_project(tmp_path):
+def _mock_project(tmp_path, *, pipeline_body: str | None = None):
     config = {
         "project": {"name": "test"},
         "defaults": {"engine_profile": "default_api"},
@@ -23,11 +23,14 @@ def _mock_project(tmp_path):
     pipelines_dir.mkdir()
     (pipelines_dir / "__init__.py").write_text("")
     (pipelines_dir / "main.py").write_text(
-        "class P:\n"
-        "    async def run(self, state):\n"
-        '        return {**state, "done": True}\n'
-        "def build_pipeline():\n"
-        "    return P()\n"
+        pipeline_body
+        or (
+            "class P:\n"
+            "    async def run(self, state):\n"
+            '        return {**state, "done": True}\n'
+            "def build_pipeline():\n"
+            "    return P()\n"
+        )
     )
     return tmp_path
 
@@ -47,15 +50,20 @@ class TestRunExitCodes:
         assert result.exit_code == 130
 
     def test_timeout_exits_124(self, tmp_path, monkeypatch):
-        _mock_project(tmp_path)
+        _mock_project(
+            tmp_path,
+            pipeline_body=(
+                "class P:\n"
+                "    async def run(self, state):\n"
+                '        raise TimeoutError("timed out")\n'
+                "def build_pipeline():\n"
+                "    return P()\n"
+            ),
+        )
         monkeypatch.chdir(tmp_path)
 
-        with patch(
-            "miniautogen.cli.commands.run.run_async",
-            side_effect=TimeoutError("timed out"),
-        ):
-            runner = CliRunner()
-            result = runner.invoke(cli, ["run"])
+        runner = CliRunner()
+        result = runner.invoke(cli, ["run"])
 
         assert result.exit_code == 124
 

@@ -6,7 +6,7 @@ CheckpointReason = Literal["cancelled", "timed_out", "completed", "failed"]
 OnCancelCallback = Callable[[CheckpointReason, dict], Awaitable[None]] | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class ExecutionPolicy:
     timeout_seconds: float | None = None
     graceful_save_timeout: float = 5.0
