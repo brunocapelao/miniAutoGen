@@ -65,7 +65,7 @@ class TimeoutPolicy:
                 yield resolved
         except TimeoutError:
             await emit(
-                "agent_turn_timed_out",
+                EventType.AGENT_TURN_TIMED_OUT.value,
                 agent_id=agent_id,
                 round_name=round_name,
                 applied_timeout=resolved.seconds,
