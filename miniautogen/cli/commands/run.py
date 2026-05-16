@@ -12,7 +12,7 @@ import click
 from miniautogen.cli.config import require_project_config
 from miniautogen.cli.errors import PipelineNotFoundError
 from miniautogen.cli.main import run_async
-from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success
+from miniautogen.cli.output import echo_error, echo_info, echo_json, echo_success, echo_warning
 
 
 def _wait_for_console_shutdown() -> None:
@@ -92,7 +92,7 @@ class _Spinner:
     "--timeout",
     type=float,
     default=None,
-    help="Timeout in seconds.",
+    help="Timeout sec. Checkpoint saved on timeout/Ctrl+C for --resume. Double Ctrl+C skips save.",
 )
 @click.option(
     "--format",
@@ -115,7 +115,7 @@ class _Spinner:
 @click.option(
     "--resume",
     default=None,
-    help="Resume a previous run from checkpoint (run_id).",
+    help="Resume a previous run from checkpoint (run_id). Works for cancelled and timed-out runs.",
 )
 @click.option(
     "--explain",
@@ -237,17 +237,26 @@ def run_command(
         spinner.start()
 
     try:
-        result = run_async(
-            execute_pipeline,
-            config,
-            pipeline_name,
-            root,
-            timeout=timeout,
-            verbose=verbose,
-            pipeline_input=pipeline_input,
-            resume_run_id=resume,
-            event_sink=console_event_sink,
-        )
+        try:
+            result = run_async(
+                execute_pipeline,
+                config,
+                pipeline_name,
+                root,
+                timeout=timeout,
+                verbose=verbose,
+                pipeline_input=pipeline_input,
+                resume_run_id=resume,
+                event_sink=console_event_sink,
+            )
+        except KeyboardInterrupt:
+            echo_warning("Saving checkpoint before exit...")
+            raise SystemExit(130)
+        except TimeoutError:
+            echo_warning(
+                "Timeout reached. Checkpoint saved (use --resume to continue)."
+            )
+            raise SystemExit(124)
     finally:
         if spinner:
             spinner.stop()
