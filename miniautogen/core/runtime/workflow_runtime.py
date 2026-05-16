@@ -185,7 +185,7 @@ class WorkflowRuntime:
         return None
 
     def _is_agent_timeout(self, exc: BaseException) -> bool:
-        if isinstance(exc, WorkflowAgentTimeout):
+        if isinstance(exc, (WorkflowAgentTimeout, TimeoutError)):
             return True
         if isinstance(exc, BaseExceptionGroup):
             return any(self._is_agent_timeout(inner) for inner in exc.exceptions)
