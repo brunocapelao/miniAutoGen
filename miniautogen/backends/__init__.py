@@ -49,10 +49,17 @@ __all__ = [
 # Order matters: subclasses before superclasses.
 import asyncio
 
-from miniautogen.backends.errors import AgentDriverError, BackendUnavailableError
+from miniautogen.backends.errors import (
+    AgentDriverError,
+    BackendConfigurationError,
+    BackendError,
+    BackendUnavailableError,
+)
 from miniautogen.core.contracts.enums import ErrorCategory
 from miniautogen.core.runtime.classifier import register_error_mapping
 
 register_error_mapping(asyncio.CancelledError, ErrorCategory.CANCELLATION)
 register_error_mapping(BackendUnavailableError, ErrorCategory.ADAPTER)
+register_error_mapping(BackendConfigurationError, ErrorCategory.CONFIGURATION)
+register_error_mapping(BackendError, ErrorCategory.ADAPTER)
 register_error_mapping(AgentDriverError, ErrorCategory.ADAPTER)

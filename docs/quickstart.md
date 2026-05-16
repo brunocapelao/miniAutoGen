@@ -84,6 +84,26 @@ You can also add or manage engines with the CLI:
 miniautogen engine create my-engine --provider openai --model gpt-4o
 ```
 
+### Endpoint Configuration for Local Providers
+
+When `endpoint` points to a local or custom OpenAI-compatible host (Ollama,
+LM Studio, vLLM, Gemini CLI Gateway, etc.), the framework auto-injects a
+sentinel token and does **not** require `OPENAI_API_KEY`:
+
+```yaml
+engines:
+  local_ollama:
+    kind: api
+    provider: "openai"
+    model: "llama3"
+    endpoint: "http://localhost:11434/v1"
+```
+
+No `api_key` is needed for local endpoints. For real OpenAI endpoints
+(`api.openai.com`), you **must** configure `api_key` (e.g. `${OPENAI_API_KEY}`)
+pointing to a valid environment variable — omitting it will produce a clear
+configuration error.
+
 ## 4. Create Agents
 
 Agents live as YAML files in the `agents/` directory. The scaffold includes an
