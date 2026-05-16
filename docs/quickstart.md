@@ -219,6 +219,31 @@ Check the workspace status at any time:
 miniautogen status
 ```
 
+### Graceful Cancellation and Resume
+
+Long-running flows can be interrupted with Ctrl+C. The framework saves a
+checkpoint of the current execution state before exiting, so you can resume
+later:
+
+```bash
+# Start a long flow
+miniautogen run research --timeout 600
+
+# (interrupt with Ctrl+C)
+# Output: "Saving checkpoint before exit..."
+
+# Resume from the last checkpoint
+miniautogen run research --resume <run_id>
+```
+
+The checkpoint captures which agent was executing, the current round/turn,
+and the reason for interruption (`cancelled` or `timed_out`). Exit codes
+reflect the termination reason: `130` for Ctrl+C, `124` for timeout, `0`
+for successful completion.
+
+> **Note:** Double Ctrl+C forces immediate exit without saving. Press once
+> and wait for the "Saving checkpoint..." message.
+
 ## 7. What Happens Under the Hood
 
 When you run a flow, MiniAutoGen orchestrates execution through a layered
