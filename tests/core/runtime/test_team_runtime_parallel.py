@@ -46,6 +46,22 @@ class _LeadAgent:
         return "lead-summary"
 
 
+class _TrackedConcurrentAgent:
+    """Agent that records active concurrency while it runs."""
+
+    active = 0
+    max_seen = 0
+
+    async def process(self, prompt: str) -> str:
+        type(self).active += 1
+        type(self).max_seen = max(type(self).max_seen, type(self).active)
+        try:
+            await anyio.sleep(0.05)
+            return "done"
+        finally:
+            type(self).active -= 1
+
+
 def _make_context(run_id: str = "team-run-1", **kwargs: Any) -> RunContext:
     return RunContext(
         run_id=run_id,
@@ -139,3 +155,27 @@ async def test_all_teammates_receive_correct_prompts() -> None:
 
     assert agent_a.received_prompt == "You are a legal reviewer"
     assert agent_b.received_prompt == "You are a security auditor"
+
+
+@pytest.mark.asyncio
+async def test_max_concurrent_teammates_limits_parallelism() -> None:
+    """max_concurrent_teammates must cap active teammate tasks."""
+    _TrackedConcurrentAgent.active = 0
+    _TrackedConcurrentAgent.max_seen = 0
+
+    registry = {f"agent_{i}": _TrackedConcurrentAgent() for i in range(5)}
+    registry["lead"] = _LeadAgent()
+    event_sink = InMemoryEventSink()
+    runner = PipelineRunner(event_sink=event_sink)
+    runtime = TeamRuntime(runner=runner, agent_registry=registry)
+
+    plan = TeamPlan(
+        lead_agent="lead",
+        teammates=list(registry.keys())[:-1],
+        max_concurrent_teammates=2,
+    )
+
+    result = await runtime.run(agents=[], context=_make_context(), plan=plan)
+
+    assert result.status == "finished"
+    assert _TrackedConcurrentAgent.max_seen <= 2
