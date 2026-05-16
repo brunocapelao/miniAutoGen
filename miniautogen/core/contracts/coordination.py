@@ -16,6 +16,17 @@ from miniautogen.core.contracts.run_result import RunResult
 from miniautogen.core.contracts.supervision import StepSupervision
 from miniautogen.core.contracts.team_task import TaskListConfig
 
+
+class MailboxConfig(BaseModel):
+    enabled: bool = False
+    buffer_size: int = 256
+    idle_threshold_seconds: float = 5.0
+
+
+class PlanApprovalConfig(BaseModel):
+    timeout_seconds: float = 300.0
+    required_for: list[str] = Field(default_factory=list)
+
 # TODO(review): validate plan type matches mode before stabilization (biz-reviewer, 2026-03-16, Low)
 _EXPERIMENTAL_CONTRACTS = {"SubrunRequest"}
 
@@ -144,6 +155,10 @@ class TeamPlan(CoordinationPlan):
     # Team task list (Spec 016)
     task_list: TaskListConfig | None = None
     lead_runs_first: bool = False
+
+    # Team mailbox (Spec 017)
+    mailbox: dict[str, Any] | MailboxConfig | None = None
+    plan_approval: dict[str, Any] | PlanApprovalConfig | None = None
 
     @model_validator(mode="after")
     def _no_dup_no_self(self) -> "TeamPlan":

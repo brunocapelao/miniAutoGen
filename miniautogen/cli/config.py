@@ -157,6 +157,10 @@ class FlowConfig(BaseModel):
     # Team task list options (Spec 016)
     task_list: TaskListConfig | None = None
 
+    # Team mailbox options (Spec 017)
+    mailbox: Any | None = None
+    plan_approval: Any | None = None
+
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured
     prompts: dict[str, str] = Field(default_factory=dict)
