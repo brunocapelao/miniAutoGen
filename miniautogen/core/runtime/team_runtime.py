@@ -738,11 +738,16 @@ class TeamRuntime:
                             await idle_aggregator.mark_busy(name)
 
                 if msg is not None:
-                    if approvals is not None:
-                        if msg.kind in {"plan_approval_granted", "plan_approval_denied"}:
-                            decision = "granted" if msg.kind.endswith("granted") else "denied"
-                            if msg.correlation_id:
-                                await approvals.resolve(msg.correlation_id, decision)
+                    if approvals is not None and msg.kind in {"plan_approval_granted", "plan_approval_denied"}:
+                        decision = "granted" if msg.kind.endswith("granted") else "denied"
+                        if msg.correlation_id:
+                            await approvals.resolve(msg.correlation_id, decision)
+                        continue
+                    output = await self._invoke_agent(
+                        agent_id=name, agent=agent,
+                        input_data=msg.content,
+                        context=context, round_name="teammate",
+                    )
                     continue
             except anyio.get_cancelled_exc_class():
                 raise

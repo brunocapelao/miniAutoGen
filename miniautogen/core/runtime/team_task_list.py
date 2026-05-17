@@ -208,6 +208,7 @@ class InMemoryTaskListStore:
             e
             for e in self._tasks.values()
             if e.status == TaskStatus.PENDING
+            and (e.assigned_to is None or e.assigned_to == teammate)
         ]
         if labels:
             candidates = [

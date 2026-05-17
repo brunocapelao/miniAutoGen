@@ -19,16 +19,49 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from miniautogen.core.contracts.coordination import MailboxConfig, PlanApprovalConfig
-from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
+from miniautogen.cli.models import (
+    CheckResult,
+)
 
 CONFIG_FILENAME = "miniautogen.yaml"
 
 
-def _has_cycle(specs: list[TaskEntrySpec]) -> bool:
+# ---------------------------------------------------------------------------
+# CLI-local config models (D3 boundary: no miniautogen.core.* imports)
+# ---------------------------------------------------------------------------
+
+
+class _TaskEntrySpec(BaseModel):
+    title: str
+    description: str | None = None
+    assigned_to: str | None = None
+    labels: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
+    id: str | None = None
+
+
+class _TaskListConfig(BaseModel):
+    enabled: bool = False
+    initial_tasks: list[_TaskEntrySpec] = Field(default_factory=list)
+    idle_threshold_seconds: float = 5.0
+    poll_interval_ms: int = 200
+
+
+class _MailboxConfig(BaseModel):
+    enabled: bool = False
+    buffer_size: int = 256
+    idle_threshold_seconds: float = 5.0
+
+
+class _PlanApprovalConfig(BaseModel):
+    timeout_seconds: float = 300.0
+    required_for: list[str] = Field(default_factory=list)
+
+
+def _has_cycle(specs: list[_TaskEntrySpec]) -> bool:
     """Detect cycles in a list of TaskEntrySpec DAG using Kahn's algorithm."""
     ids = {s.id or f"task[{i}]" for i, s in enumerate(specs)}
-    id_map: dict[str, TaskEntrySpec] = {}
+    id_map: dict[str, _TaskEntrySpec] = {}
     for i, spec in enumerate(specs or []):
         sid = spec.id or f"task[{i}]"
         id_map[sid] = spec
@@ -156,11 +189,11 @@ class FlowConfig(BaseModel):
     team_lead_prompt: str | None = None  # team mode
 
     # Team task list options (Spec 016)
-    task_list: TaskListConfig | None = None
+    task_list: _TaskListConfig | None = None
 
     # Team mailbox options (Spec 017)
-    mailbox: MailboxConfig | dict[str, Any] | None = None
-    plan_approval: PlanApprovalConfig | dict[str, Any] | None = None
+    mailbox: _MailboxConfig | dict[str, Any] | None = None
+    plan_approval: _PlanApprovalConfig | dict[str, Any] | None = None
 
     # AgentRuntime agnostic design fields
     response_format: str = "json"  # free_text | json | structured

@@ -90,10 +90,8 @@ async def _run_team_session(
     lead_name: str,
     teammates: list[str],
 ) -> None:
-    from miniautogen.api import PipelineRunner, NullEventSink
+    from miniautogen.api import InMemoryTaskListStore, PipelineRunner, NullEventSink, TeamRuntime
     from miniautogen.cli.services.agent_ops import load_agent_specs
-    from miniautogen.core.runtime.team_runtime import TeamRuntime
-    from miniautogen.core.runtime.team_task_list import InMemoryTaskListStore
 
     # Initialize Task List Store
     run_id = f"team-{lead_name}-{Path.cwd().name}"

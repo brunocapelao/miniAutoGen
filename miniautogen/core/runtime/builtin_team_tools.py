@@ -160,7 +160,7 @@ def _make_inbox_pop_handler(
         messages: list[MailMessage] = []
 
         try:
-            async with anyio.move_on_after(0):
+            with anyio.move_on_after(0):
                 stream = mailbox.receive_stream(agent_id)
                 async for msg in stream:
                     messages.append(msg)
