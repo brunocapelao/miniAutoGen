@@ -128,6 +128,13 @@ def run_command(
             hint="Run 'miniautogen flow list' to see available flows.",
         )
 
+    # Experimental gate for team mode (Spec 015)
+    flow_config = config.pipelines[pipeline_name]
+    if flow_config.mode == "team" and os.environ.get("MINIAUTOGEN_EXPERIMENTAL_TEAMS") != "1":
+        raise click.UsageError(
+            "Team runtime is experimental. Set MINIAUTOGEN_EXPERIMENTAL_TEAMS=1 to enable."
+        )
+
     # Resolve input
     try:
         pipeline_input = _resolve_input(input_value)
