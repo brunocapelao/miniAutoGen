@@ -58,6 +58,8 @@ from miniautogen.core.contracts.coordination import (
     CoordinationKind,
     CoordinationPlan,
     DeliberationPlan,
+    MailboxConfig,
+    PlanApprovalConfig,
     SubrunRequest,
     WorkflowPlan,
     WorkflowStep,
@@ -92,6 +94,7 @@ from miniautogen.core.events.filters import (
     RunFilter,
     TypeFilter,
 )
+from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
 from miniautogen.core.events.types import EventType
 from miniautogen.core.runtime import (
     AgenticLoopRuntime,
@@ -108,6 +111,10 @@ from miniautogen.core.runtime.composite_tool_registry import CompositeToolRegist
 from miniautogen.core.runtime.delegation_router import ConfigDelegationRouter
 from miniautogen.core.runtime.filesystem_tool_registry import FileSystemToolRegistry
 from miniautogen.core.runtime.team_task_list import InMemoryTaskListStore
+from miniautogen.core.runtime.team_tool_injector import (
+    inject_task_tools,
+    inject_mailbox_tools,
+)
 from miniautogen.core.runtime.workspace_tools import build_workspace_tools
 from miniautogen.core.runtime.human_agent import (
     HumanAgent,
@@ -196,6 +203,10 @@ __all__ = [
     "CoordinationMode",
     "CoordinationPlan",
     "DeliberationPlan",
+    "MailboxConfig",
+    "PlanApprovalConfig",
+    "TaskEntrySpec",
+    "TaskListConfig",
     "WorkflowPlan",
     "WorkflowStep",
     "CompositionStep",
@@ -215,6 +226,9 @@ __all__ = [
     "FileSystemToolRegistry",
     "ConfigDelegationRouter",
     "PersistentMemoryProvider",
+    # Team coordination tools
+    "inject_task_tools",
+    "inject_mailbox_tools",
     # Runtime interceptor
     "RuntimeInterceptor",
     # Workspace management tools

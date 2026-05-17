@@ -298,7 +298,6 @@ class TeamRuntime:
 
         mailbox_cfg = await self._parse_mailbox_config(plan)
         plan_approval_cfg = await self._parse_plan_approval_config(plan)
-
         # Create store
         from miniautogen.core.runtime.team_task_list import InMemoryTaskListStore
 
@@ -329,7 +328,6 @@ class TeamRuntime:
                 event_sink=self._runner.event_sink,
                 team_run_id=run_id,
             )
-
         # Populate initial tasks
         for spec in task_list_config.initial_tasks:
             entry = TaskEntry(
@@ -410,40 +408,24 @@ class TeamRuntime:
                         },
                     )
 
-                    if mailbox is not None:
-                        tg.start_soon(
-                            self._run_teammate_drain_loop_with_mailbox,
-                            teammate_name,
-                            agent,
-                            child_ctx,
-                            plan.on_teammate_failure,
-                            contributions,
-                            run_id,
-                            tg.cancel_scope,
-                            limiter,
-                            store,
-                            mailbox_cfg.idle_threshold_seconds if mailbox_cfg else 5.0,
-                            task_list_config.poll_interval_ms,
-                            mailbox,
-                            approvals,
-                            idle_aggregator,
-                            mail_agents,
-                        )
-                    else:
-                        tg.start_soon(
-                            self._run_teammate_drain_loop,
-                            teammate_name,
-                            agent,
-                            child_ctx,
-                            plan.on_teammate_failure,
-                            contributions,
-                            run_id,
-                            tg.cancel_scope,
-                            limiter,
-                            store,
-                            task_list_config.idle_threshold_seconds,
-                            task_list_config.poll_interval_ms,
-                        )
+                    tg.start_soon(
+                        self._run_teammate_drain_loop,
+                        teammate_name,
+                        agent,
+                        child_ctx,
+                        plan.on_teammate_failure,
+                        contributions,
+                        run_id,
+                        tg.cancel_scope,
+                        limiter,
+                        store,
+                        task_list_config.idle_threshold_seconds,
+                        task_list_config.poll_interval_ms,
+                        mailbox,
+                        approvals,
+                        idle_aggregator,
+                        mail_agents,
+                    )
 
         except anyio.get_cancelled_exc_class():
             was_cancelled = True
@@ -492,25 +474,8 @@ class TeamRuntime:
         )
 
     def _inject_task_tools(self, agent: Any, store: Any, agent_name: str) -> None:
-        """Compose team task tools into an agent's tool registry."""
-        from miniautogen.core.runtime.composite_tool_registry import (
-            CompositeToolRegistry,
-        )
-        from miniautogen.core.runtime.team_task_tools import build_team_task_tools
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
-
-        team_registry = InMemoryToolRegistry()
-        for definition, handler in build_team_task_tools(store, agent_name):
-            team_registry.register(definition, handler)
-
-        existing = getattr(agent, "tool_registry", None)
-        if existing is not None:
-            if isinstance(existing, CompositeToolRegistry):
-                existing._registries = list(existing._registries) + [team_registry]
-            else:
-                agent.tool_registry = CompositeToolRegistry([existing, team_registry])
-        else:
-            agent.tool_registry = team_registry
+        from miniautogen.core.runtime.team_tool_injector import inject_task_tools
+        inject_task_tools(agent, store, agent_name)
 
     def _inject_mailbox_tools(
         self,
@@ -522,184 +487,17 @@ class TeamRuntime:
         run_id: str,
         plan: TeamPlan,
     ) -> None:
-        from miniautogen.core.runtime.approval_gated_tool_registry import (
-            ApprovalGatedToolRegistry,
+        from miniautogen.core.runtime.team_tool_injector import (
+            inject_mailbox_tools,
         )
-        from miniautogen.core.runtime.builtin_team_tools import build_team_tools
-        from miniautogen.core.runtime.composite_tool_registry import (
-            CompositeToolRegistry,
-        )
-        from miniautogen.core.runtime.tool_registry import InMemoryToolRegistry
-
-        team_registry = InMemoryToolRegistry()
-        for definition, handler in build_team_tools(
-            agent_id=agent_name,
-            is_lead=is_lead,
-            mailbox=mailbox,
-            approvals=approvals,
+        inject_mailbox_tools(
+            agent, agent_name, is_lead, mailbox, approvals,
             event_sink=self._runner.event_sink,
             team_run_id=run_id,
-            lead_agent=plan.lead_agent,
-        ):
-            team_registry.register(definition, handler)
-
-        plan_approval_cfg = None
-        try:
-            raw = plan.plan_approval
-            if isinstance(raw, PlanApprovalConfig):
-                plan_approval_cfg = raw
-            elif isinstance(raw, dict):
-                plan_approval_cfg = PlanApprovalConfig(**raw)
-        except Exception:
-            pass
-
-        if plan_approval_cfg is not None and plan_approval_cfg.required_for and not is_lead:
-            from miniautogen.core.runtime.builtin_team_tools import (
-                _make_request_plan_approval_handler,
-            )
-
-            approval_handler = _make_request_plan_approval_handler(
-                mailbox, approvals, agent_name, plan.lead_agent,
-                self._runner.event_sink, run_id,
-            )
-
-            async def _approval_wrapper(plan_summary: str | dict) -> str:
-                result = await approval_handler(
-                    {"plan": plan_summary, "timeout_seconds": 60.0}
-                )
-                if result.success:
-                    return result.output.get("decision", "denied")
-                return "denied"
-
-            wrapped = ApprovalGatedToolRegistry(
-                inner=team_registry,
-                approval_tool=_approval_wrapper,
-                required_for=set(plan_approval_cfg.required_for),
-                agent_id=agent_name,
-                event_sink=self._runner.event_sink,
-            )
-            team_registry = wrapped  # type: ignore[assignment]
-
-        existing = getattr(agent, "tool_registry", None)
-        if existing is not None:
-            if isinstance(existing, CompositeToolRegistry):
-                existing._registries = list(existing._registries) + [team_registry]
-            else:
-                agent.tool_registry = CompositeToolRegistry([existing, team_registry])
-        else:
-            agent.tool_registry = team_registry
-
-    async def _run_teammate_drain_loop(
-        self,
-        name: str,
-        agent: Any,
-        context: RunContext,
-        failure_policy: str,
-        contributions: dict[str, ContributionSummary],
-        run_id: str,
-        cancel_scope: anyio.CancelScope | None = None,
-        limiter: anyio.CapacityLimiter | None = None,
-        store: Any | None = None,
-        idle_threshold: float = 5.0,
-        poll_interval_ms: int = 200,
-    ) -> None:
-        """Run a teammate in drain-board loop: claim -> execute -> complete/fail."""
-        poll_seconds = poll_interval_ms / 1000.0
-        idle_start: float | None = None
-
-        while True:
-            try:
-                entry = await store.claim(None, teammate=name, labels=None)
-            except anyio.get_cancelled_exc_class():
-                raise
-
-            if entry is not None:
-                idle_start = None
-                try:
-                    if limiter is None:
-                        output = await self._invoke_agent(
-                            agent_id=name,
-                            agent=agent,
-                            input_data=self._build_task_prompt(entry),
-                            context=context,
-                            round_name="teammate",
-                        )
-                    else:
-                        async with limiter:
-                            output = await self._invoke_agent(
-                                agent_id=name,
-                                agent=agent,
-                                input_data=self._build_task_prompt(entry),
-                                context=context,
-                                round_name="teammate",
-                            )
-
-                    await store.update_status(
-                        entry.id,
-                        TaskStatus.COMPLETED,
-                        summary=str(output),
-                        actor=name,
-                    )
-                    await self._emit(
-                        EventType.TEAMMATE_FINISHED,
-                        run_id,
-                        payload={
-                            "teammate": name,
-                            "status": "finished",
-                            "task_id": entry.id,
-                            "sub_run_id": f"{run_id}/{name}",
-                        },
-                    )
-
-                except anyio.get_cancelled_exc_class():
-                    with anyio.CancelScope(shield=True):
-                        await store.release(entry.id, actor=name)
-                    raise
-                except Exception as exc:
-                    await store.update_status(
-                        entry.id,
-                        TaskStatus.FAILED,
-                        summary=str(exc),
-                        actor=name,
-                    )
-                    await self._emit(
-                        EventType.TEAMMATE_FAILED,
-                        run_id,
-                        payload={
-                            "teammate": name,
-                            "task_id": entry.id,
-                            "status": "failed",
-                            "error": str(exc),
-                        },
-                    )
-                    if failure_policy == "abort_team" and cancel_scope is not None:
-                        cancel_scope.cancel()
-                        return
-            else:
-                in_progress = await store.list_tasks(
-                    filter=TaskFilter(status=TaskStatus.IN_PROGRESS),
-                )
-                pending = await store.list_tasks(
-                    filter=TaskFilter(status=TaskStatus.PENDING),
-                )
-
-                if not pending and not in_progress:
-                    if idle_start is None:
-                        idle_start = monotonic()
-                    elif monotonic() - idle_start >= idle_threshold:
-                        break
-                else:
-                    idle_start = None
-
-                await anyio.sleep(poll_seconds)
-
-        contributions[name] = ContributionSummary(
-            teammate=name,
-            status="finished",
-            output="drain_board_completed",
+            plan=plan,
         )
 
-    async def _run_teammate_drain_loop_with_mailbox(
+    async def _run_teammate_drain_loop(
         self,
         name: str,
         agent: Any,
@@ -717,42 +515,41 @@ class TeamRuntime:
         idle_aggregator: IdleAggregator | None = None,
         mail_agents: list[str] | None = None,
     ) -> None:
-        """Run a teammate in drain-board loop WITH mailbox branch.
+        """Run a teammate in drain-board loop: claim -> execute -> complete/fail.
 
-        Loop:
-          1. Try to receive a message from inbox (with idle_threshold timeout)
-          2. If message: process/resolve and continue
-          3. If no message: try to claim a task
-          4. If no task: mark idle; if all idle, break
+        When mailbox is provided, the loop also checks for incoming mailbox
+        messages before claiming tasks, and uses IdleAggregator for idle
+        detection across all teammates. Otherwise uses a simple idle timer.
         """
         poll_seconds = poll_interval_ms / 1000.0
+        idle_start: float | None = None
 
         while True:
-            msg = None
-            try:
-                if mailbox is not None:
-                    with anyio.move_on_after(idle_threshold) as scope:
+            if mailbox is not None:
+                msg = None
+                try:
+                    with anyio.move_on_after(idle_threshold):
                         stream = mailbox.receive_stream(name)
                         msg = await anext(stream, None)
                         if msg is not None and idle_aggregator is not None:
                             await idle_aggregator.mark_busy(name)
 
-                if msg is not None:
-                    if approvals is not None and msg.kind in {"plan_approval_granted", "plan_approval_denied"}:
-                        decision = "granted" if msg.kind.endswith("granted") else "denied"
-                        if msg.correlation_id:
-                            await approvals.resolve(msg.correlation_id, decision)
+                    if msg is not None:
+                        if approvals is not None and msg.kind in {"plan_approval_granted", "plan_approval_denied"}:
+                            decision = "granted" if msg.kind.endswith("granted") else "denied"
+                            if msg.correlation_id:
+                                await approvals.resolve(msg.correlation_id, decision)
+                            continue
+                        await self._invoke_agent(
+                            agent_id=name, agent=agent,
+                            input_data=msg.content,
+                            context=context, round_name="teammate",
+                        )
                         continue
-                    output = await self._invoke_agent(
-                        agent_id=name, agent=agent,
-                        input_data=msg.content,
-                        context=context, round_name="teammate",
-                    )
-                    continue
-            except anyio.get_cancelled_exc_class():
-                raise
-            except Exception:
-                self._logger.warning("mailbox receive failed", exc_info=True)
+                except anyio.get_cancelled_exc_class():
+                    raise
+                except Exception:
+                    self._logger.warning("mailbox receive failed", exc_info=True)
 
             try:
                 entry = await store.claim(None, teammate=name, labels=None)
@@ -760,6 +557,7 @@ class TeamRuntime:
                 raise
 
             if entry is not None:
+                idle_start = None
                 if idle_aggregator is not None:
                     await idle_aggregator.mark_busy(name)
                 try:
@@ -830,53 +628,46 @@ class TeamRuntime:
                     filter=TaskFilter(status=TaskStatus.PENDING),
                 )
 
-                pending_count = 0
-                if mailbox is not None:
+                if mailbox is not None and idle_aggregator is not None:
+                    pending_count = 0
                     try:
                         pending_count = await mailbox.pending_count(name)
                     except Exception:
                         pass
 
-                if not pending and not in_progress and pending_count == 0:
-                    if idle_aggregator is not None:
+                    if not pending and not in_progress and pending_count == 0:
                         await idle_aggregator.mark_idle(name)
-
-                    mail_agents_list = mail_agents or [name]
-                    if idle_aggregator is not None and await idle_aggregator.all_idle(
-                        len(mail_agents_list),
-                    ):
+                        mail_agents_list = mail_agents or [name]
+                        if await idle_aggregator.all_idle(len(mail_agents_list)):
+                            await self._emit(
+                                EventType.TEAMMATE_IDLE,
+                                run_id,
+                                payload={"teammate": name, "all_idle": True, "team_run_id": run_id},
+                            )
+                            break
                         await self._emit(
                             EventType.TEAMMATE_IDLE,
                             run_id,
-                            payload={
-                                "teammate": name,
-                                "all_idle": True,
-                                "team_run_id": run_id,
-                            },
+                            payload={"teammate": name, "all_idle": False, "team_run_id": run_id},
                         )
-                        break
                     else:
-                        await self._emit(
-                            EventType.TEAMMATE_IDLE,
-                            run_id,
-                            payload={
-                                "teammate": name,
-                                "all_idle": False,
-                                "team_run_id": run_id,
-                            },
-                        )
-                        await anyio.sleep(poll_seconds)
-                else:
-                    if idle_aggregator is not None:
                         await idle_aggregator.mark_busy(name)
-                    await anyio.sleep(poll_seconds)
+                else:
+                    if not pending and not in_progress:
+                        if idle_start is None:
+                            idle_start = monotonic()
+                        elif monotonic() - idle_start >= idle_threshold:
+                            break
+                    else:
+                        idle_start = None
+
+                await anyio.sleep(poll_seconds)
 
         contributions[name] = ContributionSummary(
             teammate=name,
             status="finished",
             output="drain_board_completed",
         )
-
     def _build_task_prompt(self, entry: TaskEntry) -> str:
         prompt = f"Task: {entry.title}"
         if entry.description:
@@ -1139,17 +930,17 @@ class TeamRuntime:
         context: RunContext,
     ) -> Any:
         """Call an agent while temporarily applying the provided RunContext."""
-        previous_context = getattr(agent, "_run_context", None)
-        has_context = hasattr(agent, "_run_context")
+        previous_context = getattr(agent, "run_context", None)
+        has_context = hasattr(agent, "run_context")
         if has_context:
-            agent._run_context = context  # noqa: SLF001
+            agent.run_context = context
         try:
             if hasattr(agent, "process"):
                 return await agent.process(input_data)
             return await agent(input_data)
         finally:
             if has_context:
-                agent._run_context = previous_context  # noqa: SLF001
+                agent.run_context = previous_context
 
     async def _emit(
         self,

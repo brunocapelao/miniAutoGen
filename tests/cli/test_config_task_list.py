@@ -5,11 +5,12 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from miniautogen.cli.config import FlowConfig, _TaskEntrySpec, _TaskListConfig, _has_cycle
+from miniautogen.cli.config import FlowConfig, _has_cycle
+from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
 
 
 def test_task_entry_spec_defaults() -> None:
-    spec = _TaskEntrySpec(title="Test")
+    spec = TaskEntrySpec(title="Test")
     assert spec.title == "Test"
     assert spec.description is None
     assert spec.assigned_to is None
@@ -19,7 +20,7 @@ def test_task_entry_spec_defaults() -> None:
 
 
 def test_task_list_config_defaults() -> None:
-    cfg = _TaskListConfig()
+    cfg = TaskListConfig()
     assert cfg.enabled is False
     assert cfg.initial_tasks == []
     assert cfg.idle_threshold_seconds == 5.0
@@ -46,18 +47,18 @@ def test_flow_config_with_task_list() -> None:
 
 def test_valid_dag_passes() -> None:
     specs = [
-        _TaskEntrySpec(title="A", id="a"),
-        _TaskEntrySpec(title="B", id="b", depends_on=["a"]),
-        _TaskEntrySpec(title="C", id="c", depends_on=["b"]),
+        TaskEntrySpec(title="A", id="a"),
+        TaskEntrySpec(title="B", id="b", depends_on=["a"]),
+        TaskEntrySpec(title="C", id="c", depends_on=["b"]),
     ]
     assert _has_cycle(specs) is False
 
 
 def test_cycle_detected() -> None:
     specs = [
-        _TaskEntrySpec(title="A", id="a", depends_on=["c"]),
-        _TaskEntrySpec(title="B", id="b", depends_on=["a"]),
-        _TaskEntrySpec(title="C", id="c", depends_on=["b"]),
+        TaskEntrySpec(title="A", id="a", depends_on=["c"]),
+        TaskEntrySpec(title="B", id="b", depends_on=["a"]),
+        TaskEntrySpec(title="C", id="c", depends_on=["b"]),
     ]
     assert _has_cycle(specs) is True
 
@@ -68,7 +69,7 @@ def test_empty_dag_no_cycle() -> None:
 
 def test_self_reference_is_cycle() -> None:
     specs = [
-        _TaskEntrySpec(title="A", id="a", depends_on=["a"]),
+        TaskEntrySpec(title="A", id="a", depends_on=["a"]),
     ]
     assert _has_cycle(specs) is True
 

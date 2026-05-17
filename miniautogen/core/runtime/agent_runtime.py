@@ -164,6 +164,14 @@ class AgentRuntime:
             {"agent_id": self._agent_id, "session_id": self._session_id},
         )
 
+    @property
+    def run_context(self) -> RunContext:
+        return self._run_context
+
+    @run_context.setter
+    def run_context(self, ctx: RunContext) -> None:
+        self._run_context = ctx
+
     async def close(self) -> None:
         """Distill memory, persist to disk, close driver session.
 
