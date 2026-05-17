@@ -17,6 +17,7 @@ async def complete_chat(
     prompt = build_prompt(request.messages)
     command = [
         settings.binary,
+        "--skip-trust",
         "-m",
         request.model,
         "--output-format",

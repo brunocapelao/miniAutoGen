@@ -277,6 +277,8 @@ class EngineResolver:
                 command = engine.command.split()
             else:
                 command = _CLI_COMMANDS.get(engine.provider, [engine.provider])
+            if engine.model:
+                command.extend(["-m", engine.model])
 
         # Determine endpoint for API drivers
         endpoint = engine.endpoint

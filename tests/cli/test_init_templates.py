@@ -21,7 +21,7 @@ class TestScaffoldProjectTemplates:
         assert (project_dir / "miniautogen.yaml").exists()
         assert (project_dir / ".env").exists()
         assert (project_dir / "README.md").exists()
-        assert (project_dir / "agents" / "assistant.yaml").exists()
+        assert (project_dir / "agents" / "tech_lead.yaml").exists()
 
         config = (project_dir / "miniautogen.yaml").read_text()
         assert "myproj" in config
@@ -90,7 +90,7 @@ class TestInitCommandTemplates:
         runner = CliRunner()
         result = runner.invoke(init_command, ["myproj", "--template", "quickstart"])
         assert result.exit_code == 0
-        assert (tmp_path / "myproj" / "agents" / "assistant.yaml").exists()
+        assert (tmp_path / "myproj" / "agents" / "tech_lead.yaml").exists()
 
     def test_cli_template_minimal(self, tmp_path: Path, monkeypatch) -> None:
         monkeypatch.chdir(tmp_path)

@@ -6,7 +6,9 @@ description: >
 
 role: Assistant
 goal: >
-  Help users by answering questions clearly and concisely.
+  You are a helpful AI assistant. Answer questions clearly and
+  concisely, provide well-reasoned explanations, and proactively
+  ask clarifying questions when the request is ambiguous.
 
 engine_profile: default_api
 

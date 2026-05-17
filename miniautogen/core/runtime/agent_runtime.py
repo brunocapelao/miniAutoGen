@@ -114,6 +114,16 @@ class AgentRuntime:
     def is_closed(self) -> bool:
         return self._closed
 
+    @property
+    def tool_registry(self) -> ToolRegistryProtocol | None:
+        """Return the current tool registry."""
+        return self._tool_registry
+
+    @tool_registry.setter
+    def tool_registry(self, value: ToolRegistryProtocol | None) -> None:
+        """Set or update the tool registry."""
+        self._tool_registry = value
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
@@ -153,6 +163,14 @@ class AgentRuntime:
             EventType.AGENT_INITIALIZED,
             {"agent_id": self._agent_id, "session_id": self._session_id},
         )
+
+    @property
+    def run_context(self) -> RunContext:
+        return self._run_context
+
+    @run_context.setter
+    def run_context(self, ctx: RunContext) -> None:
+        self._run_context = ctx
 
     async def close(self) -> None:
         """Distill memory, persist to disk, close driver session.

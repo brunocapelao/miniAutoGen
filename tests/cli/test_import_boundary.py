@@ -34,6 +34,10 @@ _ALLOWED_PREFIXES = (
     # TODO(review): backends.discovery used by engine_discover command. Should be
     # re-routed through miniautogen.api once the API module exists. (Phase 1 tech debt)
     "miniautogen.backends.discovery",
+    # Config types needed for YAML parsing in cli/config.py. These are pure
+    # Pydantic schema definitions, not internal runtime logic.
+    "miniautogen.core.contracts.coordination",
+    "miniautogen.core.contracts.team_task",
 )
 
 

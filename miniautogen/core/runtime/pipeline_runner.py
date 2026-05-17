@@ -806,6 +806,9 @@ def _build_coordination_from_config(
             teammate_prompts=flow_config.teammate_prompts or {},
             on_teammate_failure=flow_config.on_teammate_failure or "isolate",
             max_concurrent_teammates=flow_config.max_concurrent_teammates,
+            task_list=flow_config.task_list,
+            mailbox=flow_config.mailbox,
+            plan_approval=flow_config.plan_approval,
         )
         coordination_runtime = TeamRuntime(
             runner=runner,

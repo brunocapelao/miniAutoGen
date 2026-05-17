@@ -49,11 +49,13 @@ class CLIAgentDriver(AgentDriver):
         provider: str = "cli",
         timeout_seconds: float = 300.0,
         env: dict[str, str] | None = None,
+        protocol: str | None = None,
     ) -> None:
         self._command = command
         self._provider = provider
         self._timeout_seconds = timeout_seconds
         self._env = env or {}
+        self._protocol: str = protocol or self._detect_protocol(command)
         self._caps = BackendCapabilities(
             sessions=True,
             streaming=True,
@@ -104,26 +106,32 @@ class CLIAgentDriver(AgentDriver):
         )
 
         try:
-            # Extract the last user message as the prompt text
-            prompt_text = self._extract_prompt(request.messages)
-
-            # Build command with prompt flag for CLI tools that support it
             cmd = list(self._command)
-            if prompt_text and self._supports_prompt_flag():
-                if prompt_text.startswith("-"):
-                    # Prompt starts with dash — fall back to stdin to avoid
-                    # the CLI tool interpreting it as a flag/option
-                    logger.debug("prompt_starts_with_dash_using_stdin")
+            stdin_data: bytes | None = None
+
+            if self._protocol == "gemini":
+                if "--skip-trust" not in cmd[1:]:
+                    cmd.insert(1, "--skip-trust")
+                stdin_data = self._build_gemini_prompt(request.messages)
+            elif self._protocol == "prompt-flag":
+                prompt_text = self._extract_prompt(request.messages)
+                if prompt_text:
+                    if prompt_text.startswith("-"):
+                        logger.debug("prompt_starts_with_dash_using_stdin")
+                        stdin_data = (dumps({
+                            "session_id": request.session_id,
+                            "messages": request.messages,
+                            "metadata": request.metadata,
+                        }) + "\n").encode()
+                    else:
+                        cmd.extend(["-p", prompt_text])
+                else:
                     stdin_data = (dumps({
                         "session_id": request.session_id,
                         "messages": request.messages,
                         "metadata": request.metadata,
                     }) + "\n").encode()
-                else:
-                    cmd.extend(["-p", prompt_text])
-                    stdin_data = None
             else:
-                # Fallback: send JSON on stdin for tools that expect it
                 stdin_data = (dumps({
                     "session_id": request.session_id,
                     "messages": request.messages,
@@ -201,11 +209,35 @@ class CLIAgentDriver(AgentDriver):
     async def capabilities(self) -> BackendCapabilities:
         return self._caps
 
-    def _supports_prompt_flag(self) -> bool:
-        """Check if the CLI tool supports -p/--prompt flag for headless mode."""
-        # Known CLI tools that accept -p for non-interactive prompts
-        base_cmd = self._command[0] if self._command else ""
-        return base_cmd in ("gemini", "claude", "codex")
+    @staticmethod
+    def _build_gemini_prompt(messages: list[dict[str, Any]]) -> bytes:
+        """Build a plain-text prompt for gemini CLI from message list."""
+        blocks: list[str] = []
+        for msg in messages:
+            role = msg.get("role", "user").upper()
+            content = ""
+            raw = msg.get("content", "")
+            if isinstance(raw, str):
+                content = raw
+            elif isinstance(raw, list):
+                texts = [
+                    p.get("text", "") for p in raw
+                    if isinstance(p, dict) and p.get("type") == "text"
+                ]
+                content = "\n".join(texts)
+            blocks.append(f"{role}\n{content}")
+        return "\n\n".join(blocks).encode("utf-8")
+
+    @staticmethod
+    def _detect_protocol(command: list[str]) -> str:
+        """Auto-detect the communication protocol from the CLI command name."""
+        base_cmd = command[0] if command else ""
+        KNOWN_MAP: dict[str, str] = {
+            "gemini": "gemini",
+            "claude": "prompt-flag",
+            "codex": "prompt-flag",
+        }
+        return KNOWN_MAP.get(base_cmd, "json")
 
     @staticmethod
     def _extract_prompt(messages: list[dict[str, Any]]) -> str | None:

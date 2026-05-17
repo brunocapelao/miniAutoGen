@@ -22,6 +22,7 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 - **Workflow** -- execução sequencial de steps com agentes atribuídos
 - **Deliberation** -- ciclos de contribuição e revisão entre pares
 - **Agentic loop** -- loop conversacional com roteamento dinâmico
+- **Team** -- orquestração hierárquica com Lead e colaboradores (Spec 015)
 - **Composite** -- composição de subruns heterogêneos num único run
 
 ---
@@ -31,13 +32,13 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 - `PipelineRunner` como runtime oficial com timeout, checkpoint e lifecycle de eventos
 - Contratos tipados em `core/contracts/` (Pydantic models e Protocol definitions)
 - 5 stores especializados (messages, runs, checkpoints, effects, events) com backends InMemory e SQLAlchemy
-- 9 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain
+- 11 policies transversais: budget, approval, retry, timeout, validation, permission, execution, chain, reactive, effect, semantic_cache
 - 72 tipos de evento em 13 categorias para observabilidade via structlog
 - Abstração de backend drivers com `AgentAPIDriver` para endpoints OpenAI-compatible
 - CLI com 16 comandos e grupos: `init`, `check`, `run`, `send`, `chat`, `status`, `agent`, `engine`, `flow`, `sessions`, `server`, `console`, `daemon`, `dash`, `doctor`, `completions`
 - Taxonomia canónica de erros com 8 categorias e `classify_error()` extensível
 - Effect Engine com idempotência via `EffectInterceptor` e `EffectJournal`
-- Supervisão hierárquica (StepSupervisor + FlowSupervisor) em todos os 3 runtimes
+- Supervisão hierárquica (StepSupervisor + FlowSupervisor) em todos os runtimes
 - `RunStateMachine` com transições formais de estado (PENDING→RUNNING→terminal)
 - `EventBus` assíncrono com subscrições tipadas e `ReactivePolicy`
 - `CheckpointManager` para coordenação de checkpoint + eventos
@@ -46,14 +47,46 @@ O MiniAutoGen fornece contratos tipados, runtimes de coordenação e policies tr
 
 ---
 
-## Gemini CLI
+## Gemini CLI Integration
 
-Caminho suportado para usar Gemini CLI como motor LLM:
+O MiniAutoGen suporta o uso do [Gemini CLI](https://github.com/google/gemini-cli) como motor LLM para agentes headless através de um gateway local compatível com a API da OpenAI.
 
-- `gemini_cli_gateway/` como gateway local compatível com `/v1/chat/completions`
-- `OpenAICompatibleProvider` como adapter HTTP
+### 1. Iniciar o Gateway
+O gateway atua como uma ponte HTTP para o binário do Gemini.
 
-Guia: [Gemini CLI Gateway](docs/pt/guides/gemini-cli-gateway.md)
+```bash
+# Instale as dependências e inicie o gateway
+uvicorn gemini_cli_gateway.app:app --host 127.0.0.1 --port 8000
+```
+
+### 2. Configurar o Engine
+No seu `miniautogen.yaml`, vincule o engine ao gateway:
+
+```yaml
+engines:
+  gemini:
+    kind: api
+    provider: openai-compat
+    endpoint: http://127.0.0.1:8000/v1
+    model: gemini-2.0-flash
+    timeout_seconds: 120
+
+defaults:
+  engine: gemini
+```
+
+### 3. Vincular Agentes
+Os agentes podem agora usar o Gemini CLI de forma transparente:
+
+```yaml
+# agents/assistant.yaml
+name: assistant
+role: "Assistente útil"
+goal: "Responder perguntas de forma concisa"
+engine: gemini
+```
+
+Guia detalhado: [Gemini CLI Gateway](docs/pt/guides/gemini-cli-gateway.md)
 
 ---
 
