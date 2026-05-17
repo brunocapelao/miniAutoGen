@@ -19,7 +19,6 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field, model_validator
 
-from miniautogen.cli.models import CheckResult
 from miniautogen.core.contracts.coordination import MailboxConfig, PlanApprovalConfig
 from miniautogen.core.contracts.team_task import TaskEntrySpec, TaskListConfig
 

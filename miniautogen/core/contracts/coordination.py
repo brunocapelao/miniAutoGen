@@ -159,6 +159,7 @@ class TeamPlan(CoordinationPlan):
     # Team mailbox (Spec 017)
     mailbox: dict[str, Any] | MailboxConfig | None = None
     plan_approval: dict[str, Any] | PlanApprovalConfig | None = None
+
     @model_validator(mode="after")
     def _no_dup_no_self(self) -> "TeamPlan":
         if len(set(self.teammates)) != len(self.teammates):

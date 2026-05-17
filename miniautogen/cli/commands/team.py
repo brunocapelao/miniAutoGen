@@ -6,9 +6,7 @@ teammates draining a shared task list (Kanban board).
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import Any
 
 import anyio
 import click
@@ -90,29 +88,28 @@ async def _run_team_session(
     lead_name: str,
     teammates: list[str],
 ) -> None:
-    from miniautogen.api import InMemoryTaskListStore, NullEventSink, TeamRuntime, inject_task_tools
+    from miniautogen.api import NullEventSink, PipelineRunner
+    from miniautogen.core.runtime.team_runtime import TeamRuntime
+    from miniautogen.core.runtime.team_task_list import InMemoryTaskListStore
+    from miniautogen.core.runtime.team_tool_injector import inject_task_tools
 
     run_id = f"team-{lead_name}-{Path.cwd().name}"
     store = InMemoryTaskListStore(team_run_id=run_id, event_sink=NullEventSink())
 
     session = await ChatSession.create(root, agent_name=lead_name)
 
-    # Inject task tools into lead
+    runner = PipelineRunner()
+    runtime = TeamRuntime(runner, agent_registry={})
+
     inject_task_tools(session._runtime, store, lead_name)
 
     echo_info(f"Lead '{lead_name}' initialized with task management tools.")
 
-    # Create TeamRuntime for the drain loop coordination
-    from miniautogen.api import PipelineRunner
-    runtime = TeamRuntime(PipelineRunner(), agent_registry={})
-
-    # Start teammates in background task group
     async with anyio.create_task_group() as tg:
         for t_name in teammates:
             from miniautogen.cli.services.runtime_factory import create_runtime
             t_runtime, _ = await create_runtime(root, t_name, run_id_prefix=f"t-{t_name}")
 
-            # Inject task tools into teammate
             inject_task_tools(t_runtime, store, t_name)
 
             echo_info(f"Spawning background teammate: {t_name}")
@@ -120,7 +117,7 @@ async def _run_team_session(
                 runtime._run_teammate_drain_loop,
                 t_name,
                 t_runtime,
-                t_runtime.run_context,
+                t_runtime._run_context,
                 "isolate",
                 {},
                 run_id,
@@ -130,7 +127,7 @@ async def _run_team_session(
             )
 
         # Enter interactive chat loop for Lead
-        click.echo(click.style(f"\nTeam Lead> ", fg="cyan", bold=True) + "Ready for orders.")
+        click.echo(click.style("\nTeam Lead> ", fg="cyan", bold=True) + "Ready for orders.")
 
         while True:
             try:
@@ -159,7 +156,8 @@ async def _run_team_session(
                         click.echo("No tasks in board.")
                     else:
                         for t in tasks:
-                            click.echo(f"[{t.status.value}] {t.id}: {t.title} ({t.assigned_to or 'unassigned'})")
+                            assigned = t.assigned_to or "unassigned"
+                            click.echo(f"[{t.status.value}] {t.id}: {t.title} ({assigned})")
                 continue
 
             # Send to Lead

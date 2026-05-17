@@ -40,13 +40,6 @@ class _AgentWithRuntimeContext:
         self._run_context = context
         self.seen_parent_run_id: str | None = None
 
-    @property
-    def run_context(self) -> RunContext:
-        return self._run_context
-
-    @run_context.setter
-    def run_context(self, ctx: RunContext) -> None:
-        self._run_context = ctx
 
     async def process(self, prompt: str) -> str:
         self.seen_parent_run_id = self._run_context.parent_run_id

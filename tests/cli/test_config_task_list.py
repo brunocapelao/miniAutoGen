@@ -32,13 +32,13 @@ def test_flow_config_with_task_list() -> None:
         mode="team",
         participants=["legal", "security"],
         lead="orchestrator",
-        task_list={
-            "enabled": True,
-            "initial_tasks": [
-                {"title": "Review contract", "assigned_to": "legal"},
-                {"title": "Security audit", "assigned_to": "security"},
+        task_list=TaskListConfig(
+            enabled=True,
+            initial_tasks=[
+                TaskEntrySpec(title="Review contract", assigned_to="legal"),
+                TaskEntrySpec(title="Security audit", assigned_to="security"),
             ],
-        },
+        ),
     )
     assert flow.task_list is not None
     assert flow.task_list.enabled is True
@@ -80,13 +80,13 @@ def test_flow_config_rejects_cycle() -> None:
             mode="team",
             participants=["legal"],
             lead="orchestrator",
-            task_list={
-                "enabled": True,
-                "initial_tasks": [
-                    {"title": "A", "id": "a", "depends_on": ["b"]},
-                    {"title": "B", "id": "b", "depends_on": ["a"]},
+            task_list=TaskListConfig(
+                enabled=True,
+                initial_tasks=[
+                    TaskEntrySpec(title="A", id="a", depends_on=["b"]),
+                    TaskEntrySpec(title="B", id="b", depends_on=["a"]),
                 ],
-            },
+            ),
         )
 
 
